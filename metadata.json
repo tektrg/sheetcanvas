@@ -1,5 +1,5 @@
 {
-  "name": "Infinite Calc Canvas",
+  "name": "Sheetable",
   "description": "A flexible infinite canvas containing movable spreadsheet tables with support for basic formulas (SUM, AVG, math operators).",
   "requestFramePermissions": []
 }

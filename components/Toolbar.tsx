@@ -1,76 +1,231 @@
-import React from 'react';
-import { Plus, Calculator, Info, Moon, Sun, Cloud, CloudOff, CheckCircle2, Loader2 } from 'lucide-react';
+
+import React, { useState, useEffect, useRef } from 'react';
+import { Grid3X3, Moon, Sun, Loader2, StickyNote, Undo2, Redo2, Upload, MousePointer2, Hand, MoreHorizontal, Keyboard, Info, Search, Database } from 'lucide-react';
+import { ToolMode } from '../types';
 
 interface ToolbarProps {
   onAddTable: () => void;
+  onAddNote: () => void;
+  onImport: () => void;
+  onConnectData: () => void; // New Prop
   darkMode: boolean;
   toggleDarkMode: () => void;
   saveStatus: 'saved' | 'saving' | 'error' | 'idle';
+  onUndo: () => void;
+  onRedo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  toolMode: ToolMode;
+  setToolMode: (mode: ToolMode) => void;
+  onOpenCommandBar: () => void;
+  hidden?: boolean;
 }
 
-export const Toolbar: React.FC<ToolbarProps> = ({ onAddTable, darkMode, toggleDarkMode, saveStatus }) => {
+const ToolbarButton: React.FC<{
+  onClick?: () => void;
+  icon: React.ElementType;
+  tooltip: string;
+  disabled?: boolean;
+  active?: boolean;
+  buttonRef?: React.RefObject<HTMLButtonElement>;
+}> = ({ onClick, icon: Icon, tooltip, disabled, active, buttonRef }) => (
+  <button 
+    ref={buttonRef}
+    onClick={onClick}
+    disabled={disabled}
+    className={`group relative p-2.5 rounded-full transition-all flex items-center justify-center
+      ${disabled 
+        ? 'text-neutral-300 dark:text-neutral-600 cursor-not-allowed' 
+        : active
+          ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400'
+          : 'hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100'
+      }`}
+  >
+    <Icon size={20} strokeWidth={1.5} />
+    {!disabled && (
+      <span className="absolute bottom-full mb-2.5 left-1/2 -translate-x-1/2 px-2 py-1 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 text-[10px] font-medium rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-sm z-50">
+        {tooltip}
+      </span>
+    )}
+  </button>
+);
+
+export const Toolbar: React.FC<ToolbarProps> = ({ 
+  onAddTable, 
+  onAddNote, 
+  onImport,
+  onConnectData,
+  darkMode, 
+  toggleDarkMode, 
+  saveStatus,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
+  toolMode,
+  setToolMode,
+  onOpenCommandBar,
+  hidden
+}) => {
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const moreButtonRef = useRef<HTMLButtonElement>(null);
+
+  const toggleCursorMode = () => {
+    setToolMode(toolMode === ToolMode.SELECT ? ToolMode.PAN : ToolMode.SELECT);
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        isMoreOpen &&
+        menuRef.current &&
+        !menuRef.current.contains(event.target as Node) &&
+        moreButtonRef.current &&
+        !moreButtonRef.current.contains(event.target as Node)
+      ) {
+        setIsMoreOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isMoreOpen]);
+
   return (
-    <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-white/80 dark:bg-neutral-850/80 backdrop-blur-md shadow-lg border border-white/20 dark:border-neutral-700 rounded-2xl p-2 flex items-center gap-2 z-50 transition-colors">
-      <div className="flex items-center gap-2 px-4 py-2">
-         <div className="w-8 h-8 bg-teal-600 rounded-lg flex items-center justify-center text-white shadow-md">
-            <Calculator size={18} />
-         </div>
-         <div className="flex flex-col">
-            <span className="font-semibold text-neutral-700 dark:text-neutral-200 hidden sm:inline leading-none mb-0.5">InfiniCalc</span>
-            <div className="flex items-center gap-1 text-[10px] text-neutral-500 dark:text-neutral-400">
-               {saveStatus === 'saving' && (
-                 <>
-                   <Loader2 size={10} className="animate-spin" />
-                   <span>Saving...</span>
-                 </>
-               )}
-               {saveStatus === 'saved' && (
-                 <>
-                   <Cloud size={10} />
-                   <span>Saved</span>
-                 </>
-               )}
-               {saveStatus === 'error' && (
-                 <>
-                   <CloudOff size={10} className="text-red-500" />
-                   <span className="text-red-500">Error</span>
-                 </>
-               )}
-            </div>
-         </div>
-      </div>
-      <div className="h-6 w-px bg-neutral-300 dark:bg-neutral-600 mx-1"></div>
-      
-      <button 
-        onClick={onAddTable}
-        className="flex items-center gap-2 bg-neutral-900 dark:bg-neutral-100 hover:bg-black dark:hover:bg-white text-white dark:text-neutral-900 px-4 py-2 rounded-xl text-sm font-medium transition-colors shadow-md active:scale-95 transform duration-100"
-      >
-        <Plus size={16} />
-        <span className="hidden sm:inline">Table</span>
-      </button>
+    <div 
+      className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]
+        ${hidden ? 'opacity-0 translate-y-8 pointer-events-none scale-95' : 'opacity-100 translate-y-0 scale-100'}
+      `}
+    >
+      <div className="flex items-center gap-1 p-1.5 bg-white/90 dark:bg-neutral-900/90 backdrop-blur-xl shadow-xl border border-neutral-200/50 dark:border-neutral-700/50 rounded-full transition-all">
+        
+        {/* Undo/Redo Group */}
+        <ToolbarButton onClick={onUndo} icon={Undo2} tooltip="Undo (Ctrl+Z)" disabled={!canUndo} />
+        <ToolbarButton onClick={onRedo} icon={Redo2} tooltip="Redo (Ctrl+Shift+Z)" disabled={!canRedo} />
 
-      <div className="h-6 w-px bg-neutral-300 dark:bg-neutral-600 mx-1"></div>
+        <div className="h-4 w-px bg-neutral-200 dark:bg-neutral-700 mx-1" />
 
-      <button
-        onClick={toggleDarkMode}
-        className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-600 dark:text-neutral-300 transition-colors"
-        title="Toggle Dark Mode"
-      >
-        {darkMode ? <Sun size={18} /> : <Moon size={18} />}
-      </button>
-      
-      <div className="group relative flex items-center justify-center w-8 h-8 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 cursor-help">
-         <Info size={18} />
-         <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-64 bg-neutral-900 dark:bg-neutral-700 text-white text-xs rounded-lg p-3 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-xl border border-transparent dark:border-neutral-600">
-           <p className="font-bold mb-1">Supported Formulas:</p>
-           <ul className="space-y-1 list-disc pl-3">
-             <li>=SUM(A1:A5)</li>
-             <li>=AVG(A1:B2)</li>
-             <li>=MIN(A1:A3)</li>
-             <li>=MAX(C1:C5)</li>
-             <li>=A1 + B2 * 5</li>
-           </ul>
-         </div>
+        {/* Search / Command Bar */}
+        <ToolbarButton onClick={onOpenCommandBar} icon={Search} tooltip="Search Commands (Ctrl+K)" />
+
+        <div className="h-4 w-px bg-neutral-200 dark:bg-neutral-700 mx-1" />
+
+        {/* Cursor Toggle */}
+        <ToolbarButton 
+          onClick={toggleCursorMode} 
+          icon={toolMode === ToolMode.SELECT ? MousePointer2 : Hand} 
+          tooltip={toolMode === ToolMode.SELECT ? "Switch to Pan Mode (Space)" : "Switch to Select Mode (V)"} 
+          active={true}
+        />
+        
+        {/* Creation Tools */}
+        <ToolbarButton onClick={onAddTable} icon={Grid3X3} tooltip="Add Table" />
+        <ToolbarButton onClick={onConnectData} icon={Database} tooltip="Connect Data (Google Sheets/Analytics)" />
+        <ToolbarButton onClick={onImport} icon={Upload} tooltip="Import File" />
+        <ToolbarButton onClick={onAddNote} icon={StickyNote} tooltip="Add Note" />
+
+        <div className="h-4 w-px bg-neutral-200 dark:bg-neutral-700 mx-1" />
+
+        {/* More Menu */}
+        <div className="relative">
+             <ToolbarButton 
+                buttonRef={moreButtonRef}
+                onClick={() => setIsMoreOpen(!isMoreOpen)} 
+                icon={MoreHorizontal} 
+                tooltip="More" 
+                active={isMoreOpen}
+             />
+             
+             {isMoreOpen && (
+                 <div 
+                    ref={menuRef}
+                    className="absolute bottom-full right-0 mb-4 w-72 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-xl border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl p-4 flex flex-col gap-4 animate-scale-in origin-bottom-right z-50 cursor-default"
+                 >
+                    
+                    {/* Save Status */}
+                    <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">Status</span>
+                        <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700">
+                           {saveStatus === 'saving' ? (
+                                <Loader2 size={12} className="animate-spin text-neutral-500" />
+                           ) : saveStatus === 'error' ? (
+                                <div className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]" />
+                           ) : (
+                                <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]" />
+                           )}
+                           <span className="text-[10px] font-medium text-neutral-600 dark:text-neutral-300">
+                               {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'error' ? 'Error' : 'Saved'}
+                           </span>
+                        </div>
+                    </div>
+
+                    <div className="h-px bg-neutral-100 dark:bg-neutral-800" />
+
+                    {/* Theme */}
+                    <div className="flex items-center justify-between">
+                         <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-300">
+                             <Sun size={16} />
+                             <span className="text-sm font-medium">Appearance</span>
+                         </div>
+                         <button 
+                            onClick={toggleDarkMode}
+                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors text-xs font-medium text-neutral-700 dark:text-neutral-200 border border-neutral-200 dark:border-neutral-700"
+                         >
+                            {darkMode ? <Moon size={12} /> : <Sun size={12} />}
+                            {darkMode ? 'Dark' : 'Light'}
+                         </button>
+                    </div>
+
+                    <div className="h-px bg-neutral-100 dark:bg-neutral-800" />
+
+                    {/* Shortcuts / Info */}
+                    <div>
+                        <div className="flex items-center gap-2 mb-3 text-neutral-500 dark:text-neutral-400">
+                             <Keyboard size={14} />
+                             <span className="text-xs font-semibold uppercase tracking-wide">Shortcuts</span>
+                        </div>
+                         <ul className="space-y-2 text-xs text-neutral-600 dark:text-neutral-300">
+                           <li className="flex justify-between items-center">
+                               <span>Command Bar</span> 
+                               <div className="flex gap-1">
+                                <kbd className="px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded border border-neutral-200 dark:border-neutral-700 font-sans text-[10px]">Ctrl</kbd>
+                                <kbd className="px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded border border-neutral-200 dark:border-neutral-700 font-sans text-[10px]">K</kbd>
+                               </div>
+                           </li>
+                           <li className="flex justify-between items-center">
+                               <span>Pan / Select</span> 
+                               <div className="flex gap-1">
+                                   <kbd className="px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded border border-neutral-200 dark:border-neutral-700 font-sans text-[10px] min-w-[20px] text-center">Space</kbd>
+                                   <kbd className="px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded border border-neutral-200 dark:border-neutral-700 font-sans text-[10px] min-w-[20px] text-center">V</kbd>
+                               </div>
+                           </li>
+                           <li className="flex justify-between items-center">
+                               <span>Undo</span> 
+                               <div className="flex gap-1">
+                                <kbd className="px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded border border-neutral-200 dark:border-neutral-700 font-sans text-[10px]">Ctrl</kbd>
+                                <kbd className="px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded border border-neutral-200 dark:border-neutral-700 font-sans text-[10px]">Z</kbd>
+                               </div>
+                           </li>
+                           <li className="flex justify-between items-center">
+                               <span>Delete</span> 
+                               <kbd className="px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded border border-neutral-200 dark:border-neutral-700 font-sans text-[10px]">Del</kbd>
+                           </li>
+                         </ul>
+                    </div>
+
+                    {/* Info Footer */}
+                    <div className="pt-2 border-t border-neutral-100 dark:border-neutral-800 flex items-center justify-center gap-1.5 text-[10px] text-neutral-400">
+                        <Info size={12} />
+                        <span>Infinite Calc Canvas v1.0</span>
+                    </div>
+
+                 </div>
+             )}
+        </div>
+
       </div>
     </div>
   );

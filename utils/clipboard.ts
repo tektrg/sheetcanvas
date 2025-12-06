@@ -1,3 +1,4 @@
+import { MAX_IMPORT_ROWS, MAX_IMPORT_COLS } from '../constants';
 
 export const parseCSVLine = (text: string, separator: string): string[] => {
   const res: string[] = [];
@@ -71,35 +72,46 @@ const parseMarkdownTable = (text: string): string[][] | null => {
   return null;
 };
 
-export const parseClipboardData = (text: string): string[][] => {
-  if (!text) return [];
+export const parseClipboardData = (text: string): { data: string[][]; truncated: boolean } => {
+  if (!text) return { data: [], truncated: false };
 
   // 1. Try Markdown Table parsing
-  const mdMatrix = parseMarkdownTable(text);
-  if (mdMatrix) return mdMatrix;
-
-  // 2. Fallback to CSV/TSV parsing
-  // Basic detection
-  const hasTabs = text.includes('\t');
-  const hasCommas = text.includes(',');
-
-  // Preference: Tab (Excel/Sheets) > Comma (CSV)
-  const separator = hasTabs ? '\t' : (hasCommas ? ',' : '\t');
-
-  const rows = text.split(/\r\n|\n|\r/);
+  let matrix = parseMarkdownTable(text);
   
-  // Remove trailing empty row often added by Excel/Sheets selection copy
-  if (rows.length > 0 && rows[rows.length - 1].trim() === '') {
-    rows.pop();
+  if (!matrix) {
+    // 2. Fallback to CSV/TSV parsing
+    const hasTabs = text.includes('\t');
+    const hasCommas = text.includes(',');
+    const separator = hasTabs ? '\t' : (hasCommas ? ',' : '\t');
+
+    const rows = text.split(/\r\n|\n|\r/);
+    if (rows.length > 0 && rows[rows.length - 1].trim() === '') {
+      rows.pop();
+    }
+
+    if (rows.length === 0) return { data: [], truncated: false };
+
+    matrix = rows.map(row => {
+      if (separator === ',' || row.includes('"')) {
+          return parseCSVLine(row, separator);
+      }
+      return row.split(separator);
+    });
   }
 
-  if (rows.length === 0) return [];
+  let truncated = false;
 
-  return rows.map(row => {
-    // If using commas or if quotes are detected, use the robust CSV parser
-    if (separator === ',' || row.includes('"')) {
-        return parseCSVLine(row, separator);
-    }
-    return row.split(separator);
-  });
+  // Enforce limits
+  if (matrix.length > MAX_IMPORT_ROWS) {
+      matrix = matrix.slice(0, MAX_IMPORT_ROWS);
+      truncated = true;
+  }
+
+  // Check columns
+  if (matrix.length > 0 && matrix[0].length > MAX_IMPORT_COLS) {
+      matrix = matrix.map(row => row.slice(0, MAX_IMPORT_COLS));
+      truncated = true;
+  }
+
+  return { data: matrix, truncated };
 };

@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { CanvasTransform, Position } from '../types';
+import { CanvasTransform, Position, ToolMode } from '../types';
 import { MIN_SCALE, MAX_SCALE, COLOR_PALETTE } from '../constants';
 
 interface CanvasProps {
@@ -7,16 +7,18 @@ interface CanvasProps {
   transform: CanvasTransform;
   setTransform: React.Dispatch<React.SetStateAction<CanvasTransform>>;
   darkMode: boolean;
+  toolMode: ToolMode;
+  onDoubleClick?: (e: React.MouseEvent) => void;
+  onMouseDown?: (e: React.MouseEvent) => void;
 }
 
-export const Canvas: React.FC<CanvasProps> = ({ children, transform, setTransform, darkMode }) => {
+export const Canvas: React.FC<CanvasProps> = ({ children, transform, setTransform, darkMode, toolMode, onDoubleClick, onMouseDown }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isPanning, setIsPanning] = useState(false);
   const [lastMousePos, setLastMousePos] = useState<Position>({ x: 0, y: 0 });
 
   const palette = darkMode ? COLOR_PALETTE.dark : COLOR_PALETTE.light;
 
-  // Zoom handler
   const handleWheel = (e: WheelEvent) => {
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
@@ -28,7 +30,6 @@ export const Canvas: React.FC<CanvasProps> = ({ children, transform, setTransfor
         scale: newScale
       }));
     } else {
-        // Regular pan via trackpad or wheel
         e.preventDefault();
         setTransform(prev => ({
             ...prev,
@@ -48,10 +49,13 @@ export const Canvas: React.FC<CanvasProps> = ({ children, transform, setTransfor
   }, [transform.scale]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    // Only pan if left click on background
-    if (e.button === 0) {
+    // Middle mouse always pans, or if in PAN mode
+    if (e.button === 1 || toolMode === ToolMode.PAN) {
       setIsPanning(true);
       setLastMousePos({ x: e.clientX, y: e.clientY });
+    } else {
+      // Propagate to parent for selection box logic
+      onMouseDown?.(e);
     }
   };
 
@@ -79,24 +83,25 @@ export const Canvas: React.FC<CanvasProps> = ({ children, transform, setTransfor
   return (
     <div 
       ref={containerRef}
-      className="w-full h-screen overflow-hidden bg-neutral-50 dark:bg-neutral-900 relative cursor-grab active:cursor-grabbing transition-colors duration-300"
+      className={`w-full h-screen overflow-hidden bg-neutral-50/50 dark:bg-neutral-900 relative transition-colors duration-300
+        ${toolMode === ToolMode.PAN ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}
+      `}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
+      onDoubleClick={onDoubleClick}
     >
-      {/* Dot Grid Background */}
       <div 
         className="absolute inset-0 pointer-events-none transition-opacity duration-300"
         style={{
-            backgroundImage: `radial-gradient(${palette.grid} 1px, transparent 1px)`, 
-            backgroundSize: `${20 * transform.scale}px ${20 * transform.scale}px`,
+            backgroundImage: `radial-gradient(${palette.grid} 1.5px, transparent 1.5px)`, 
+            backgroundSize: `${24 * transform.scale}px ${24 * transform.scale}px`,
             backgroundPosition: `${transform.offset.x}px ${transform.offset.y}px`,
-            opacity: 1
+            opacity: 0.8
         }} 
       />
 
-      {/* Content Layer */}
       <div 
         className="absolute origin-top-left will-change-transform"
         style={{

@@ -1,13 +1,16 @@
 import { openDB } from 'idb';
-import { SheetData, ChartData, CanvasTransform } from '../types';
+import { SheetData, ChartData, NoteData, CanvasTransform } from '../types';
 
 const DB_NAME = 'infini-calc-db';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Bumped version to add notes store
 
 export interface AppState {
   sheets: SheetData[];
   charts: ChartData[];
+  notes: NoteData[];
   transform: CanvasTransform | null;
+  defaultChartColor?: string;
+  customColors?: string[];
 }
 
 const initDB = async () => {
@@ -20,6 +23,9 @@ const initDB = async () => {
       if (!db.objectStoreNames.contains('charts')) {
         db.createObjectStore('charts', { keyPath: 'id' });
       }
+      if (!db.objectStoreNames.contains('notes')) {
+        db.createObjectStore('notes', { keyPath: 'id' });
+      }
       if (!db.objectStoreNames.contains('meta')) {
         db.createObjectStore('meta');
       }
@@ -30,15 +36,16 @@ const initDB = async () => {
 export const saveAppState = async (
   sheets: SheetData[],
   charts: ChartData[],
-  transform: CanvasTransform
+  notes: NoteData[],
+  transform: CanvasTransform,
+  defaultChartColor?: string,
+  customColors?: string[]
 ) => {
   try {
     const db = await initDB();
-    const tx = db.transaction(['sheets', 'charts', 'meta'], 'readwrite');
+    const tx = db.transaction(['sheets', 'charts', 'notes', 'meta'], 'readwrite');
     
     // We clear and rewrite to ensure deleted items are removed.
-    // For extremely large datasets, a diff-based approach would be better,
-    // but for "many sheets" this is usually fast enough in IDB.
     await tx.objectStore('sheets').clear();
     for (const sheet of sheets) {
       await tx.objectStore('sheets').put(sheet);
@@ -48,8 +55,15 @@ export const saveAppState = async (
     for (const chart of charts) {
       await tx.objectStore('charts').put(chart);
     }
+
+    await tx.objectStore('notes').clear();
+    for (const note of notes) {
+      await tx.objectStore('notes').put(note);
+    }
     
     await tx.objectStore('meta').put(transform, 'transform');
+    if (defaultChartColor) await tx.objectStore('meta').put(defaultChartColor, 'defaultChartColor');
+    if (customColors) await tx.objectStore('meta').put(customColors, 'customColors');
     
     await tx.done;
   } catch (err) {
@@ -57,21 +71,27 @@ export const saveAppState = async (
   }
 };
 
-export const loadAppState = async (): Promise<AppState> => {
+export const loadAppState = async (id: string = 'default'): Promise<AppState> => {
   try {
     const db = await initDB();
     
     const sheets = await db.getAll('sheets');
     const charts = await db.getAll('charts');
+    const notes = await db.getAll('notes');
     const transform = await db.get('meta', 'transform');
+    const defaultChartColor = await db.get('meta', 'defaultChartColor');
+    const customColors = await db.get('meta', 'customColors');
     
     return {
       sheets: sheets || [],
       charts: charts || [],
-      transform: transform || null
+      notes: notes || [],
+      transform: transform || null,
+      defaultChartColor,
+      customColors
     };
   } catch (err) {
     console.error('Failed to load state from IndexedDB:', err);
-    return { sheets: [], charts: [], transform: null };
+    return { sheets: [], charts: [], notes: [], transform: null };
   }
 };
