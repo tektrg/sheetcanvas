@@ -1,8 +1,9 @@
 
-import React, { useState } from 'react';
-import { ChartConfig, ChartType } from '../types';
+
+import React, { useState, useEffect } from 'react';
+import { ChartConfig, ChartType, PivotOperation, ChartMode } from '../types';
 import { CHART_COLORS } from '../constants';
-import { Trash2, ChevronDown, Plus, X, BarChart3, LineChart, PieChart, ArrowLeftRight } from 'lucide-react';
+import { Trash2, ChevronDown, Plus, X, BarChart3, LineChart, PieChart } from 'lucide-react';
 
 interface Header {
   id: string;
@@ -34,13 +35,50 @@ export const ChartConfigPanel: React.FC<ChartConfigPanelProps> = ({
   onAddCustomColor
 }) => {
   const activePalette = palette || CHART_COLORS;
+  
+  // Local state for Group inputs, synced with config
+  const [mode, setMode] = useState<ChartMode>(config.mode || 'metrics');
+  const [groupCol, setGroupCol] = useState(config.groupCol || '');
+  const [seriesGroupCol, setSeriesGroupCol] = useState(config.seriesGroupCol || '');
+  const [valueCol, setValueCol] = useState(config.valueCol || '');
+  const [operation, setOperation] = useState<PivotOperation>(config.operation || 'SUM');
+
+  // Initialize Group defaults if switching to group mode
+  useEffect(() => {
+    if (mode === 'group') {
+        if (!groupCol && headers.length > 0) setGroupCol(headers[0].id);
+        if (!valueCol && headers.length > 1) setValueCol(headers[1].id);
+        
+        // Push local state to config immediately so chart updates
+        updateConfig({ 
+            mode: 'group',
+            groupCol: groupCol || headers[0]?.id,
+            seriesGroupCol: seriesGroupCol || undefined,
+            valueCol: valueCol || (headers.length > 1 ? headers[1].id : headers[0]?.id),
+            operation
+        });
+    } else {
+        updateConfig({ mode: 'metrics' });
+    }
+  }, [mode]);
 
   const updateConfig = (updates: Partial<ChartConfig>) => {
     onChange({ ...config, ...updates });
   };
 
+  const updateGroupConfig = (key: 'groupCol' | 'seriesGroupCol' | 'valueCol' | 'operation', val: any) => {
+      if (key === 'groupCol') setGroupCol(val);
+      if (key === 'seriesGroupCol') setSeriesGroupCol(val);
+      if (key === 'valueCol') setValueCol(val);
+      if (key === 'operation') setOperation(val);
+      
+      const updatePayload: any = { [key]: val };
+      if (key === 'seriesGroupCol' && val === '') updatePayload.seriesGroupCol = undefined;
+      
+      updateConfig(updatePayload);
+  };
+
   const addSeries = () => {
-    // Basic heuristic to find next column
     const used = new Set(config.dataColumns);
     const next = headers.find(h => !used.has(h.id))?.id || headers[0]?.id;
     if (next) {
@@ -53,9 +91,7 @@ export const ChartConfigPanel: React.FC<ChartConfigPanelProps> = ({
     const removedCol = newCols[index];
     newCols.splice(index, 1);
     
-    // Also remove from right axis list if present
     const newRightAxis = (config.rightAxisColumns || []).filter(c => c !== removedCol);
-    // Remove specific type override
     const newSeriesTypes = { ...(config.seriesTypes || {}) };
     delete newSeriesTypes[removedCol];
 
@@ -71,14 +107,12 @@ export const ChartConfigPanel: React.FC<ChartConfigPanelProps> = ({
     const newCols = [...config.dataColumns];
     newCols[index] = colId;
     
-    // Update axis mapping if needed
     let newRightAxis = config.rightAxisColumns || [];
     if (newRightAxis.includes(oldCol)) {
         newRightAxis = newRightAxis.filter(c => c !== oldCol);
         newRightAxis.push(colId);
     }
 
-    // Update type mapping if needed
     const newSeriesTypes = { ...(config.seriesTypes || {}) };
     if (newSeriesTypes[oldCol]) {
         newSeriesTypes[colId] = newSeriesTypes[oldCol];
@@ -127,6 +161,7 @@ export const ChartConfigPanel: React.FC<ChartConfigPanelProps> = ({
       </div>
 
       <div className="space-y-6 flex-1 overflow-y-auto min-h-0 pr-1 -mr-1">
+        
         {/* Chart Type */}
         <div>
           <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-2 uppercase tracking-wide">Chart Type</label>
@@ -134,7 +169,7 @@ export const ChartConfigPanel: React.FC<ChartConfigPanelProps> = ({
             {(['bar', 'line', 'pie'] as const).map(t => (
               <button 
                 key={t}
-                onClick={() => updateConfig({ type: t, seriesTypes: {} })} // Reset overrides when changing main type
+                onClick={() => updateConfig({ type: t, seriesTypes: {} })} 
                 className={`flex-1 py-2 text-xs font-medium rounded-lg capitalize border transition-all flex flex-col items-center gap-1.5
                   ${config.type === t 
                     ? 'bg-teal-50 dark:bg-teal-900/30 border-teal-400 text-teal-700 dark:text-teal-300 ring-1 ring-teal-400' 
@@ -150,96 +185,182 @@ export const ChartConfigPanel: React.FC<ChartConfigPanelProps> = ({
           </div>
         </div>
 
-        {/* Data Source */}
+        {/* Mode Selector */}
         <div>
-          <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-3 uppercase tracking-wide">Data Source</label>
-          <div className="space-y-4">
-            <div>
-              <span className="text-[10px] text-neutral-400 font-medium mb-1.5 block">X-Axis (Labels)</span>
-              <div className="relative">
-                <select
-                  className="w-full appearance-none border rounded-lg px-3 py-2 text-xs bg-neutral-50 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-800 dark:text-neutral-200 outline-none focus:ring-1 focus:ring-teal-400" 
-                  value={config.labelColumn}
-                  onChange={(e) => updateConfig({ labelColumn: e.target.value })}
-                >
-                  {headers.map(h => (
-                    <option key={h.id} value={h.id}>{h.label}</option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" size={14} />
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between items-center mb-1.5">
-                <span className="text-[10px] text-neutral-400 font-medium block">Y-Axis (Values)</span>
-                {config.type !== 'pie' && (
-                  <button 
-                    onClick={addSeries}
-                    className="flex items-center gap-1 text-[10px] font-medium text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 bg-teal-50 dark:bg-teal-900/20 px-2 py-1 rounded transition-colors"
+             <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-3 uppercase tracking-wide">Data Mode</label>
+             <div className="flex gap-4 mb-4 bg-neutral-100 dark:bg-neutral-800/50 p-1 rounded-lg">
+                  <button
+                      onClick={() => setMode('metrics')}
+                      className={`flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-all ${mode === 'metrics' ? 'bg-white dark:bg-neutral-700 shadow text-neutral-900 dark:text-white' : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-700'}`}
                   >
-                    <Plus size={10} /> Add Series
+                      Select Metrics
                   </button>
-                )}
-              </div>
-              <div className="space-y-2">
-                {config.dataColumns.map((colId, index) => {
-                  const isRightAxis = config.rightAxisColumns?.includes(colId);
-                  const effectiveType = config.seriesTypes?.[colId] || config.type;
+                  <button
+                      onClick={() => setMode('group')}
+                      className={`flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-all ${mode === 'group' ? 'bg-white dark:bg-neutral-700 shadow text-neutral-900 dark:text-white' : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-700'}`}
+                  >
+                      Group By
+                  </button>
+             </div>
+        </div>
 
-                  return (
-                    <div key={index} className="flex gap-2 items-center group">
-                      <div className="relative flex-1">
+        {/* Data Configuration */}
+        <div>
+          {mode === 'metrics' ? (
+            <div className="space-y-4">
+                <div>
+                    <span className="text-[10px] text-neutral-400 font-medium mb-1.5 block">X-Axis (Labels)</span>
+                    <div className="relative">
                         <select
-                          className="w-full appearance-none border rounded-lg px-3 py-2 text-xs bg-neutral-50 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-800 dark:text-neutral-200 outline-none focus:ring-1 focus:ring-teal-400" 
-                          value={colId}
-                          onChange={(e) => updateSeries(index, e.target.value)}
+                        className="w-full appearance-none border rounded-lg px-3 py-2 text-xs bg-neutral-50 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-800 dark:text-neutral-200 outline-none focus:ring-1 focus:ring-teal-400" 
+                        value={config.labelColumn}
+                        onChange={(e) => updateConfig({ labelColumn: e.target.value })}
                         >
-                          {headers.map(h => (
+                        {headers.map(h => (
                             <option key={h.id} value={h.id}>{h.label}</option>
-                          ))}
+                        ))}
                         </select>
                         <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" size={14} />
-                      </div>
-                      
-                      {config.type !== 'pie' && (
-                          <>
-                           <button
-                            onClick={() => toggleSeriesType(colId)}
-                            className="p-1.5 h-full rounded-md border border-neutral-200 dark:border-neutral-700 text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-700 w-8 flex justify-center items-center"
-                            title={effectiveType === 'bar' ? "Bar Chart" : "Line Chart"}
-                           >
-                              {effectiveType === 'bar' ? <BarChart3 size={14} /> : <LineChart size={14} />}
-                           </button>
-
-                           <button
-                            onClick={() => toggleSeriesAxis(colId)}
-                            className={`p-1.5 h-full rounded-md border text-[10px] font-medium flex items-center gap-1 w-8 justify-center transition-colors
-                                ${isRightAxis 
-                                    ? 'bg-teal-50 dark:bg-teal-900/30 border-teal-200 dark:border-teal-800 text-teal-600 dark:text-teal-400' 
-                                    : 'bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-500'}`}
-                            title={isRightAxis ? "Right Axis" : "Left Axis"}
-                          >
-                              {isRightAxis ? "R" : "L"}
-                          </button>
-                          </>
-                      )}
-
-                      {(config.dataColumns.length > 1 || config.type !== 'pie') && (
-                        <button 
-                          onClick={() => removeSeries(index)}
-                          disabled={config.dataColumns.length <= 1}
-                          className={`p-1.5 rounded-md border transition-colors ${config.dataColumns.length <= 1 ? 'opacity-30 cursor-not-allowed border-transparent' : 'border-neutral-200 dark:border-neutral-700 hover:border-red-300 dark:hover:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20 text-neutral-400 hover:text-red-500'}`}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      )}
                     </div>
-                  );
-                })}
-              </div>
+                </div>
+
+                <div>
+                    <div className="flex justify-between items-center mb-1.5">
+                        <span className="text-[10px] text-neutral-400 font-medium block">Y-Axis (Values)</span>
+                        {config.type !== 'pie' && (
+                        <button 
+                            onClick={addSeries}
+                            className="flex items-center gap-1 text-[10px] font-medium text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 bg-teal-50 dark:bg-teal-900/20 px-2 py-1 rounded transition-colors"
+                        >
+                            <Plus size={10} /> Add Series
+                        </button>
+                        )}
+                    </div>
+                    <div className="space-y-2">
+                        {config.dataColumns.map((colId, index) => {
+                        const isRightAxis = config.rightAxisColumns?.includes(colId);
+                        const effectiveType = config.seriesTypes?.[colId] || config.type;
+
+                        return (
+                            <div key={index} className="flex gap-2 items-center group">
+                            <div className="relative flex-1">
+                                <select
+                                className="w-full appearance-none border rounded-lg px-3 py-2 text-xs bg-neutral-50 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-800 dark:text-neutral-200 outline-none focus:ring-1 focus:ring-teal-400" 
+                                value={colId}
+                                onChange={(e) => updateSeries(index, e.target.value)}
+                                >
+                                {headers.map(h => (
+                                    <option key={h.id} value={h.id}>{h.label}</option>
+                                ))}
+                                </select>
+                                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" size={14} />
+                            </div>
+                            
+                            {config.type !== 'pie' && (
+                                <>
+                                <button
+                                    onClick={() => toggleSeriesType(colId)}
+                                    className="p-1.5 h-full rounded-md border border-neutral-200 dark:border-neutral-700 text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-700 w-8 flex justify-center items-center"
+                                    title={effectiveType === 'bar' ? "Bar Chart" : "Line Chart"}
+                                >
+                                    {effectiveType === 'bar' ? <BarChart3 size={14} /> : <LineChart size={14} />}
+                                </button>
+
+                                <button
+                                    onClick={() => toggleSeriesAxis(colId)}
+                                    className={`p-1.5 h-full rounded-md border text-[10px] font-medium flex items-center gap-1 w-8 justify-center transition-colors
+                                        ${isRightAxis 
+                                            ? 'bg-teal-50 dark:bg-teal-900/30 border-teal-200 dark:border-teal-800 text-teal-600 dark:text-teal-400' 
+                                            : 'bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-500'}`}
+                                    title={isRightAxis ? "Right Axis" : "Left Axis"}
+                                >
+                                    {isRightAxis ? "R" : "L"}
+                                </button>
+                                </>
+                            )}
+
+                            {(config.dataColumns.length > 1 || config.type !== 'pie') && (
+                                <button 
+                                onClick={() => removeSeries(index)}
+                                disabled={config.dataColumns.length <= 1}
+                                className={`p-1.5 rounded-md border transition-colors ${config.dataColumns.length <= 1 ? 'opacity-30 cursor-not-allowed border-transparent' : 'border-neutral-200 dark:border-neutral-700 hover:border-red-300 dark:hover:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20 text-neutral-400 hover:text-red-500'}`}
+                                >
+                                <Trash2 size={14} />
+                                </button>
+                            )}
+                            </div>
+                        );
+                        })}
+                    </div>
+                </div>
             </div>
-          </div>
+          ) : (
+            <div className="space-y-4">
+                 <div>
+                    <label className="block text-[10px] font-medium text-neutral-400 mb-1.5">Group By (X-Axis)</label>
+                    <div className="relative">
+                        <select
+                            className="w-full appearance-none border rounded-lg px-3 py-2 text-xs bg-neutral-50 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-800 dark:text-neutral-200 outline-none focus:ring-1 focus:ring-teal-400" 
+                            value={groupCol}
+                            onChange={(e) => updateGroupConfig('groupCol', e.target.value)}
+                        >
+                            {headers.map(h => (
+                                <option key={h.id} value={h.id}>{h.label}</option>
+                            ))}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" size={14} />
+                    </div>
+                </div>
+                <div>
+                    <label className="block text-[10px] font-medium text-neutral-400 mb-1.5">Split Series By (Optional)</label>
+                    <div className="relative">
+                        <select
+                            className="w-full appearance-none border rounded-lg px-3 py-2 text-xs bg-neutral-50 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-800 dark:text-neutral-200 outline-none focus:ring-1 focus:ring-teal-400" 
+                            value={seriesGroupCol}
+                            onChange={(e) => updateGroupConfig('seriesGroupCol', e.target.value)}
+                        >
+                            <option value="">(None)</option>
+                            {headers.map(h => (
+                                <option key={h.id} value={h.id}>{h.label}</option>
+                            ))}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" size={14} />
+                    </div>
+                </div>
+                <div>
+                    <label className="block text-[10px] font-medium text-neutral-400 mb-1.5">Value Column</label>
+                    <div className="relative">
+                        <select
+                            className="w-full appearance-none border rounded-lg px-3 py-2 text-xs bg-neutral-50 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-800 dark:text-neutral-200 outline-none focus:ring-1 focus:ring-teal-400" 
+                            value={valueCol}
+                            onChange={(e) => updateGroupConfig('valueCol', e.target.value)}
+                        >
+                            {headers.map(h => (
+                                <option key={h.id} value={h.id}>{h.label}</option>
+                            ))}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" size={14} />
+                    </div>
+                </div>
+                <div>
+                    <label className="block text-[10px] font-medium text-neutral-400 mb-1.5">Aggregation</label>
+                    <div className="relative">
+                        <select
+                            className="w-full appearance-none border rounded-lg px-3 py-2 text-xs bg-neutral-50 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-800 dark:text-neutral-200 outline-none focus:ring-1 focus:ring-teal-400" 
+                            value={operation}
+                            onChange={(e) => updateGroupConfig('operation', e.target.value as PivotOperation)}
+                        >
+                            <option value="SUM">SUM</option>
+                            <option value="AVG">AVG</option>
+                            <option value="MAX">MAX</option>
+                            <option value="MIN">MIN</option>
+                            <option value="COUNT">COUNT</option>
+                        </select>
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" size={14} />
+                    </div>
+                </div>
+            </div>
+          )}
         </div>
 
         {/* Appearance */}

@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Canvas } from './components/Canvas';
 import { SheetNode } from './components/SheetNode';
@@ -16,7 +17,7 @@ import { saveAppState, loadAppState, AppState } from './utils/persistence';
 import { getSheetHeaders } from './utils/chartHelpers';
 import { generatePivotTable, refreshPivotTable } from './utils/pivotHelpers';
 import { generateSparklineTable, refreshSparklineTable } from './utils/sparklineHelpers';
-import { Upload, Moon, Sun, Table, StickyNote, Undo2, Redo2, Grid3X3, BarChart3, TrendingUp, Palette, AlignLeft, Trash2, ArrowDownAZ, ArrowUpAZ, Filter, MousePointer2, Hand, Hash, Percent, Image as ImageIcon, Database, FileSpreadsheet, BarChart2, Globe } from 'lucide-react';
+import { Upload, Moon, Sun, Table, StickyNote, Undo2, Redo2, Grid3X3, BarChart3, TrendingUp, Palette, AlignLeft, Trash2, ArrowDownAZ, ArrowUpAZ, Filter, MousePointer2, Hand, Hash, Percent, Image as ImageIcon, Database, FileSpreadsheet, BarChart2, Globe, Calendar } from 'lucide-react';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 const MAX_HISTORY = 50;
@@ -1032,12 +1033,13 @@ const App: React.FC = () => {
   const getCommands = useCallback((): Command[] => {
       const cmds: Command[] = [];
       const ctx = activeSelectionRef.current;
-      const activeSheetId = ctx.sheetId || (selectedIds.size === 1 ? Array.from(selectedIds)[0] as string : null);
+      const firstId = Array.from(selectedIds)[0];
+      const activeSheetId = ctx.sheetId || (selectedIds.size === 1 && firstId ? String(firstId) : null);
       
       // Determine context
-      const isSheetSelected = activeSheetId && sheets.some(s => s.id === activeSheetId);
-      const isChartSelected = selectedIds.size === 1 && charts.some(c => c.id === Array.from(selectedIds)[0] as string);
-      const isNoteSelected = selectedIds.size === 1 && notes.some(n => n.id === Array.from(selectedIds)[0] as string);
+      const isSheetSelected = !!activeSheetId && sheets.some(s => s.id === activeSheetId);
+      const isChartSelected = selectedIds.size === 1 && charts.some(c => c.id === String(firstId));
+      const isNoteSelected = selectedIds.size === 1 && notes.some(n => n.id === String(firstId));
       const isMultiSelect = selectedIds.size > 1;
 
       if (isMultiSelect) {
@@ -1125,7 +1127,7 @@ const App: React.FC = () => {
                   });
 
                   // Format Actions
-                  const applyFormat = (type: 'number' | 'currency' | 'percent' | 'text', visual?: 'bar' | 'heatmap') => {
+                  const applyFormat = (type: 'number' | 'currency' | 'percent' | 'text' | 'date', visual?: 'bar' | 'heatmap', dateFormat?: string) => {
                       saveSnapshot();
                       const newCells = { ...sheet.cells };
                       let hasChange = false;
@@ -1137,6 +1139,10 @@ const App: React.FC = () => {
                               if (type === 'currency') { (newFormat as any).type = 'currency'; (newFormat as any).symbol = '$'; (newFormat as any).decimals = 2; }
                               else if (type === 'percent') { (newFormat as any).type = 'percent'; (newFormat as any).decimals = 1; }
                               else if (type === 'number') { (newFormat as any).type = 'number'; (newFormat as any).decimals = 2; }
+                              else if (type === 'date') { 
+                                  (newFormat as any).type = 'date'; 
+                                  (newFormat as any).dateFormat = dateFormat || 'YYYY-MM-DD'; 
+                              }
                               else { (newFormat as any).type = 'text'; }
                               
                               if (visual) newFormat.visual = visual;
@@ -1168,6 +1174,13 @@ const App: React.FC = () => {
                       category: 'Cell',
                       icon: <AlignLeft size={16} />,
                       action: () => applyFormat('currency')
+                  });
+                  cmds.push({
+                      id: 'ctx-format-date-iso',
+                      label: 'Format Column as Date (YYYY-MM-DD)',
+                      category: 'Cell',
+                      icon: <Calendar size={16} />,
+                      action: () => applyFormat('date', undefined, 'YYYY-MM-DD')
                   });
                   cmds.push({
                       id: 'ctx-visual-bar',
@@ -1206,7 +1219,7 @@ const App: React.FC = () => {
       }
 
       if (isChartSelected) {
-          const chartId = Array.from(selectedIds)[0] as string;
+          const chartId = String(firstId);
           cmds.push({
               id: 'ctx-copy-image-chart',
               label: 'Copy Chart as Image',
@@ -1224,7 +1237,7 @@ const App: React.FC = () => {
       }
 
       if (isNoteSelected) {
-          const noteId = Array.from(selectedIds)[0] as string;
+          const noteId = String(firstId);
           cmds.push({
               id: 'ctx-delete-note',
               label: 'Delete Note',

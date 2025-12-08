@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { SheetData, CellData, CellFormat, CellCoordinate, FilterCondition, SparklineConfig, SelectionContext } from '../types';
 import { getCellId, parseCellId, computeSheet } from '../utils/formulas';
@@ -7,7 +8,7 @@ import { shiftFormula } from '../utils/formulaEngine';
 import { parseClipboardData } from '../utils/clipboard';
 import { getFilteredRows } from '../utils/dataAnalysis';
 import { CELL_WIDTH, CELL_HEIGHT, HEADER_COL_WIDTH, HEADER_ROW_HEIGHT, MIN_COL_WIDTH, MAX_IMPORT_ROWS, MAX_RENDER_ROWS } from '../constants';
-import { GripHorizontal, Trash2, BarChart3, ChevronDown, MoreVertical, AlignLeft, AlignVerticalJustifyCenter, Hash, DollarSign, Percent, Type, Palette, Table, Settings2, X, Image as ImageIcon, Loader2, AlertCircle, Filter, TrendingUp, ArrowDownAZ, ArrowUpAZ, ArrowDown, Link } from 'lucide-react';
+import { GripHorizontal, Trash2, BarChart3, ChevronDown, MoreVertical, AlignLeft, AlignVerticalJustifyCenter, Hash, DollarSign, Percent, Type, Palette, Table, Settings2, X, Image as ImageIcon, Loader2, AlertCircle, Filter, TrendingUp, ArrowDownAZ, ArrowUpAZ, ArrowDown, ArrowUp, ArrowLeft, ArrowRight, Link, Calendar, ChevronRight, Code, Minimize2, Maximize2 } from 'lucide-react';
 import { PivotConfigPanel } from './PivotConfigPanel';
 import { SparklineConfigPanel } from './SparklineConfigPanel';
 import { FilterPanel } from './FilterPanel';
@@ -33,12 +34,6 @@ interface SheetNodeProps {
 }
 
 const SUPPORTED_FUNCTIONS = ['SUM', 'AVG', 'AV', 'MIN', 'MAX', 'AVERAGE'];
-
-const HEATMAP_COLORS: Record<string, string> = {
-    red: '239, 68, 68',
-    green: '13, 148, 136',
-    yellow: '234, 179, 8'
-};
 
 // Interactive Sparkline Component
 const Sparkline = ({ value, width = 100, height = 34 }: { value: string, width?: number, height?: number }) => {
@@ -200,6 +195,8 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ data, sourceSheet, selecte
         setIsEditing(false);
         setEditingRaw(null);
         setSuggestions([]);
+        setHeaderMenuOpen(null);
+        setRowMenuOpen(null);
         // Notify parent that selection is cleared for this sheet
         onSelectionContextChange?.({ sheetId: null, cellId: null, range: null });
     }
@@ -758,7 +755,80 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ data, sourceSheet, selecte
       });
   };
 
-  const applyColumnFormat = (colIndices: number[], updates: { type?: 'number'|'currency'|'percent'|'text', visual?: 'bar' | 'heatmap' | null, heatmapColor?: string }) => {
+  const insertColumn = (index: number, side: 'left' | 'right') => {
+    if (onHistorySave) onHistorySave();
+    const targetIndex = side === 'left' ? index : index + 1;
+    
+    const newCells: Record<string, CellData> = {};
+    const newColWidths: Record<string, number> = {};
+
+    // Shift Cells
+    Object.keys(data.cells).forEach(key => {
+        const pos = parseCellId(key);
+        if (!pos) return;
+        
+        if (pos.col >= targetIndex) {
+            const newKey = getCellId(pos.col + 1, pos.row);
+            newCells[newKey] = data.cells[key];
+        } else {
+            newCells[key] = data.cells[key];
+        }
+    });
+
+    // Shift Column Widths
+    if (data.colWidths) {
+        Object.keys(data.colWidths).forEach(k => {
+            const colIdx = parseInt(k, 10);
+            if (colIdx >= targetIndex) {
+                newColWidths[String(colIdx + 1)] = data.colWidths[k];
+            } else {
+                newColWidths[k] = data.colWidths[k];
+            }
+        });
+        // Set default width for new column
+        newColWidths[String(targetIndex)] = CELL_WIDTH; 
+    }
+
+    const newData = {
+        ...data,
+        size: { ...data.size, width: data.size.width + 1 },
+        cells: newCells,
+        colWidths: newColWidths
+    };
+    
+    onUpdate(data.id, computeSheet(newData));
+    setHeaderMenuOpen(null);
+  };
+
+  const insertRow = (index: number, side: 'above' | 'below') => {
+    if (onHistorySave) onHistorySave();
+    const targetIndex = side === 'above' ? index : index + 1;
+    
+    const newCells: Record<string, CellData> = {};
+
+    Object.keys(data.cells).forEach(key => {
+        const pos = parseCellId(key);
+        if (!pos) return;
+        
+        if (pos.row >= targetIndex) {
+            const newKey = getCellId(pos.col, pos.row + 1);
+            newCells[newKey] = data.cells[key];
+        } else {
+            newCells[key] = data.cells[key];
+        }
+    });
+
+    const newData = {
+        ...data,
+        size: { ...data.size, height: data.size.height + 1 },
+        cells: newCells
+    };
+    
+    onUpdate(data.id, computeSheet(newData));
+    setRowMenuOpen(null);
+  };
+
+  const applyColumnFormat = (colIndices: number[], updates: { type?: 'number'|'currency'|'percent'|'text'|'date', dateFormat?: string, d3Format?: string, visual?: 'bar' | 'heatmap' | null, heatmapColor?: 'red' | 'green' | 'yellow' }) => {
     if (onHistorySave) onHistorySave();
     const newCells = { ...data.cells };
     let hasChanges = false;
@@ -777,7 +847,22 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ data, sourceSheet, selecte
                 if (updates.type === 'currency') { (newFormat as any).symbol = '$'; (newFormat as any).decimals = 2; }
                 else if (updates.type === 'percent') { (newFormat as any).decimals = 1; }
                 else if (updates.type === 'number') { (newFormat as any).decimals = 2; }
-                else if (updates.type === 'text') { delete (newFormat as any).decimals; delete (newFormat as any).symbol; }
+                else if (updates.type === 'date') {
+                     (newFormat as any).dateFormat = updates.dateFormat || 'YYYY-MM-DD';
+                     delete (newFormat as any).decimals;
+                     delete (newFormat as any).symbol;
+                }
+                else if (updates.type === 'text') { delete (newFormat as any).decimals; delete (newFormat as any).symbol; delete (newFormat as any).dateFormat; }
+           }
+
+           if (updates.d3Format !== undefined) {
+               (newFormat as any).d3Format = updates.d3Format;
+               if (!updates.d3Format) delete (newFormat as any).d3Format;
+               // Ensure d3Format is prioritized by setting type to number if not standard
+               if (!['number', 'currency', 'percent'].includes(newFormat.type)) {
+                    newFormat = { ...newFormat, type: 'number' };
+                    (newFormat as any).d3Format = updates.d3Format;
+               }
            }
            
            if (updates.visual !== undefined) {
@@ -787,8 +872,8 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ data, sourceSheet, selecte
                    newFormat.visual = updates.visual;
                }
            }
-           
-           if (updates.heatmapColor !== undefined) {
+
+           if (updates.heatmapColor) {
                newFormat.heatmapColor = updates.heatmapColor;
            }
            
@@ -804,7 +889,7 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ data, sourceSheet, selecte
     }
   };
 
-  const applyRowFormat = (rowIndex: number, type?: 'number'|'currency'|'percent'|'text', visualType?: 'bar-row' | 'heatmap-row') => {
+  const applyRowFormat = (rowIndex: number, type?: 'number'|'currency'|'percent'|'text'|'date', dateFormat?: string, visualType?: 'bar-row' | 'heatmap-row', d3Format?: string) => {
     if (onHistorySave) onHistorySave();
     const newCells = { ...data.cells };
     let hasChanges = false;
@@ -821,7 +906,21 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ data, sourceSheet, selecte
                 if (type === 'currency') { (newFormat as any).symbol = '$'; (newFormat as any).decimals = 2; }
                 else if (type === 'percent') { (newFormat as any).decimals = 1; }
                 else if (type === 'number') { (newFormat as any).decimals = 2; }
-                else if (type === 'text') { delete (newFormat as any).decimals; delete (newFormat as any).symbol; }
+                else if (type === 'date') {
+                    (newFormat as any).dateFormat = dateFormat || 'YYYY-MM-DD';
+                     delete (newFormat as any).decimals;
+                     delete (newFormat as any).symbol;
+                }
+                else if (type === 'text') { delete (newFormat as any).decimals; delete (newFormat as any).symbol; delete (newFormat as any).dateFormat; }
+           }
+
+           if (d3Format !== undefined) {
+                (newFormat as any).d3Format = d3Format;
+                if (!d3Format) delete (newFormat as any).d3Format;
+                if (!['number', 'currency', 'percent'].includes(newFormat.type)) {
+                     newFormat = { ...newFormat, type: 'number' };
+                     (newFormat as any).d3Format = d3Format;
+                }
            }
            
            if (visualType) {
@@ -840,7 +939,7 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ data, sourceSheet, selecte
     }
   };
 
-  const handleHeaderMenu = (colIndex: number, action: string) => {
+  const handleHeaderMenu = (colIndex: number, action: string, param?: any) => {
     const selectedCols = getSelectedColumns();
     let targetCols = [colIndex];
     if (selectedCols && selectedCols.includes(colIndex)) {
@@ -873,33 +972,48 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ data, sourceSheet, selecte
     } else if (action === 'bar') {
         const isActive = clickedColFormat?.visual === 'bar';
         applyColumnFormat(targetCols, { visual: isActive ? null : 'bar' });
-    } else if (action.startsWith('heatmap')) {
-        const colorMatch = action.match(/heatmap-(red|green|yellow)/);
-        const specificColor = colorMatch ? colorMatch[1] : null;
-
-        if (specificColor) {
-             applyColumnFormat(targetCols, { visual: 'heatmap', heatmapColor: specificColor });
+    } else if (action === 'heatmap') {
+        const isActive = clickedColFormat?.visual === 'heatmap';
+        if (param) {
+            // Set specific color
+            applyColumnFormat(targetCols, { visual: 'heatmap', heatmapColor: param });
         } else {
-             // Toggle default (green)
-             const isActive = clickedColFormat?.visual === 'heatmap';
-             applyColumnFormat(targetCols, { 
-                 visual: isActive ? null : 'heatmap',
-                 heatmapColor: isActive ? undefined : (clickedColFormat?.heatmapColor || 'green')
-             });
+            // Toggle
+            applyColumnFormat(targetCols, { visual: isActive ? null : 'heatmap' });
         }
+    } else if (action === 'date') {
+        applyColumnFormat(targetCols, { type: 'date', dateFormat: param });
+    } else if (action === 'number-compact') {
+        applyColumnFormat(targetCols, { type: 'number', d3Format: '.2s' });
+    } else if (action === 'number-expand') {
+        applyColumnFormat(targetCols, { type: 'number', d3Format: '' });
+    } else if (action === 'currency-compact') {
+        applyColumnFormat(targetCols, { type: 'currency', d3Format: '$.2s' });
+    } else if (action === 'currency-expand') {
+        applyColumnFormat(targetCols, { type: 'currency', d3Format: '' });
     } else if (['number', 'currency', 'percent', 'text'].includes(action)) {
-        applyColumnFormat(targetCols, { type: action as any });
+        applyColumnFormat(targetCols, { type: action as any, d3Format: '' }); // Clear D3 format if standard type selected
     }
     setHeaderMenuOpen(null);
   };
 
-  const handleRowMenu = (rowIndex: number, action: string) => {
+  const handleRowMenu = (rowIndex: number, action: string, param?: any) => {
     if (action === 'bar-row') {
-        applyRowFormat(rowIndex, undefined, 'bar-row');
+        applyRowFormat(rowIndex, undefined, undefined, 'bar-row');
     } else if (action === 'heatmap-row') {
-        applyRowFormat(rowIndex, undefined, 'heatmap-row');
+        applyRowFormat(rowIndex, undefined, undefined, 'heatmap-row');
+    } else if (action === 'date') {
+        applyRowFormat(rowIndex, 'date', param);
+    } else if (action === 'number-compact') {
+        applyRowFormat(rowIndex, 'number', undefined, undefined, '.2s');
+    } else if (action === 'number-expand') {
+        applyRowFormat(rowIndex, 'number', undefined, undefined, '');
+    } else if (action === 'currency-compact') {
+        applyRowFormat(rowIndex, 'currency', undefined, undefined, '$.2s');
+    } else if (action === 'currency-expand') {
+        applyRowFormat(rowIndex, 'currency', undefined, undefined, '');
     } else if (['number', 'currency', 'percent', 'text'].includes(action)) {
-        applyRowFormat(rowIndex, action as any);
+        applyRowFormat(rowIndex, action as any, undefined, undefined, '');
     }
     setRowMenuOpen(null);
   };
@@ -1068,6 +1182,8 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ data, sourceSheet, selecte
 
   const handleCellDoubleClick = (cellId: string) => {
       if (isReadOnly) return;
+      setHeaderMenuOpen(null);
+      setRowMenuOpen(null);
       setActiveCell(cellId);
       const pos = parseCellId(cellId);
       if (pos) setSelectionRange({ start: pos, end: pos });
@@ -1088,6 +1204,8 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ data, sourceSheet, selecte
 
   const handleCellMouseDown = (cellId: string) => {
       if (isEditing) commitEdit();
+      setHeaderMenuOpen(null);
+      setRowMenuOpen(null);
       const pos = parseCellId(cellId);
       if (pos) {
           setIsSelecting(true);
@@ -1099,6 +1217,9 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ data, sourceSheet, selecte
   };
 
   const renderGrid = () => {
+    // ... (same implementation for calculating rowsToRender)
+    const rows = [];
+    
     // Calculate visible rows based on the viewport height
     const renderCols = Math.max(data.size.width, contentDimensions.cols);
     const buffer = 8;
@@ -1142,8 +1263,6 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ data, sourceSheet, selecte
         };
     }
 
-    const rows = [];
-
     // Column Headers
     const headerCols = [
       <div key="corner" className="sticky left-0 top-0 z-30 border-r border-b border-neutral-100 dark:border-neutral-800 bg-neutral-50/95 dark:bg-neutral-800/95 backdrop-blur-sm" 
@@ -1157,9 +1276,23 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ data, sourceSheet, selecte
       const sortDir = isSortedCol ? data.sort?.direction : null;
       const colWidth = getColWidth(c);
       
+      const clickedColFirstCellId = getCellId(c, 0); 
+      const clickedColFormat = data.cells[clickedColFirstCellId]?.format;
+
       headerCols.push(
         <div key={`h-${c}`} 
-             onMouseDown={(e) => { e.stopPropagation(); if (isEditing) commitEdit(); const start = { col: c, row: 0 }; const end = { col: data.size.width - 1, row: data.size.height - 1 }; setSelectionRange({ start, end }); setActiveCell(getCellId(c, 0)); setEditingRaw(data.cells[getCellId(c, 0)]?.raw || ''); setDragRange(null); }}
+             onMouseDown={(e) => { 
+                 e.stopPropagation();
+                 setHeaderMenuOpen(null);
+                 setRowMenuOpen(null);
+                 if (isEditing) commitEdit(); 
+                 const start = { col: c, row: 0 }; 
+                 const end = { col: c, row: data.size.height - 1 }; 
+                 setSelectionRange({ start, end }); 
+                 setActiveCell(getCellId(c, 0)); 
+                 setEditingRaw(data.cells[getCellId(c, 0)]?.raw || ''); 
+                 setDragRange(null); 
+             }}
              className={`group/col relative flex items-center justify-center text-[10px] font-medium border-b border-neutral-100 dark:border-neutral-800 select-none cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-700
                 ${isSelectedCol ? 'bg-teal-50/50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400' : 
                   (isActiveCol ? 'bg-neutral-50 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400' : 'bg-transparent text-neutral-400 dark:text-neutral-500')}
@@ -1178,6 +1311,7 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ data, sourceSheet, selecte
               onMouseDown={(e) => {
                   e.stopPropagation();
                   setHeaderMenuOpen(headerMenuOpen === c ? null : c);
+                  setRowMenuOpen(null);
               }}
               className={`absolute right-1 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-400 dark:text-neutral-500 transition-opacity ${isActiveCol || isSelectedCol ? 'opacity-100' : 'opacity-0 group-hover/col:opacity-100'}`}
           >
@@ -1187,6 +1321,26 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ data, sourceSheet, selecte
           {headerMenuOpen === c && (
               <div className="absolute top-full left-0 mt-1 w-48 bg-white dark:bg-neutral-800 shadow-xl rounded-lg border border-neutral-100 dark:border-neutral-700 z-50 py-1" onMouseDown={(e) => e.stopPropagation()}>
                   
+                  {/* Insert Logic */}
+                  {!isReadOnly && (
+                    <>
+                        <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-700">
+                            <button onClick={() => insertColumn(c, 'right')} className="flex-1 text-left">
+                                Insert
+                            </button>
+                            <div className="flex items-center gap-1 border-l border-neutral-200 dark:border-neutral-700 pl-2">
+                                <button onClick={(e) => { e.stopPropagation(); insertColumn(c, 'left'); }} className="p-0.5 hover:bg-neutral-200 dark:hover:bg-neutral-600 rounded" title="Insert Left">
+                                    <ArrowLeft size={12} />
+                                </button>
+                                <button onClick={(e) => { e.stopPropagation(); insertColumn(c, 'right'); }} className="p-0.5 hover:bg-neutral-200 dark:hover:bg-neutral-600 rounded" title="Insert Right">
+                                    <ArrowRight size={12} />
+                                </button>
+                            </div>
+                        </div>
+                        <div className="h-px bg-neutral-100 dark:bg-neutral-700 my-1"></div>
+                    </>
+                  )}
+
                   {/* Sort & Filter Group */}
                   <div className="px-3 py-1 text-[10px] text-neutral-400 uppercase font-medium tracking-wider">Sort & Filter</div>
                   <button onClick={() => handleHeaderMenu(c, 'sort-asc')} className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 flex items-center gap-2">
@@ -1207,26 +1361,26 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ data, sourceSheet, selecte
                       <AlignLeft size={12} className="text-neutral-400" /> Bar
                   </button>
                   
-                  {/* New Heatmap with Color Selection */}
-                  <div className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 flex items-center justify-between group cursor-pointer" onClick={() => handleHeaderMenu(c, 'heatmap')}>
-                        <div className="flex items-center gap-2">
-                            <Palette size={12} className="text-neutral-400" /> Heatmap
-                        </div>
-                        <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {/* Heatmap with Color Selection */}
+                  <div className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 flex items-center justify-between group">
+                        <button onClick={() => handleHeaderMenu(c, 'heatmap')} className="flex items-center gap-2 flex-1 text-left">
+                             <Palette size={12} className="text-neutral-400" /> Heatmap
+                        </button>
+                        <div className="flex gap-1 ml-2">
                             <button 
-                                className="w-2.5 h-2.5 rounded-full bg-red-500 hover:scale-125 transition-transform ring-1 ring-black/5 dark:ring-white/10" 
-                                onClick={(e) => { e.stopPropagation(); handleHeaderMenu(c, 'heatmap-red'); }} 
+                                onClick={(e) => { e.stopPropagation(); handleHeaderMenu(c, 'heatmap', 'red'); }} 
+                                className={`w-2.5 h-2.5 rounded-full bg-red-500 hover:scale-125 transition-transform ring-1 ring-neutral-200 dark:ring-neutral-600 ${clickedColFormat?.heatmapColor === 'red' ? 'ring-2 ring-offset-1 ring-neutral-400' : ''}`} 
                                 title="Red"
                             />
                             <button 
-                                className="w-2.5 h-2.5 rounded-full bg-teal-600 hover:scale-125 transition-transform ring-1 ring-black/5 dark:ring-white/10" 
-                                onClick={(e) => { e.stopPropagation(); handleHeaderMenu(c, 'heatmap-green'); }} 
-                                title="Green"
+                                onClick={(e) => { e.stopPropagation(); handleHeaderMenu(c, 'heatmap', 'yellow'); }} 
+                                className={`w-2.5 h-2.5 rounded-full bg-yellow-400 hover:scale-125 transition-transform ring-1 ring-neutral-200 dark:ring-neutral-600 ${clickedColFormat?.heatmapColor === 'yellow' ? 'ring-2 ring-offset-1 ring-neutral-400' : ''}`} 
+                                title="Yellow"
                             />
                             <button 
-                                className="w-2.5 h-2.5 rounded-full bg-yellow-500 hover:scale-125 transition-transform ring-1 ring-black/5 dark:ring-white/10" 
-                                onClick={(e) => { e.stopPropagation(); handleHeaderMenu(c, 'heatmap-yellow'); }} 
-                                title="Yellow"
+                                onClick={(e) => { e.stopPropagation(); handleHeaderMenu(c, 'heatmap', 'green'); }} 
+                                className={`w-2.5 h-2.5 rounded-full bg-teal-500 hover:scale-125 transition-transform ring-1 ring-neutral-200 dark:ring-neutral-600 ${clickedColFormat?.heatmapColor === 'green' || (!clickedColFormat?.heatmapColor && clickedColFormat?.visual === 'heatmap') ? 'ring-2 ring-offset-1 ring-neutral-400' : ''}`} 
+                                title="Green"
                             />
                         </div>
                   </div>
@@ -1249,18 +1403,87 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ data, sourceSheet, selecte
                   
                   {/* Format Group */}
                   <div className="px-3 py-1 text-[10px] text-neutral-400 uppercase font-medium tracking-wider">Format</div>
-                  <button onClick={() => handleHeaderMenu(c, 'number')} className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 flex items-center gap-2">
-                      <Hash size={12} className="text-neutral-400" /> Number
-                  </button>
-                  <button onClick={() => handleHeaderMenu(c, 'currency')} className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 flex items-center gap-2">
-                      <DollarSign size={12} className="text-neutral-400" /> Currency
-                  </button>
+                  
+                  {/* Number with Compact/Expand Options */}
+                  <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-700">
+                      <button onClick={() => handleHeaderMenu(c, 'number-compact')} className="flex-1 text-left flex items-center gap-2">
+                          <Hash size={12} className="text-neutral-400" /> Number
+                      </button>
+                      <div className="flex items-center gap-1 border-l border-neutral-200 dark:border-neutral-700 pl-2">
+                          <button onClick={(e) => { e.stopPropagation(); handleHeaderMenu(c, 'number-compact'); }} className="p-0.5 hover:bg-neutral-200 dark:hover:bg-neutral-600 rounded" title="Compact (.2s)">
+                              <Minimize2 size={12} />
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); handleHeaderMenu(c, 'number-expand'); }} className="p-0.5 hover:bg-neutral-200 dark:hover:bg-neutral-600 rounded" title="Expand (Full)">
+                              <Maximize2 size={12} />
+                          </button>
+                      </div>
+                  </div>
+
+                  {/* Currency with Compact/Expand Options */}
+                  <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-700">
+                      <button onClick={() => handleHeaderMenu(c, 'currency-compact')} className="flex-1 text-left flex items-center gap-2">
+                          <DollarSign size={12} className="text-neutral-400" /> Currency
+                      </button>
+                      <div className="flex items-center gap-1 border-l border-neutral-200 dark:border-neutral-700 pl-2">
+                          <button onClick={(e) => { e.stopPropagation(); handleHeaderMenu(c, 'currency-compact'); }} className="p-0.5 hover:bg-neutral-200 dark:hover:bg-neutral-600 rounded" title="Compact ($ .2s)">
+                              <Minimize2 size={12} />
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); handleHeaderMenu(c, 'currency-expand'); }} className="p-0.5 hover:bg-neutral-200 dark:hover:bg-neutral-600 rounded" title="Expand (Full)">
+                              <Maximize2 size={12} />
+                          </button>
+                      </div>
+                  </div>
+
                   <button onClick={() => handleHeaderMenu(c, 'percent')} className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 flex items-center gap-2">
                       <Percent size={12} className="text-neutral-400" /> Percent
                   </button>
+                  <div className="relative group/date">
+                      <button className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 flex items-center justify-between">
+                          <div className="flex items-center gap-2"><Calendar size={12} className="text-neutral-400" /> Date</div>
+                          <ChevronRight size={10} />
+                      </button>
+                      <div className="absolute left-full top-0 ml-1 w-32 bg-white dark:bg-neutral-800 shadow-xl rounded-lg border border-neutral-100 dark:border-neutral-700 hidden group-hover/date:block py-1">
+                          <button onClick={() => handleHeaderMenu(c, 'date', 'YYYY-MM-DD')} className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200">YYYY-MM-DD</button>
+                          <button onClick={() => handleHeaderMenu(c, 'date', 'MM/DD/YYYY')} className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200">MM/DD/YYYY</button>
+                          <button onClick={() => handleHeaderMenu(c, 'date', 'DD/MM/YYYY')} className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200">DD/MM/YYYY</button>
+                          <button onClick={() => handleHeaderMenu(c, 'date', 'Full')} className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200">Full Date</button>
+                      </div>
+                  </div>
                   <button onClick={() => handleHeaderMenu(c, 'text')} className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 flex items-center gap-2">
                       <Type size={12} className="text-neutral-400" /> Text
                   </button>
+                  <div className="relative group/d3">
+                        <button className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 flex items-center justify-between">
+                            <div className="flex items-center gap-2"><Code size={12} className="text-neutral-400" /> Custom D3</div>
+                            <ChevronRight size={10} />
+                        </button>
+                        <div 
+                            className="absolute left-full top-0 ml-1 w-48 bg-white dark:bg-neutral-800 shadow-xl rounded-lg border border-neutral-100 dark:border-neutral-700 hidden group-hover/d3:block p-3 z-50"
+                            onMouseDown={(e) => e.stopPropagation()} 
+                        >
+                            <div className="text-[10px] font-medium text-neutral-500 mb-1.5">D3 Format String</div>
+                            <input 
+                                type="text" 
+                                className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded px-2 py-1.5 text-xs outline-none focus:ring-1 focus:ring-teal-500 text-neutral-800 dark:text-neutral-200 placeholder:text-neutral-400"
+                                placeholder="e.g. .2f, $,.2f"
+                                defaultValue={(clickedColFormat as any)?.d3Format || ''}
+                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); (e.target as HTMLInputElement).focus(); }}
+                                onKeyDown={(e) => {
+                                    e.stopPropagation(); 
+                                    if (e.key === 'Enter') {
+                                        const selectedCols = getSelectedColumns();
+                                        let targetCols = [c];
+                                        if (selectedCols && selectedCols.includes(c)) {
+                                            targetCols = selectedCols;
+                                        }
+                                        applyColumnFormat(targetCols, { type: 'number', d3Format: e.currentTarget.value });
+                                        setHeaderMenuOpen(null);
+                                    }
+                                }}
+                            />
+                            <div className="text-[10px] text-neutral-400 mt-2">Press Enter to apply</div>
+                        </div>
+                  </div>
               </div>
           )}
           
@@ -1293,7 +1516,18 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ data, sourceSheet, selecte
 
       cols.push(
         <div key={`rh-${r}`} 
-             onMouseDown={(e) => { e.stopPropagation(); if (isEditing) commitEdit(); const start = { col: 0, row: r }; const end = { col: data.size.width - 1, row: r }; setSelectionRange({ start, end }); setActiveCell(getCellId(0, r)); setEditingRaw(data.cells[getCellId(0, r)]?.raw || ''); setDragRange(null); }}
+             onMouseDown={(e) => { 
+                 e.stopPropagation(); 
+                 setHeaderMenuOpen(null);
+                 setRowMenuOpen(null);
+                 if (isEditing) commitEdit(); 
+                 const start = { col: 0, row: r }; 
+                 const end = { col: data.size.width - 1, row: r }; 
+                 setSelectionRange({ start, end }); 
+                 setActiveCell(getCellId(0, r)); 
+                 setEditingRaw(data.cells[getCellId(0, r)]?.raw || ''); 
+                 setDragRange(null); 
+             }}
              className={`sticky left-0 z-30 group/row flex items-center justify-center text-[10px] font-medium border-r border-b border-neutral-100 dark:border-neutral-800 select-none cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-700 backdrop-blur-sm
                 ${isSelectedRow ? 'bg-teal-50/90 dark:bg-teal-900/90 text-teal-600 dark:text-teal-400' : 
                   (isActiveRow ? 'bg-neutral-50/90 dark:bg-neutral-800/90 text-neutral-600 dark:text-neutral-400' : 
@@ -1304,7 +1538,11 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ data, sourceSheet, selecte
              style={{ width: HEADER_COL_WIDTH, height: CELL_HEIGHT, flexShrink: 0 }}>
           <span>{r + 1}</span>
           <button 
-              onMouseDown={(e) => { e.stopPropagation(); setRowMenuOpen(rowMenuOpen === r ? null : r); }}
+              onMouseDown={(e) => { 
+                  e.stopPropagation(); 
+                  setRowMenuOpen(rowMenuOpen === r ? null : r); 
+                  setHeaderMenuOpen(null);
+              }}
               className={`absolute right-0.5 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-400 dark:text-neutral-500 transition-opacity ${isActiveRow || isSelectedRow ? 'opacity-100' : 'opacity-0 group-hover/row:opacity-100'}`}
           >
               <MoreVertical size={10} />
@@ -1312,15 +1550,103 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ data, sourceSheet, selecte
           {rowMenuOpen === r && (
               <div className="absolute top-0 left-full ml-1 w-40 bg-white dark:bg-neutral-800 shadow-xl rounded-lg border border-neutral-100 dark:border-neutral-700 z-50 py-1" onMouseDown={(e) => e.stopPropagation()}>
                   {isHeaderRow && <div className="px-3 py-2 text-xs text-neutral-500 dark:text-neutral-400 border-b border-neutral-100 dark:border-neutral-700 mb-1 bg-neutral-50/50 dark:bg-neutral-900/20">Header Row</div>}
+                  
+                  {/* Insert Logic */}
+                  {!isReadOnly && (
+                    <>
+                        <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-700">
+                            <button onClick={() => insertRow(r, 'below')} className="flex-1 text-left">
+                                Insert
+                            </button>
+                            <div className="flex items-center gap-1 border-l border-neutral-200 dark:border-neutral-700 pl-2">
+                                <button onClick={(e) => { e.stopPropagation(); insertRow(r, 'above'); }} className="p-0.5 hover:bg-neutral-200 dark:hover:bg-neutral-600 rounded" title="Insert Above">
+                                    <ArrowUp size={12} />
+                                </button>
+                                <button onClick={(e) => { e.stopPropagation(); insertRow(r, 'below'); }} className="p-0.5 hover:bg-neutral-200 dark:hover:bg-neutral-600 rounded" title="Insert Below">
+                                    <ArrowDown size={12} />
+                                </button>
+                            </div>
+                        </div>
+                        <div className="h-px bg-neutral-100 dark:bg-neutral-700 my-1"></div>
+                    </>
+                  )}
+
                   <div className="px-3 py-1 text-[10px] text-neutral-400 uppercase font-medium">Visualize</div>
                   <button onClick={() => handleRowMenu(r, 'bar-row')} className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 flex items-center gap-2"><AlignVerticalJustifyCenter size={12} /> Vertical Bar</button>
                   <button onClick={() => handleRowMenu(r, 'heatmap-row')} className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 flex items-center gap-2"><Palette size={12} /> Heatmap</button>
                   <div className="h-px bg-neutral-100 dark:bg-neutral-700 my-1"></div>
                   <div className="px-3 py-1 text-[10px] text-neutral-400 uppercase font-medium">Format</div>
-                  <button onClick={() => handleRowMenu(r, 'number')} className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 flex items-center gap-2"><Hash size={12} /> Number</button>
-                  <button onClick={() => handleRowMenu(r, 'currency')} className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 flex items-center gap-2"><DollarSign size={12} /> Currency</button>
+                  
+                  {/* Row Number Options */}
+                  <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-700">
+                      <button onClick={() => handleRowMenu(r, 'number-compact')} className="flex-1 text-left flex items-center gap-2">
+                          <Hash size={12} /> Number
+                      </button>
+                      <div className="flex items-center gap-1 border-l border-neutral-200 dark:border-neutral-700 pl-2">
+                          <button onClick={(e) => { e.stopPropagation(); handleRowMenu(r, 'number-compact'); }} className="p-0.5 hover:bg-neutral-200 dark:hover:bg-neutral-600 rounded" title="Compact (.2s)">
+                              <Minimize2 size={12} />
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); handleRowMenu(r, 'number-expand'); }} className="p-0.5 hover:bg-neutral-200 dark:hover:bg-neutral-600 rounded" title="Expand (Full)">
+                              <Maximize2 size={12} />
+                          </button>
+                      </div>
+                  </div>
+
+                  {/* Row Currency Options */}
+                  <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-700">
+                      <button onClick={() => handleRowMenu(r, 'currency-compact')} className="flex-1 text-left flex items-center gap-2">
+                          <DollarSign size={12} /> Currency
+                      </button>
+                      <div className="flex items-center gap-1 border-l border-neutral-200 dark:border-neutral-700 pl-2">
+                          <button onClick={(e) => { e.stopPropagation(); handleRowMenu(r, 'currency-compact'); }} className="p-0.5 hover:bg-neutral-200 dark:hover:bg-neutral-600 rounded" title="Compact ($ .2s)">
+                              <Minimize2 size={12} />
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); handleRowMenu(r, 'currency-expand'); }} className="p-0.5 hover:bg-neutral-200 dark:hover:bg-neutral-600 rounded" title="Expand (Full)">
+                              <Maximize2 size={12} />
+                          </button>
+                      </div>
+                  </div>
+
                   <button onClick={() => handleRowMenu(r, 'percent')} className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 flex items-center gap-2"><Percent size={12} /> Percent</button>
+                  <div className="relative group/date-row">
+                      <button className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 flex items-center justify-between">
+                          <div className="flex items-center gap-2"><Calendar size={12} /> Date</div>
+                          <ChevronRight size={10} />
+                      </button>
+                      <div className="absolute left-full top-0 ml-1 w-32 bg-white dark:bg-neutral-800 shadow-xl rounded-lg border border-neutral-100 dark:border-neutral-700 hidden group-hover/date-row:block py-1">
+                          <button onClick={() => handleRowMenu(r, 'date', 'YYYY-MM-DD')} className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200">YYYY-MM-DD</button>
+                          <button onClick={() => handleRowMenu(r, 'date', 'MM/DD/YYYY')} className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200">MM/DD/YYYY</button>
+                          <button onClick={() => handleRowMenu(r, 'date', 'DD/MM/YYYY')} className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200">DD/MM/YYYY</button>
+                          <button onClick={() => handleRowMenu(r, 'date', 'Full')} className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200">Full Date</button>
+                      </div>
+                  </div>
                   <button onClick={() => handleRowMenu(r, 'text')} className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 flex items-center gap-2"><Type size={12} /> Text</button>
+                  <div className="relative group/d3-row">
+                        <button className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 flex items-center justify-between">
+                            <div className="flex items-center gap-2"><Code size={12} /> Custom D3</div>
+                            <ChevronRight size={10} />
+                        </button>
+                        <div 
+                            className="absolute left-full top-0 ml-1 w-48 bg-white dark:bg-neutral-800 shadow-xl rounded-lg border border-neutral-100 dark:border-neutral-700 hidden group-hover/d3-row:block p-3 z-50"
+                            onMouseDown={(e) => e.stopPropagation()} 
+                        >
+                            <div className="text-[10px] font-medium text-neutral-500 mb-1.5">D3 Format String</div>
+                            <input 
+                                type="text" 
+                                className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded px-2 py-1.5 text-xs outline-none focus:ring-1 focus:ring-teal-500 text-neutral-800 dark:text-neutral-200 placeholder:text-neutral-400"
+                                placeholder="e.g. .2f, $,.2f"
+                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); (e.target as HTMLInputElement).focus(); }}
+                                onKeyDown={(e) => {
+                                    e.stopPropagation(); 
+                                    if (e.key === 'Enter') {
+                                        applyRowFormat(r, 'number', undefined, undefined, e.currentTarget.value);
+                                        setRowMenuOpen(null);
+                                    }
+                                }}
+                            />
+                            <div className="text-[10px] text-neutral-400 mt-2">Press Enter to apply</div>
+                        </div>
+                  </div>
               </div>
           )}
         </div>
@@ -1362,8 +1688,9 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ data, sourceSheet, selecte
             if (!isNaN(val) && max !== min) {
                 const ratio = Math.max(0, Math.min(1, (val - min) / (max - min)));
                 const opacity = 0.1 + (ratio * 0.5);
+                
                 const colorKey = cellData?.format?.heatmapColor || 'green';
-                const baseColor = HEATMAP_COLORS[colorKey] || HEATMAP_COLORS['green'];
+                const baseColor = colorKey === 'red' ? '239, 68, 68' : (colorKey === 'yellow' ? '234, 179, 8' : '13, 148, 136');
                 heatmapColor = `rgba(${baseColor}, ${opacity})`;
             }
         }
@@ -1468,164 +1795,255 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ data, sourceSheet, selecte
       }
       rows.push(<div key={`row-${r}`} className="flex w-max">{cols}</div>);
     }
+
+    if (paddingBottom > 0) rows.push(<div key="spacer-bottom" style={{ height: paddingBottom }} />);
     
+    if (selectionRange && !visibleRowIndices && (selBounds.minCol !== selBounds.maxCol || selBounds.minRow !== selBounds.maxRow)) {
+        const top = HEADER_ROW_HEIGHT + (selBounds.minRow * CELL_HEIGHT);
+        let leftOffset = 0; for(let c=0; c<selBounds.minCol; c++) leftOffset += getColWidth(c);
+        const left = HEADER_COL_WIDTH + leftOffset;
+        let width = 0; for(let c=selBounds.minCol; c<=selBounds.maxCol; c++) width += getColWidth(c);
+        const height = (Math.min(selBounds.maxRow, effectiveRenderRows - 1) - selBounds.minRow + 1) * CELL_HEIGHT;
+        if (selBounds.minRow < effectiveRenderRows) {
+            rows.push(
+                <div key="selection-border" className="absolute border border-teal-500 bg-teal-500/5 pointer-events-none z-10 rounded-sm" style={{ top, left, width, height }} />
+            );
+        }
+    }
+
     return rows;
   };
 
+  const windowWidth = totalTableWidth + HEADER_COL_WIDTH;
+  
+  // CRITICAL FIX: Decouple viewport height from effective row count when filtering/sorting.
+  // This allows the sheet resize handle to work correctly even when rows are filtered.
+  // We use data.size.height as the viewport height (windowHeight), 
+  // and visibleRowIndices determines the scrollable content height inside.
+  const windowHeight = (data.size.height * CELL_HEIGHT) + HEADER_ROW_HEIGHT + (isTruncated ? 32 : 0);
+
+  const handleCreatePivotFromHeader = () => {
+      const colIndex = activeCell ? parseCellId(activeCell)?.col : undefined;
+      if (onAddPivot) onAddPivot(data.id, colIndex);
+  };
+  
+  const handleFiltersChange = (newFilters: FilterCondition[]) => {
+      if (onHistorySave) onHistorySave();
+      onUpdate(data.id, { ...data, filters: newFilters });
+  };
+
   return (
-    <div
-        id={`sheet-${data.id}`}
-        ref={containerRef}
-        className={`absolute flex flex-col bg-white dark:bg-neutral-850 shadow-sm rounded-lg transition-shadow duration-200 border group select-none
-            ${selected ? 'border-teal-400 ring-1 ring-teal-400 z-50 shadow-md' : 'border-neutral-200 dark:border-neutral-700 hover:shadow-lg z-30'}
-            ${isPendingDelete ? 'animate-delete-pulse' : ''}
-        `}
-        style={{
-            left: data.position.x,
-            top: data.position.y,
-            width: totalTableWidth + HEADER_COL_WIDTH + (showPivotConfig || showSparklineConfig ? 300 : 0),
-            height: (displayRows * CELL_HEIGHT) + HEADER_ROW_HEIGHT + 40, // +40 for title bar
-        }}
-        onMouseDown={onMouseDown}
-        onClick={onSelect}
-        onKeyDown={handleKeyDown}
-        tabIndex={0}
+    <div 
+      id={`sheet-${data.id}`}
+      ref={containerRef}
+      className={`absolute flex flex-col bg-white dark:bg-neutral-850 rounded-xl transition-shadow transition-colors duration-200 outline-none group border 
+        ${selected ? 'border-teal-400 shadow-md ring-1 ring-teal-400 z-50' : 'border-neutral-200 dark:border-neutral-700 shadow-sm hover:shadow-md z-30'}
+        ${isPendingDelete ? 'animate-delete-pulse' : ''}
+      `}
+      style={{ 
+        left: data.position.x, 
+        top: data.position.y,
+        width: windowWidth + 2, 
+      }}
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+      onCopy={handleCopy}
+      onPaste={handlePaste}
+      onMouseDownCapture={() => { onSelect?.(); }}
+      onMouseDown={(e) => { 
+          e.stopPropagation(); 
+          if (containerRef.current) containerRef.current.focus(); 
+          // Close menus on click outside of them but inside sheet
+          setHeaderMenuOpen(null);
+          setRowMenuOpen(null);
+      }}
+      onDoubleClick={(e) => e.stopPropagation()}
     >
-        {/* Title Bar */}
-        <div className="h-10 bg-neutral-50 dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700 flex items-center justify-between px-3 flex-shrink-0 cursor-grab active:cursor-grabbing" onMouseDown={onMouseDown}>
-             <div className="flex items-center gap-2 text-sm font-medium text-neutral-700 dark:text-neutral-200 flex-1">
-                 <GripHorizontal size={14} className="text-neutral-300 dark:text-neutral-600" />
-                 {isEditingTitle ? (
-                     <input
-                        className="bg-white dark:bg-neutral-900 border border-teal-500 rounded px-1.5 py-0.5 text-sm w-full outline-none"
-                        value={titleInputValue}
-                        onChange={(e) => setTitleInputValue(e.target.value)}
-                        onBlur={commitTitleEdit}
-                        onKeyDown={(e) => { if (e.key === 'Enter') commitTitleEdit(); }}
-                        autoFocus
-                        onMouseDown={(e) => e.stopPropagation()}
-                     />
-                 ) : (
-                     <span onDoubleClick={() => setIsEditingTitle(true)} className="truncate">{data.title}</span>
-                 )}
-             </div>
-             
-             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                 {/* Setup/Config Buttons if needed */}
-                 {(isPivot || isSparkline) && !isSetup && (
-                     <button 
-                         onClick={() => {
-                             if (isPivot) setShowPivotConfig(!showPivotConfig);
-                             if (isSparkline) setShowSparklineConfig(!showSparklineConfig);
-                         }}
-                         className={`p-1.5 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 ${showPivotConfig || showSparklineConfig ? 'text-teal-500' : 'text-neutral-400'}`}
-                     >
-                         <Table size={14} />
-                     </button>
-                 )}
-                  {/* Context Menu Trigger or similar could go here */}
-                 <button onClick={handleCopyImage} className="p-1.5 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-400" title="Copy as Image">
-                     <AlignLeft size={14} className="rotate-90" /> {/* Just an icon */}
-                 </button>
-             </div>
+      {/* Window Header */}
+      <div className="flex flex-col rounded-t-xl overflow-hidden">
+      <div 
+        className="h-9 flex items-center justify-between px-3 cursor-grab active:cursor-grabbing bg-white dark:bg-neutral-850 border-b border-neutral-100 dark:border-neutral-800"
+        onMouseDown={(e) => {
+            onMouseDown(e); 
+            setActiveCell(null);
+            setSelectionRange(null);
+            setIsEditing(false);
+            setHeaderMenuOpen(null);
+            setRowMenuOpen(null);
+        }}
+      >
+        <div className="flex items-center gap-2 text-sm font-medium text-neutral-700 dark:text-neutral-200 flex-1 min-w-0">
+          <GripHorizontal size={14} className="text-neutral-300 dark:text-neutral-600 flex-shrink-0" />
+          
+          {isPivot && <div className="p-0.5 rounded text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30 mr-1" title="Pivot Table"><Table size={12} /></div>}
+          {isSparkline && <div className="p-0.5 rounded text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30 mr-1" title="Sparkline Table"><TrendingUp size={12} /></div>}
+          {isConnected && <div className="p-0.5 rounded text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30 mr-1" title={`Connected Source: ${data.connectorConfig?.type}`}><Link size={12} /></div>}
+
+          {isEditingTitle ? (
+             <input
+                type="text"
+                className="bg-transparent text-neutral-900 dark:text-neutral-100 border-b border-teal-500 px-0 py-0 outline-none w-full h-6"
+                value={titleInputValue}
+                onChange={(e) => setTitleInputValue(e.target.value)}
+                onBlur={commitTitleEdit}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter') commitTitleEdit();
+                    if (e.key === 'Escape') { setIsEditingTitle(false); setTitleInputValue(data.title); }
+                    e.stopPropagation();
+                }}
+                autoFocus
+                onMouseDown={(e) => e.stopPropagation()}
+             />
+          ) : (
+             <span className="truncate cursor-text hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded px-1.5 py-0.5 -ml-1.5 transition-colors" onDoubleClick={(e) => { e.stopPropagation(); setIsEditingTitle(true); setTitleInputValue(data.title); }}>
+                {data.title}
+             </span>
+          )}
         </div>
-        
-        {/* Config Panel Overlay */}
-        {(showPivotConfig || showSparklineConfig) && (
-            <div className="absolute top-10 right-0 bottom-0 w-72 bg-white dark:bg-neutral-850 border-l border-neutral-200 dark:border-neutral-700 z-40 shadow-xl flex flex-col">
-                {isPivot && data.pivotConfig && sourceSheet && (
-                     <PivotConfigPanel 
-                        sourceSheet={sourceSheet}
-                        initialConfig={data.pivotConfig}
-                        onConfirm={(cfg) => { onUpdate(data.id, { ...data, pivotConfig: cfg, setupRequired: false }); setShowPivotConfig(false); }}
-                        onCancel={() => setShowPivotConfig(false)}
-                     />
-                )}
-                {isSparkline && data.sparklineConfig && sourceSheet && (
-                    <SparklineConfigPanel 
-                        sourceSheet={sourceSheet}
-                        initialConfig={data.sparklineConfig}
-                        onConfirm={(cfg) => { onUpdate(data.id, { ...data, sparklineConfig: cfg, setupRequired: false }); setShowSparklineConfig(false); }}
-                        onCancel={() => setShowSparklineConfig(false)}
-                    />
-                )}
+        <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button onClick={() => onUpdate(data.id, { ...data, showFilterPanel: !showFilterPanel })} className={`group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md transition-colors ${showFilterPanel || (data.filters && data.filters.length > 0) ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}>
+                <Filter size={14} />
+                <span className="absolute top-full mt-2 left-1/2 -translate-x-1/2 px-2 py-1 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 text-[10px] font-medium rounded-md opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-sm z-50">Filter</span>
+            </button>
+            <button onClick={handleCopyImage} className="group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors" disabled={isExporting}>
+                {isExporting ? <Loader2 size={14} className="animate-spin" /> : <ImageIcon size={14} />}
+                <span className="absolute top-full mt-2 left-1/2 -translate-x-1/2 px-2 py-1 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 text-[10px] font-medium rounded-md opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-sm z-50">Copy as Image</span>
+            </button>
+            {isPivot ? (
+                 <button onClick={() => setShowPivotConfig(!showPivotConfig)} className={`group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md transition-colors ${showPivotConfig ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}>
+                    <Settings2 size={14} />
+                    <span className="absolute top-full mt-2 left-1/2 -translate-x-1/2 px-2 py-1 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 text-[10px] font-medium rounded-md opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-sm z-50">Configure Pivot</span>
+                </button>
+            ) : isSparkline ? (
+                 <button onClick={() => setShowSparklineConfig(!showSparklineConfig)} className={`group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md transition-colors ${showSparklineConfig ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}>
+                    <Settings2 size={14} />
+                    <span className="absolute top-full mt-2 left-1/2 -translate-x-1/2 px-2 py-1 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 text-[10px] font-medium rounded-md opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-sm z-50">Configure Sparklines</span>
+                </button>
+            ) : (
+                <>
+                <button onClick={() => { if (onAddSparkline) onAddSparkline(data.id); }} className="group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors">
+                    <TrendingUp size={14} />
+                    <span className="absolute top-full mt-2 left-1/2 -translate-x-1/2 px-2 py-1 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 text-[10px] font-medium rounded-md opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-sm z-50">Create Sparklines</span>
+                </button>
+                <button onClick={handleCreatePivotFromHeader} className="group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors">
+                    <Table size={14} />
+                    <span className="absolute top-full mt-2 left-1/2 -translate-x-1/2 px-2 py-1 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 text-[10px] font-medium rounded-md opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-sm z-50">Create Pivot</span>
+                </button>
+                </>
+            )}
+            <button onClick={() => { const colIndex = activeCell ? parseCellId(activeCell)?.col : undefined; const selectedCols = getSelectedColumns(); if (onAddChart) onAddChart(data.id, colIndex, selectedCols); }} className="group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors">
+                <BarChart3 size={14} />
+                <span className="absolute top-full mt-2 left-1/2 -translate-x-1/2 px-2 py-1 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 text-[10px] font-medium rounded-md opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-sm z-50">Visualize</span>
+            </button>
+            {isSetup ? (
+                <button onClick={() => onDelete(data.id)} className="group/btn relative p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 rounded-md"><X size={14} /></button>
+            ) : (
+                <button onClick={() => onDelete(data.id)} className="group/btn relative text-neutral-400 hover:text-neutral-600 p-1.5 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"><Trash2 size={14} /></button>
+            )}
+        </div>
+      </div>
+      
+      {showFilterPanel && (
+          <FilterPanel 
+              sheet={data} 
+              onChange={handleFiltersChange} 
+              onClose={() => onUpdate(data.id, { ...data, showFilterPanel: false })} 
+              preselectedCol={preselectedFilterCol}
+              filteredCount={recordCounts.filteredCount}
+              totalCount={recordCounts.totalCount}
+          />
+      )}
+      </div>
+
+      <div 
+        ref={gridRef}
+        onScroll={handleScroll}
+        className="bg-white dark:bg-neutral-850 cursor-text select-none overflow-auto relative rounded-b-xl"
+        style={{ height: windowHeight }}
+      >
+        {(isSetup || showPivotConfig) && isPivot && (
+            <div className="absolute inset-0 z-50 bg-white dark:bg-neutral-850 flex flex-col">
+                <PivotConfigPanel 
+                    sourceSheet={sourceSheet}
+                    initialConfig={data.pivotConfig}
+                    isSetupMode={isSetup}
+                    onConfirm={(newConfig) => {
+                         if (onHistorySave) onHistorySave();
+                         import('../utils/pivotHelpers').then(({ refreshPivotTable }) => {
+                             if (sourceSheet) {
+                                 const updatedSheet = refreshPivotTable({ ...data, pivotConfig: newConfig }, sourceSheet);
+                                 onUpdate(data.id, { ...updatedSheet, setupRequired: false });
+                                 setShowPivotConfig(false);
+                             }
+                         });
+                    }}
+                    onCancel={() => { if (isSetup) onDelete(data.id); else setShowPivotConfig(false); }}
+                />
             </div>
         )}
 
-        {/* Filter Panel */}
-        {data.showFilterPanel && (
-            <FilterPanel 
-                sheet={data}
-                onChange={(filters) => { if(onHistorySave) onHistorySave(); onUpdate(data.id, { ...data, filters }); }}
-                onClose={() => onUpdate(data.id, { ...data, showFilterPanel: false })}
-                preselectedCol={preselectedFilterCol}
-                filteredCount={recordCounts.filteredCount}
-                totalCount={recordCounts.totalCount}
-            />
+        {(isSetup || showSparklineConfig) && isSparkline && (
+            <div className="absolute inset-0 z-50 bg-white dark:bg-neutral-850 flex flex-col">
+                <SparklineConfigPanel
+                    sourceSheet={sourceSheet}
+                    initialConfig={data.sparklineConfig}
+                    isSetupMode={isSetup}
+                    onConfirm={(newConfig) => {
+                         if (onHistorySave) onHistorySave();
+                         import('../utils/sparklineHelpers').then(({ refreshSparklineTable }) => {
+                             if (sourceSheet) {
+                                 const updatedSheet = refreshSparklineTable({ ...data, sparklineConfig: newConfig }, sourceSheet);
+                                 onUpdate(data.id, { ...updatedSheet, setupRequired: false });
+                                 setShowSparklineConfig(false);
+                             }
+                         });
+                    }}
+                    onCancel={() => { if (isSetup) onDelete(data.id); else setShowSparklineConfig(false); }}
+                />
+            </div>
         )}
         
-        {/* Main Grid Area */}
-        <div 
-            ref={gridRef}
-            className="flex-1 overflow-auto relative bg-white dark:bg-neutral-850"
-            onScroll={handleScroll}
-        >
-             <div style={{ width: totalTableWidth + HEADER_COL_WIDTH, height: (data.size.height * CELL_HEIGHT) + HEADER_ROW_HEIGHT }}>
-                {renderGrid()}
-             </div>
-             
-             {/* Setup Placeholder */}
-             {isSetup && (
-                <div className="absolute inset-0 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm z-40 flex items-center justify-center">
-                    <div className="bg-white dark:bg-neutral-800 p-6 rounded-xl shadow-2xl border border-neutral-200 dark:border-neutral-700 w-full max-w-md m-4">
-                        {isPivot && sourceSheet && (
-                             <PivotConfigPanel 
-                                sourceSheet={sourceSheet}
-                                initialConfig={data.pivotConfig}
-                                isSetupMode={true}
-                                onConfirm={(cfg) => onUpdate(data.id, { ...data, pivotConfig: cfg, setupRequired: false })}
-                                onCancel={() => onDelete(data.id)}
-                             />
-                        )}
-                        {isSparkline && sourceSheet && (
-                             <SparklineConfigPanel 
-                                sourceSheet={sourceSheet}
-                                initialConfig={data.sparklineConfig}
-                                isSetupMode={true}
-                                onConfirm={(cfg) => onUpdate(data.id, { ...data, sparklineConfig: cfg, setupRequired: false })}
-                                onCancel={() => onDelete(data.id)}
-                             />
-                        )}
-                    </div>
+        {(!isSetup) && renderGrid()}
+        
+        {(!isSetup) && isTruncated && !visibleRowIndices && (
+            <div className="absolute bottom-0 left-0 right-0 h-8 bg-neutral-50 dark:bg-neutral-800 border-t border-neutral-200 dark:border-neutral-700 flex items-center justify-center text-[10px] text-neutral-500 italic z-40 sticky">
+                <div className="flex items-center gap-1.5">
+                    <AlertCircle size={10} />
+                    <span>Showing first {MAX_RENDER_ROWS} rows. {totalDataRows - MAX_RENDER_ROWS} hidden rows available.</span>
                 </div>
-             )}
-        </div>
-
-        {/* Resize Handles */}
-        <div 
-            className="absolute right-0 top-10 bottom-0 w-2 cursor-col-resize hover:bg-teal-500/20 z-20"
-            onMouseDown={(e) => handleResizeStart(e, 'right')}
-        />
-        <div 
-            className="absolute left-0 bottom-0 right-0 h-2 cursor-row-resize hover:bg-teal-500/20 z-20"
-            onMouseDown={(e) => handleResizeStart(e, 'bottom')}
-        />
-        <div 
-            className="absolute right-0 bottom-0 w-4 h-4 cursor-nwse-resize bg-transparent hover:bg-teal-500/20 z-30"
-            onMouseDown={(e) => handleResizeStart(e, 'corner')}
-        />
-        
-        {isTruncated && (
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1 bg-neutral-900/80 text-white text-xs rounded-full pointer-events-none shadow-lg backdrop-blur z-50">
-                Displaying first {MAX_RENDER_ROWS} rows
             </div>
         )}
-        
-        {isExporting && (
-             <div className="absolute inset-0 bg-white/50 dark:bg-black/50 z-[100] flex items-center justify-center">
-                 <Loader2 className="animate-spin text-teal-600" size={32} />
-             </div>
+      </div>
+      
+      {/* Footer Stats / Resize Handles */}
+      <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 flex items-center gap-3 px-2 opacity-0 group-hover:opacity-100 transition-opacity z-50">
+         {stats && (
+           <div className="relative">
+              {showStatsMenu && <div className="fixed inset-0 z-40" onClick={() => setShowStatsMenu(false)} />}
+              <button onClick={() => setShowStatsMenu(!showStatsMenu)} className="flex items-center gap-1.5 text-[11px] font-medium text-neutral-500 dark:text-neutral-400 bg-white dark:bg-neutral-800 px-3 py-1.5 rounded-full shadow-sm border border-neutral-100 dark:border-neutral-700 hover:bg-neutral-50 transition-colors z-50 relative">
+                  <span className="uppercase tracking-wider text-[9px]">{activeStat}</span>
+                  <span className="text-neutral-700 dark:text-neutral-200">{formatStat(stats[activeStat])}</span>
+                  <ChevronDown size={10} className={`transition-transform ${showStatsMenu ? 'rotate-180' : ''}`} />
+              </button>
+              {showStatsMenu && (
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-white dark:bg-neutral-800 shadow-xl rounded-lg border border-neutral-100 dark:border-neutral-700 p-1 min-w-[140px] z-50 flex flex-col gap-0.5">
+                      {(['sum', 'avg', 'min', 'max', 'count'] as const).map(key => (
+                          <button key={key} onClick={() => { setActiveStat(key); setShowStatsMenu(false); }} className={`flex justify-between items-center px-3 py-1.5 text-xs rounded-md w-full text-left transition-colors ${activeStat === key ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-300' : 'text-neutral-600 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-700'}`}>
+                              <span className="uppercase font-semibold text-[10px] tracking-wider">{key}</span>
+                              <span>{formatStat(stats[key])}</span>
+                          </button>
+                      ))}
+                  </div>
+              )}
+           </div>
         )}
+      </div>
+
+      <div className="absolute top-0 -right-1 w-3 h-full cursor-col-resize z-20" onMouseDown={(e) => handleResizeStart(e, 'right')} />
+      <div className="absolute -bottom-1 left-0 w-full h-3 cursor-row-resize z-20" onMouseDown={(e) => handleResizeStart(e, 'bottom')} />
+      <div className="absolute -bottom-1 -right-1 w-5 h-5 cursor-nwse-resize z-30 flex items-center justify-center rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors" onMouseDown={(e) => handleResizeStart(e, 'corner')}>
+          <div className="w-1.5 h-1.5 bg-neutral-300 dark:bg-neutral-600 rounded-full" />
+      </div>
     </div>
   );
 };

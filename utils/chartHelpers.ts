@@ -1,8 +1,9 @@
 
 
-import { SheetData, CellData } from '../types';
+import { SheetData, CellData, ChartConfig, PivotOperation } from '../types';
 import { parseCellId, getCellId } from './formulas';
 import { getFilteredRows } from './dataAnalysis';
+import { formatValue } from './formatting';
 
 export const getSheetHeaders = (sheet: SheetData): { id: string; label: string; index: number }[] => {
   const headers = [];
@@ -32,66 +33,129 @@ export const getSheetHeaders = (sheet: SheetData): { id: string; label: string; 
   return headers;
 };
 
-export const extractChartData = (sheet: SheetData, labelCol: string, dataCols: string[]) => {
+// Helper for aggregation
+const aggregate = (values: number[], op: PivotOperation): number => {
+    if (values.length === 0) return 0;
+    switch (op) {
+        case 'SUM': return values.reduce((a, b) => a + b, 0);
+        case 'COUNT': return values.length;
+        case 'AVG': return values.reduce((a, b) => a + b, 0) / values.length;
+        case 'MIN': return Math.min(...values);
+        case 'MAX': return Math.max(...values);
+        default: return 0;
+    }
+};
+
+export const extractChartData = (sheet: SheetData, config: ChartConfig) => {
   if (!sheet) return [];
 
-  const labelColIndex = parseCellId(`${labelCol}1`)?.col ?? 0;
-  const dataColIndices = dataCols.map(c => parseCellId(`${c}1`)?.col ?? 1);
-
-  // Use a Map to group data by row index to capture all valid data points
-  // irrespective of visual truncation
-  const rowDataMap = new Map<number, any>();
   const visibleRows = getFilteredRows(sheet);
+  let rowsToProcess: number[] = [];
 
   if (visibleRows) {
-      visibleRows.forEach(r => {
-          if (r === 0) return; // Skip header
-          rowDataMap.set(r, { _rowIdx: r });
-      });
+      // Use the sorted/filtered rows directly, skipping header (row 0)
+      rowsToProcess = visibleRows.filter(r => r !== 0);
   } else {
+      // No sort/filter, find all rows with data and sort by index
+      const rowSet = new Set<number>();
       Object.entries(sheet.cells).forEach(([key, cell]) => {
           const pos = parseCellId(key);
           // Skip headers (row 0) or invalid keys
           if (!pos || pos.row === 0) return;
-          
-          // We only care about rows that have data in the label column OR value columns
-          // But simplest is to just ensure row object exists if any data exists
-          if (!rowDataMap.has(pos.row)) {
-              rowDataMap.set(pos.row, { _rowIdx: pos.row });
-          }
+          rowSet.add(pos.row);
       });
+      rowsToProcess = Array.from(rowSet).sort((a, b) => a - b);
   }
 
-  // Populate data
-  const chartData: any[] = [];
-  const sortedRowIndices = Array.from(rowDataMap.keys()).sort((a, b) => a - b);
+  // --- GROUP MODE LOGIC ---
+  if (config.mode === 'group' && config.groupCol && config.valueCol) {
+      const groupColIdx = parseCellId(`${config.groupCol}1`)?.col;
+      const valueColIdx = parseCellId(`${config.valueCol}1`)?.col;
+      const seriesColIdx = config.seriesGroupCol ? parseCellId(`${config.seriesGroupCol}1`)?.col : undefined;
+      const op = config.operation || 'SUM';
 
-  sortedRowIndices.forEach(r => {
+      if (groupColIdx === undefined || valueColIdx === undefined) return [];
+
+      // Map<GroupKey, Map<SeriesKey, number[]>>
+      const dataMap = new Map<string, Map<string, number[]>>();
+      // If no series split, we use a default series key
+      const DEFAULT_SERIES_KEY = 'value_0';
+
+      rowsToProcess.forEach(r => {
+          const groupKeyId = getCellId(groupColIdx, r);
+          const groupCell = sheet.cells[groupKeyId];
+          
+          if (groupCell?.value === null || groupCell?.value === undefined) return;
+          const groupKey = String(groupCell.value);
+
+          // Check for Pivot Table Grand Total and exclude it
+          if (sheet.pivotConfig && groupKey === 'Grand Total') return;
+
+          const valId = getCellId(valueColIdx, r);
+          const valCell = sheet.cells[valId];
+          
+          let val = Number(valCell?.value);
+          if (isNaN(val)) {
+             const clean = String(valCell?.value || '').replace(/[^0-9.-]/g, '');
+             val = Number(clean);
+          }
+          if (isNaN(val)) val = 0;
+          if (op === 'COUNT') val = 1;
+
+          let seriesKey = DEFAULT_SERIES_KEY;
+          if (seriesColIdx !== undefined) {
+              const seriesCell = sheet.cells[getCellId(seriesColIdx, r)];
+              // Handle empty series explicitly or just stringify
+              seriesKey = String(seriesCell?.value ?? '(Empty)');
+          }
+
+          if (!dataMap.has(groupKey)) dataMap.set(groupKey, new Map());
+          const seriesMap = dataMap.get(groupKey)!;
+          
+          if (!seriesMap.has(seriesKey)) seriesMap.set(seriesKey, []);
+          seriesMap.get(seriesKey)!.push(val);
+      });
+
+      const chartData: any[] = [];
+      const sortedGroupKeys = Array.from(dataMap.keys()).sort();
+
+      sortedGroupKeys.forEach(key => {
+          const seriesMap = dataMap.get(key)!;
+          const dataPoint: any = { name: key };
+          
+          seriesMap.forEach((values, sKey) => {
+              dataPoint[sKey] = aggregate(values, op);
+          });
+          
+          chartData.push(dataPoint);
+      });
+
+      return chartData;
+  }
+
+  // --- METRICS MODE (Manual Series) LOGIC ---
+  
+  const labelColIndex = parseCellId(`${config.labelColumn}1`)?.col ?? 0;
+  const dataColIndices = config.dataColumns.map(c => parseCellId(`${c}1`)?.col ?? 1);
+
+  const chartData: any[] = [];
+  
+  rowsToProcess.forEach(r => {
       const labelId = getCellId(labelColIndex, r);
       const labelCell = sheet.cells[labelId];
 
-      // Skip if label is empty? Usually charts need a label or at least an index.
-      // If label is missing, we can default to empty string or skip.
-      // Let's skip if label is completely missing to avoid empty gaps, 
-      // unless user wants to plot everything. 
-      // Standard behavior: if label exists, plot it.
-      
       if (!labelCell?.value && String(labelCell?.value) !== '0') return; 
-
-      // Check for Pivot Table Grand Total and exclude it
       if (sheet.pivotConfig && String(labelCell.value) === 'Grand Total') return;
 
       const dataPoint: any = {
-          name: String(labelCell.value),
+          name: formatValue(labelCell?.value, labelCell?.format),
       };
 
       dataColIndices.forEach((colIdx, i) => {
           const cellId = getCellId(colIdx, r);
           const cell = sheet.cells[cellId];
-          // Try to parse as number
           let val = Number(cell?.value);
           if (isNaN(val)) {
-             // Try removing currency symbols/commas if string
              const clean = String(cell?.value || '').replace(/[^0-9.-]/g, '');
              val = Number(clean);
           }

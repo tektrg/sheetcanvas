@@ -1,3 +1,5 @@
+
+
 import React from 'react';
 
 export interface Position {
@@ -11,10 +13,11 @@ export interface Size {
 }
 
 export type CellFormat = 
-  | { type: 'number'; decimals?: number; visual?: 'bar' | 'bar-row' | 'heatmap' | 'heatmap-row' | 'sparkline'; heatmapColor?: string }
-  | { type: 'currency'; symbol?: string; decimals?: number; visual?: 'bar' | 'bar-row' | 'heatmap' | 'heatmap-row' | 'sparkline'; heatmapColor?: string }
-  | { type: 'percent'; decimals?: number; visual?: 'bar' | 'bar-row' | 'heatmap' | 'heatmap-row' | 'sparkline'; heatmapColor?: string }
-  | { type: 'text'; visual?: 'bar' | 'bar-row' | 'heatmap' | 'heatmap-row' | 'sparkline'; heatmapColor?: string };
+  | { type: 'number'; decimals?: number; d3Format?: string; visual?: 'bar' | 'bar-row' | 'heatmap' | 'heatmap-row' | 'sparkline'; heatmapColor?: 'red' | 'green' | 'yellow' }
+  | { type: 'currency'; symbol?: string; decimals?: number; d3Format?: string; visual?: 'bar' | 'bar-row' | 'heatmap' | 'heatmap-row' | 'sparkline'; heatmapColor?: 'red' | 'green' | 'yellow' }
+  | { type: 'percent'; decimals?: number; d3Format?: string; visual?: 'bar' | 'bar-row' | 'heatmap' | 'heatmap-row' | 'sparkline'; heatmapColor?: 'red' | 'green' | 'yellow' }
+  | { type: 'date'; dateFormat?: string; visual?: 'bar' | 'bar-row' | 'heatmap' | 'heatmap-row' | 'sparkline'; heatmapColor?: 'red' | 'green' | 'yellow' }
+  | { type: 'text'; visual?: 'bar' | 'bar-row' | 'heatmap' | 'heatmap-row' | 'sparkline'; heatmapColor?: 'red' | 'green' | 'yellow' };
 
 export interface CellData {
   raw: string;     // The formula or raw value entered by user (e.g., "=SUM(A1:A2)")
@@ -127,14 +130,24 @@ export enum ToolMode {
 }
 
 export type ChartType = 'line' | 'bar' | 'pie' | 'area';
+export type ChartMode = 'metrics' | 'group';
 
 export interface ChartConfig {
+  mode?: ChartMode; // Default to 'metrics' if undefined
+  
+  // Metrics Mode (Manual Series)
   labelColumn: string; // Column letter, e.g. "A"
   dataColumns: string[]; // Array of column letters, e.g. ["B"]
+  
+  // Group Mode
+  groupCol?: string; // X-Axis in Group Mode
+  seriesGroupCol?: string; // Series Split in Group Mode
+  valueCol?: string;
+  operation?: PivotOperation;
+
   color: string;
   highlightIndex: number; // -1 for none
   animation: boolean;
-  groupBy?: string;
   type: ChartType;
   stacked?: boolean;
   showLabels?: boolean;

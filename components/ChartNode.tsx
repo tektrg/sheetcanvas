@@ -1,10 +1,14 @@
+
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   ComposedChart, Line, Bar, PieChart, Pie, Cell, 
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList
 } from 'recharts';
-import { ChartData, SheetData, ChartType, ChartConfig } from '../types';
+import { ChartData, SheetData, ChartType, ChartConfig, CellFormat } from '../types';
 import { extractChartData, getSheetHeaders } from '../utils/chartHelpers';
+import { formatValue } from '../utils/formatting';
+import { getCellId } from '../utils/formulas';
 import { CHART_COLORS } from '../constants';
 import { GripHorizontal, Trash2, Settings2, X, Download, Video, Play, Copy, Image as ImageIcon, Loader2 } from 'lucide-react';
 import html2canvas from 'html2canvas';
@@ -67,13 +71,79 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, 
 
   const processedData = useMemo(() => {
     if (!sourceSheet) return [];
-    return extractChartData(sourceSheet, data.config.labelColumn, data.config.dataColumns);
-  }, [sourceSheet, data.config.labelColumn, data.config.dataColumns]);
+    // Pass the full config to extractChartData, so it can handle grouping vs metrics mode
+    return extractChartData(sourceSheet, data.config);
+  }, [sourceSheet, data.config]);
+
+  // Derived Series for Split By Mode
+  const dynamicSeriesKeys = useMemo(() => {
+      if (data.config.mode === 'group' && data.config.seriesGroupCol && processedData.length > 0) {
+          const keys = new Set<string>();
+          processedData.forEach((row: any) => {
+              Object.keys(row).forEach(k => {
+                  if (k !== 'name') keys.add(k);
+              });
+          });
+          return Array.from(keys).sort();
+      }
+      return null;
+  }, [processedData, data.config]);
 
   const headers = useMemo(() => sourceSheet ? getSheetHeaders(sourceSheet) : [], [sourceSheet]);
 
   const getSeriesLabel = (colId: string) => {
+    // In group mode with split, the key itself is the label
+    if (data.config.mode === 'group') {
+        if (data.config.seriesGroupCol) return colId; // dynamic key IS the label
+        return `${data.config.operation || 'SUM'} of ${headers.find(h => h.id === data.config.valueCol)?.label || data.config.valueCol}`;
+    }
     return headers.find(h => h.id === colId)?.label || `Column ${colId}`;
+  };
+
+  const getFormatForSeries = (colId: string) => {
+      if (!sourceSheet) return undefined;
+      const colIdx = headers.find(h => h.id === colId)?.index;
+      if (colIdx === undefined) return undefined;
+      // Get format from first data row (row 1)
+      const cellId = getCellId(colIdx, 1);
+      return sourceSheet.cells[cellId]?.format;
+  };
+
+  const getAxisFormat = (axisId: 'left' | 'right') => {
+      if (data.config.mode === 'group') {
+          // In group mode, use the format of the value column for the left axis
+          if (axisId === 'left' && data.config.valueCol) {
+               return getFormatForSeries(data.config.valueCol);
+          }
+          return undefined;
+      }
+
+      const axisCols = data.config.dataColumns.filter(col => {
+          const isRight = data.config.rightAxisColumns?.includes(col);
+          return isRight ? axisId === 'right' : axisId === 'left';
+      });
+
+      if (axisCols.length === 0) return undefined;
+      return getFormatForSeries(axisCols[0]);
+  };
+
+  const axisFormatLeft = useMemo(() => getAxisFormat('left'), [data.config, sourceSheet]);
+  const axisFormatRight = useMemo(() => getAxisFormat('right'), [data.config, sourceSheet]);
+
+  const tooltipFormatter = (value: number, name: string, item: any) => {
+    // Recharts passes dataKey in item.dataKey (e.g., "value_0" or "North")
+    let format;
+    if (data.config.mode === 'group') {
+         // In group mode, all values come from the same value column
+         if (data.config.valueCol) format = getFormatForSeries(data.config.valueCol);
+    } else {
+         if (typeof item.dataKey === 'string' && item.dataKey.startsWith('value_')) {
+             const idx = parseInt(item.dataKey.split('_')[1], 10);
+             const colId = data.config.dataColumns[idx];
+             format = getFormatForSeries(colId);
+         }
+    }
+    return [formatValue(value, format), name];
   };
 
   const handleConfigChange = (newConfig: ChartConfig) => {
@@ -98,9 +168,6 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, 
     if (!processedData || processedData.length === 0) return { left: 'auto', right: 'auto' };
     
     // Calculate max values considering stacking logic
-    // Bars of same axis stack if stacked=true
-    // Lines never stack
-    
     let maxLeft = 0;
     let maxRight = 0;
 
@@ -110,39 +177,53 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, 
         let rowMaxLeft = 0;
         let rowMaxRight = 0;
 
-        data.config.dataColumns.forEach((colId, i) => {
-            const val = Number(row[`value_${i}`]) || 0;
-            const isRight = data.config.rightAxisColumns?.includes(colId);
-            const type = data.config.seriesTypes?.[colId] || data.config.type;
-            const isStacked = data.config.stacked && type === 'bar';
+        // If in Group Mode
+        if (data.config.mode === 'group') {
+             if (dynamicSeriesKeys) {
+                 dynamicSeriesKeys.forEach(k => {
+                     const val = Number(row[k]) || 0;
+                     if (data.config.stacked) leftStack += val;
+                     else rowMaxLeft = Math.max(rowMaxLeft, val);
+                 });
+             } else {
+                 const val = Number(row['value_0']) || 0;
+                 rowMaxLeft = Math.max(rowMaxLeft, val);
+             }
+        } else {
+            // Metrics Mode
+            data.config.dataColumns.forEach((colId, i) => {
+                const val = Number(row[`value_${i}`]) || 0;
+                const isRight = data.config.rightAxisColumns?.includes(colId);
+                const type = data.config.seriesTypes?.[colId] || data.config.type;
+                const isStacked = data.config.stacked && type === 'bar';
 
-            if (isRight) {
-                if (isStacked) {
-                    rightStack += val;
+                if (isRight) {
+                    if (isStacked) {
+                        rightStack += val;
+                    } else {
+                        rowMaxRight = Math.max(rowMaxRight, val);
+                    }
                 } else {
-                    rowMaxRight = Math.max(rowMaxRight, val);
+                    if (isStacked) {
+                        leftStack += val;
+                    } else {
+                        rowMaxLeft = Math.max(rowMaxLeft, val);
+                    }
                 }
-            } else {
-                if (isStacked) {
-                    leftStack += val;
-                } else {
-                    rowMaxLeft = Math.max(rowMaxLeft, val);
-                }
-            }
-        });
+            });
+        }
 
         maxLeft = Math.max(maxLeft, leftStack, rowMaxLeft);
         maxRight = Math.max(maxRight, rightStack, rowMaxRight);
     });
 
-    // Add a bit of padding
     const formatMax = (m: number) => m <= 0 ? 'auto' : Math.ceil(m * 1.1);
 
     return {
         left: formatMax(maxLeft),
         right: formatMax(maxRight)
     };
-  }, [processedData, data.config]);
+  }, [processedData, data.config, dynamicSeriesKeys]);
 
   const activeData = overrideData || processedData;
   const isAnimationActive = !overrideData && data.config.animation;
@@ -232,7 +313,8 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, 
              const frameData = finalData.map((item: any) => {
                  const newItem: any = { ...item };
                  Object.keys(newItem).forEach(k => {
-                     if (k.startsWith('value_') && typeof newItem[k] === 'number') {
+                     // Check if value key (works for both value_X and dynamic keys if numeric)
+                     if (typeof newItem[k] === 'number') {
                          newItem[k] = newItem[k] * eased;
                      }
                  });
@@ -327,17 +409,36 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, 
         boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
     };
 
+    const isGroupMode = data.config.mode === 'group';
+
     // Determine if we need the right Y axis
-    const hasRightAxis = data.config.dataColumns.some(col => data.config.rightAxisColumns?.includes(col));
+    const hasRightAxis = !isGroupMode && data.config.dataColumns.some(col => data.config.rightAxisColumns?.includes(col));
 
     if (data.config.type === 'pie') {
+      const format0 = isGroupMode 
+            ? (data.config.valueCol ? getFormatForSeries(data.config.valueCol) : undefined)
+            : getFormatForSeries(data.config.dataColumns[0]);
+
+      const seriesName = isGroupMode 
+            ? `${data.config.operation || 'SUM'} of ${data.config.valueCol}` 
+            : getSeriesLabel(data.config.dataColumns[0]);
+
+      // Note: Pie chart ignores Split By seriesGroupCol because Pie expects 1 value per category.
+      // If Split By is active, we might have multiple values per category. Recharts Pie handles objects with {name, value}.
+      // Our data structure for Split By is { name: "Jan", "North": 100, "South": 200 }.
+      // This structure doesn't map well to Pie unless we pick ONE series or FLATTEN it.
+      // For now, Group Mode Pie falls back to default single series behavior (value_0) logic in `extractChartData`, 
+      // or we just take the first series if dynamic. 
+      // Current `extractChartData` produces simple list if no split col. If split col, it produces keys.
+      // Pie chart is not suitable for split series.
+
       return (
         <PieChart {...CommonProps}>
            <Pie
               data={activeData}
-              dataKey="value_0"
+              dataKey={isGroupMode && dynamicSeriesKeys ? dynamicSeriesKeys[0] : "value_0"}
               nameKey="name"
-              name={getSeriesLabel(data.config.dataColumns[0])}
+              name={seriesName}
               cx="50%"
               cy="50%"
               outerRadius={data.size.height / 3}
@@ -354,7 +455,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, 
                 />
              ))}
            </Pie>
-           <Tooltip contentStyle={tooltipStyle} />
+           <Tooltip contentStyle={tooltipStyle} formatter={(v: number, n: string) => [formatValue(v, format0), n]} />
            <Legend wrapperStyle={{ color: textColor }} />
         </PieChart>
       );
@@ -365,24 +466,147 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, 
         <ComposedChart {...CommonProps}>
             <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
             <XAxis dataKey="name" tick={{fontSize: 11, fill: textColor}} axisLine={false} tickLine={false} dy={10} />
-            <YAxis yAxisId="left" tick={{fontSize: 11, fill: textColor}} domain={[0, maxDataValues.left]} axisLine={false} tickLine={false} dx={-10} />
+            
+            <YAxis 
+                yAxisId="left" 
+                tick={{fontSize: 11, fill: textColor}} 
+                domain={[0, maxDataValues.left]} 
+                axisLine={false} 
+                tickLine={false} 
+                dx={-10}
+                tickFormatter={(val) => formatValue(val, axisFormatLeft)}
+            />
             {hasRightAxis && (
-                <YAxis yAxisId="right" orientation="right" tick={{fontSize: 11, fill: textColor}} domain={[0, maxDataValues.right]} axisLine={false} tickLine={false} dx={10} />
+                <YAxis 
+                    yAxisId="right" 
+                    orientation="right" 
+                    tick={{fontSize: 11, fill: textColor}} 
+                    domain={[0, maxDataValues.right]} 
+                    axisLine={false} 
+                    tickLine={false} 
+                    dx={10} 
+                    tickFormatter={(val) => formatValue(val, axisFormatRight)}
+                />
             )}
-            <Tooltip contentStyle={tooltipStyle} cursor={{fill: darkMode ? '#404040' : '#f7f7f5'}} />
+            
+            <Tooltip contentStyle={tooltipStyle} cursor={{fill: darkMode ? '#404040' : '#f7f7f5'}} formatter={tooltipFormatter} />
             <Legend wrapperStyle={{ color: textColor }} />
-            {data.config.dataColumns.map((colId, index) => {
+            
+            {/* GROUP MODE SERIES */}
+            {isGroupMode && (
+                dynamicSeriesKeys ? (
+                    // Multiple Split Series
+                    dynamicSeriesKeys.map((key, index) => {
+                        const color = seriesPalette[index % seriesPalette.length];
+                        if (data.config.type === 'bar') {
+                            return (
+                                <Bar 
+                                    key={key}
+                                    dataKey={key}
+                                    name={key}
+                                    fill={color}
+                                    yAxisId="left"
+                                    radius={data.config.stacked ? [0,0,0,0] : [4, 4, 0, 0]}
+                                    stackId={data.config.stacked ? 'a' : undefined}
+                                    {...animProps}
+                                >
+                                    {data.config.showLabels && (
+                                        <LabelList 
+                                            dataKey={key}
+                                            position={data.config.stacked ? "inside" : "top"} 
+                                            style={{ fill: data.config.stacked ? '#fff' : textColor, fontSize: 10, fontWeight: 500 }} 
+                                            formatter={(v: number) => formatValue(v, axisFormatLeft)}
+                                        />
+                                    )}
+                                </Bar>
+                            );
+                        } else {
+                            return (
+                                <Line
+                                    key={key}
+                                    type="monotone"
+                                    dataKey={key}
+                                    name={key}
+                                    stroke={color}
+                                    yAxisId="left"
+                                    strokeWidth={3}
+                                    dot={{ r: 4, fill: '#fff', stroke: color, strokeWidth: 2 }}
+                                    activeDot={{ r: 6, strokeWidth: 0 }}
+                                    {...animProps}
+                                >
+                                    {data.config.showLabels && (
+                                        <LabelList 
+                                            dataKey={key}
+                                            position="top" 
+                                            offset={10}
+                                            style={{ fill: textColor, fontSize: 10, fontWeight: 500 }}
+                                            formatter={(v: number) => formatValue(v, axisFormatLeft)}
+                                        />
+                                    )}
+                                </Line>
+                            );
+                        }
+                    })
+                ) : (
+                    // Single Aggregate Series
+                    data.config.type === 'bar' ? (
+                        <Bar 
+                            yAxisId="left"
+                            dataKey="value_0"
+                            name={getSeriesLabel(data.config.valueCol || '')}
+                            fill={data.config.color}
+                            radius={[4, 4, 0, 0]}
+                            {...animProps}
+                        >
+                            {activeData.map((entry: any, i: number) => (
+                                    <Cell 
+                                        key={`cell-${i}`} 
+                                        fill={i === data.config.highlightIndex ? '#f2c94c' : seriesPalette[0]} 
+                                    />
+                            ))}
+                            {data.config.showLabels && (
+                                    <LabelList 
+                                        dataKey="value_0"
+                                        position="top" 
+                                        style={{ fill: textColor, fontSize: 10, fontWeight: 500 }} 
+                                        formatter={(v: number) => formatValue(v, axisFormatLeft)}
+                                    />
+                            )}
+                        </Bar>
+                    ) : (
+                        <Line
+                            yAxisId="left"
+                            type="monotone"
+                            dataKey="value_0"
+                            name={getSeriesLabel(data.config.valueCol || '')}
+                            stroke={data.config.color}
+                            strokeWidth={3}
+                            dot={{ r: 4, fill: '#fff', stroke: data.config.color, strokeWidth: 2 }}
+                            activeDot={{ r: 6, strokeWidth: 0 }}
+                            {...animProps}
+                        >
+                            {data.config.showLabels && (
+                                    <LabelList 
+                                        dataKey="value_0"
+                                        position="top" 
+                                        offset={10}
+                                        style={{ fill: textColor, fontSize: 10, fontWeight: 500 }}
+                                        formatter={(v: number) => formatValue(v, axisFormatLeft)}
+                                    />
+                            )}
+                        </Line>
+                    )
+                )
+            )}
+
+            {/* METRICS MODE SERIES (Multiple Series) */}
+            {!isGroupMode && data.config.dataColumns.map((colId, index) => {
                 const isRight = data.config.rightAxisColumns?.includes(colId);
                 const axisId = isRight ? "right" : "left";
-                
                 const seriesType = data.config.seriesTypes?.[colId] || data.config.type;
-                
-                // Stack ID logic:
-                // Only stack Bars if stacked=true.
-                // Separate stacks for separate axes.
-                // Lines don't stack.
                 const stackId = (data.config.stacked && seriesType === 'bar') ? (isRight ? "b" : "a") : undefined;
                 const color = seriesPalette[index % seriesPalette.length];
+                const seriesFormat = getFormatForSeries(colId);
 
                 if (seriesType === 'bar') {
                     return (
@@ -408,6 +632,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, 
                                     dataKey={`value_${index}`} 
                                     position={data.config.stacked ? "inside" : "top"} 
                                     style={{ fill: data.config.stacked ? '#fff' : textColor, fontSize: 10, fontWeight: 500 }} 
+                                    formatter={(v: number) => formatValue(v, seriesFormat)}
                                 />
                             )}
                         </Bar>
@@ -445,7 +670,8 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, 
                                     dataKey={`value_${index}`} 
                                     position="top" 
                                     offset={10}
-                                    style={{ fill: textColor, fontSize: 10, fontWeight: 500 }} 
+                                    style={{ fill: textColor, fontSize: 10, fontWeight: 500 }}
+                                    formatter={(v: number) => formatValue(v, seriesFormat)}
                                 />
                             )}
                         </Line>
