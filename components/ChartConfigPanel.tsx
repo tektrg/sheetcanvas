@@ -1,9 +1,10 @@
 
 
+
 import React, { useState, useEffect } from 'react';
-import { ChartConfig, ChartType, PivotOperation, ChartMode } from '../types';
+import { ChartConfig, ChartType, PivotOperation, ChartMode, TimeGranularity } from '../types';
 import { CHART_COLORS } from '../constants';
-import { Trash2, ChevronDown, Plus, X, BarChart3, LineChart, PieChart } from 'lucide-react';
+import { Trash2, ChevronDown, Plus, X, BarChart3, LineChart, PieChart, AreaChart, ScatterChart, LayoutGrid } from 'lucide-react';
 
 interface Header {
   id: string;
@@ -42,6 +43,7 @@ export const ChartConfigPanel: React.FC<ChartConfigPanelProps> = ({
   const [seriesGroupCol, setSeriesGroupCol] = useState(config.seriesGroupCol || '');
   const [valueCol, setValueCol] = useState(config.valueCol || '');
   const [operation, setOperation] = useState<PivotOperation>(config.operation || 'SUM');
+  const [granularity, setGranularity] = useState<TimeGranularity | undefined>(config.timeGranularity);
 
   // Initialize Group defaults if switching to group mode
   useEffect(() => {
@@ -55,7 +57,8 @@ export const ChartConfigPanel: React.FC<ChartConfigPanelProps> = ({
             groupCol: groupCol || headers[0]?.id,
             seriesGroupCol: seriesGroupCol || undefined,
             valueCol: valueCol || (headers.length > 1 ? headers[1].id : headers[0]?.id),
-            operation
+            operation,
+            timeGranularity: granularity
         });
     } else {
         updateConfig({ mode: 'metrics' });
@@ -66,14 +69,16 @@ export const ChartConfigPanel: React.FC<ChartConfigPanelProps> = ({
     onChange({ ...config, ...updates });
   };
 
-  const updateGroupConfig = (key: 'groupCol' | 'seriesGroupCol' | 'valueCol' | 'operation', val: any) => {
+  const updateGroupConfig = (key: 'groupCol' | 'seriesGroupCol' | 'valueCol' | 'operation' | 'timeGranularity', val: any) => {
       if (key === 'groupCol') setGroupCol(val);
       if (key === 'seriesGroupCol') setSeriesGroupCol(val);
       if (key === 'valueCol') setValueCol(val);
       if (key === 'operation') setOperation(val);
+      if (key === 'timeGranularity') setGranularity(val);
       
       const updatePayload: any = { [key]: val };
       if (key === 'seriesGroupCol' && val === '') updatePayload.seriesGroupCol = undefined;
+      if (key === 'timeGranularity' && val === '') updatePayload.timeGranularity = undefined;
       
       updateConfig(updatePayload);
   };
@@ -139,7 +144,8 @@ export const ChartConfigPanel: React.FC<ChartConfigPanelProps> = ({
 
   const toggleSeriesType = (colId: string) => {
       const currentType = config.seriesTypes?.[colId] || config.type;
-      const nextType: ChartType = currentType === 'bar' ? 'line' : 'bar';
+      const nextType: ChartType = currentType === 'bar' ? 'line' : (currentType === 'line' ? 'area' : 'bar');
+      // Just cycle bar->line->area for simplicity in mini button, user can set global type for scatter
       
       const newSeriesTypes = { ...(config.seriesTypes || {}) };
       newSeriesTypes[colId] = nextType;
@@ -165,12 +171,12 @@ export const ChartConfigPanel: React.FC<ChartConfigPanelProps> = ({
         {/* Chart Type */}
         <div>
           <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-2 uppercase tracking-wide">Chart Type</label>
-          <div className="flex gap-2">
-            {(['bar', 'line', 'pie'] as const).map(t => (
+          <div className="grid grid-cols-3 gap-2">
+            {(['bar', 'line', 'area', 'pie', 'scatter', 'treemap'] as const).map(t => (
               <button 
                 key={t}
                 onClick={() => updateConfig({ type: t, seriesTypes: {} })} 
-                className={`flex-1 py-2 text-xs font-medium rounded-lg capitalize border transition-all flex flex-col items-center gap-1.5
+                className={`py-2 text-xs font-medium rounded-lg capitalize border transition-all flex flex-col items-center gap-1.5
                   ${config.type === t 
                     ? 'bg-teal-50 dark:bg-teal-900/30 border-teal-400 text-teal-700 dark:text-teal-300 ring-1 ring-teal-400' 
                     : 'bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-700'
@@ -178,7 +184,10 @@ export const ChartConfigPanel: React.FC<ChartConfigPanelProps> = ({
               >
                 {t === 'bar' && <BarChart3 size={18} />}
                 {t === 'line' && <LineChart size={18} />}
+                {t === 'area' && <AreaChart size={18} />}
                 {t === 'pie' && <PieChart size={18} />}
+                {t === 'scatter' && <ScatterChart size={18} />}
+                {t === 'treemap' && <LayoutGrid size={18} />}
                 <span>{t}</span>
               </button>
             ))}
@@ -227,7 +236,7 @@ export const ChartConfigPanel: React.FC<ChartConfigPanelProps> = ({
                 <div>
                     <div className="flex justify-between items-center mb-1.5">
                         <span className="text-[10px] text-neutral-400 font-medium block">Y-Axis (Values)</span>
-                        {config.type !== 'pie' && (
+                        {config.type !== 'pie' && config.type !== 'treemap' && (
                         <button 
                             onClick={addSeries}
                             className="flex items-center gap-1 text-[10px] font-medium text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 bg-teal-50 dark:bg-teal-900/20 px-2 py-1 rounded transition-colors"
@@ -256,14 +265,16 @@ export const ChartConfigPanel: React.FC<ChartConfigPanelProps> = ({
                                 <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" size={14} />
                             </div>
                             
-                            {config.type !== 'pie' && (
+                            {config.type !== 'pie' && config.type !== 'scatter' && config.type !== 'treemap' && (
                                 <>
                                 <button
                                     onClick={() => toggleSeriesType(colId)}
                                     className="p-1.5 h-full rounded-md border border-neutral-200 dark:border-neutral-700 text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-700 w-8 flex justify-center items-center"
-                                    title={effectiveType === 'bar' ? "Bar Chart" : "Line Chart"}
+                                    title={effectiveType === 'bar' ? "Bar" : (effectiveType === 'line' ? "Line" : "Area")}
                                 >
-                                    {effectiveType === 'bar' ? <BarChart3 size={14} /> : <LineChart size={14} />}
+                                    {effectiveType === 'bar' && <BarChart3 size={14} />}
+                                    {effectiveType === 'line' && <LineChart size={14} />}
+                                    {effectiveType === 'area' && <AreaChart size={14} />}
                                 </button>
 
                                 <button
@@ -279,7 +290,7 @@ export const ChartConfigPanel: React.FC<ChartConfigPanelProps> = ({
                                 </>
                             )}
 
-                            {(config.dataColumns.length > 1 || config.type !== 'pie') && (
+                            {(config.dataColumns.length > 1 || (config.type !== 'pie' && config.type !== 'treemap')) && (
                                 <button 
                                 onClick={() => removeSeries(index)}
                                 disabled={config.dataColumns.length <= 1}
@@ -311,22 +322,47 @@ export const ChartConfigPanel: React.FC<ChartConfigPanelProps> = ({
                         <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" size={14} />
                     </div>
                 </div>
-                <div>
-                    <label className="block text-[10px] font-medium text-neutral-400 mb-1.5">Split Series By (Optional)</label>
-                    <div className="relative">
-                        <select
-                            className="w-full appearance-none border rounded-lg px-3 py-2 text-xs bg-neutral-50 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-800 dark:text-neutral-200 outline-none focus:ring-1 focus:ring-teal-400" 
-                            value={seriesGroupCol}
-                            onChange={(e) => updateGroupConfig('seriesGroupCol', e.target.value)}
-                        >
-                            <option value="">(None)</option>
-                            {headers.map(h => (
-                                <option key={h.id} value={h.id}>{h.label}</option>
-                            ))}
-                        </select>
-                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" size={14} />
+
+                {/* Granularity Option (Only visible if granularity is set or available) */}
+                {config.timeGranularity && (
+                    <div>
+                        <label className="block text-[10px] font-medium text-neutral-400 mb-1.5">Time Bucket</label>
+                        <div className="relative">
+                            <select
+                                className="w-full appearance-none border rounded-lg px-3 py-2 text-xs bg-neutral-50 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-800 dark:text-neutral-200 outline-none focus:ring-1 focus:ring-teal-400" 
+                                value={granularity || ''}
+                                onChange={(e) => updateGroupConfig('timeGranularity', e.target.value)}
+                            >
+                                <option value="">(None)</option>
+                                <option value="day">Day</option>
+                                <option value="week">Week</option>
+                                <option value="month">Month</option>
+                                <option value="quarter">Quarter</option>
+                                <option value="year">Year</option>
+                            </select>
+                            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" size={14} />
+                        </div>
                     </div>
-                </div>
+                )}
+
+                {config.type !== 'treemap' && (
+                    <div>
+                        <label className="block text-[10px] font-medium text-neutral-400 mb-1.5">Split Series By (Optional)</label>
+                        <div className="relative">
+                            <select
+                                className="w-full appearance-none border rounded-lg px-3 py-2 text-xs bg-neutral-50 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-800 dark:text-neutral-200 outline-none focus:ring-1 focus:ring-teal-400" 
+                                value={seriesGroupCol}
+                                onChange={(e) => updateGroupConfig('seriesGroupCol', e.target.value)}
+                            >
+                                <option value="">(None)</option>
+                                {headers.map(h => (
+                                    <option key={h.id} value={h.id}>{h.label}</option>
+                                ))}
+                            </select>
+                            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" size={14} />
+                        </div>
+                    </div>
+                )}
                 <div>
                     <label className="block text-[10px] font-medium text-neutral-400 mb-1.5">Value Column</label>
                     <div className="relative">
@@ -405,13 +441,13 @@ export const ChartConfigPanel: React.FC<ChartConfigPanelProps> = ({
              </div>
 
              <div className="space-y-3 pt-2">
-                 {config.type === 'bar' && (
+                 {(config.type === 'bar' || config.type === 'area') && (
                      <label className="flex items-center gap-3 cursor-pointer group">
                          <div className={`w-9 h-5 rounded-full relative transition-colors ${config.stacked ? 'bg-teal-500' : 'bg-neutral-200 dark:bg-neutral-700'}`}>
                              <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-transform ${config.stacked ? 'left-5' : 'left-1'}`} />
                              <input type="checkbox" className="hidden" checked={!!config.stacked} onChange={(e) => updateConfig({ stacked: e.target.checked })} />
                          </div>
-                         <span className="text-xs font-medium text-neutral-700 dark:text-neutral-300 group-hover:text-neutral-900 dark:group-hover:text-neutral-100">Stacked Bars</span>
+                         <span className="text-xs font-medium text-neutral-700 dark:text-neutral-300 group-hover:text-neutral-900 dark:group-hover:text-neutral-100">Stacked</span>
                      </label>
                  )}
 
@@ -423,13 +459,15 @@ export const ChartConfigPanel: React.FC<ChartConfigPanelProps> = ({
                      <span className="text-xs font-medium text-neutral-700 dark:text-neutral-300 group-hover:text-neutral-900 dark:group-hover:text-neutral-100">Show Values</span>
                  </label>
 
-                 <label className="flex items-center gap-3 cursor-pointer group">
-                     <div className={`w-9 h-5 rounded-full relative transition-colors ${config.animation ? 'bg-teal-500' : 'bg-neutral-200 dark:bg-neutral-700'}`}>
-                         <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-transform ${config.animation ? 'left-5' : 'left-1'}`} />
-                         <input type="checkbox" className="hidden" checked={config.animation} onChange={(e) => updateConfig({ animation: e.target.checked })} />
-                     </div>
-                     <span className="text-xs font-medium text-neutral-700 dark:text-neutral-300 group-hover:text-neutral-900 dark:group-hover:text-neutral-100">Animation</span>
-                 </label>
+                 {config.type !== 'treemap' && (
+                     <label className="flex items-center gap-3 cursor-pointer group">
+                         <div className={`w-9 h-5 rounded-full relative transition-colors ${config.animation ? 'bg-teal-500' : 'bg-neutral-200 dark:bg-neutral-700'}`}>
+                             <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-transform ${config.animation ? 'left-5' : 'left-1'}`} />
+                             <input type="checkbox" className="hidden" checked={config.animation} onChange={(e) => updateConfig({ animation: e.target.checked })} />
+                         </div>
+                         <span className="text-xs font-medium text-neutral-700 dark:text-neutral-300 group-hover:text-neutral-900 dark:group-hover:text-neutral-100">Animation</span>
+                     </label>
+                 )}
              </div>
           </div>
         </div>

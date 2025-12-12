@@ -91,6 +91,25 @@
       .animate-scale-in-x {
         animation: scaleInX 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
       }
+
+      /* Cell Flash Animation for Updates */
+      @keyframes cellFlash {
+        0% { background-color: rgba(20, 184, 166, 0.3); } /* teal-500 @ 30% */
+        100% { background-color: transparent; }
+      }
+      .animate-cell-flash {
+        animation: cellFlash 0.6s ease-out;
+      }
+      
+      /* Number Pop Animation */
+      @keyframes popIn {
+        0% { transform: scale(0.8); opacity: 0; }
+        50% { transform: scale(1.1); }
+        100% { transform: scale(1); opacity: 1; }
+      }
+      .animate-pop-in {
+        animation: popIn 0.2s ease-out forwards;
+      }
     </style>
   <script type="importmap">
 {
@@ -105,7 +124,10 @@
     "markdown-to-jsx": "https://aistudiocdn.com/markdown-to-jsx@^9.1.1",
     "idb": "https://esm.sh/idb@8.0.0",
     "xlsx": "https://esm.sh/xlsx@0.18.5",
-    "d3-format": "https://esm.sh/d3-format@3.1.0"
+    "d3-format": "https://esm.sh/d3-format@3.1.0",
+    "@tanstack/react-virtual": "https://esm.sh/@tanstack/react-virtual@3.5.0?external=react,react-dom",
+    "zustand": "https://esm.sh/zustand@4.5.0?external=react",
+    "zustand/middleware": "https://esm.sh/zustand@4.5.0/middleware?external=react"
   }
 }
 </script>

@@ -1,8 +1,5 @@
 
-
-
-
-import { SheetData, CellData, FilterCondition, FilterType } from '../types';
+import { SheetData, CellData, FilterCondition, FilterType, TimeGranularity } from '../types';
 import { getCellId, parseCellId } from './formulas';
 
 export const inferColumnType = (sheet: SheetData, colId: string): FilterType => {
@@ -260,22 +257,12 @@ export const getFilteredRows = (sheet: SheetData, explicitMaxRow?: number): numb
         }
     }
 
-    // Append Grand Total Row at the bottom if it exists and hasn't been filtered out (conceptually)
-    // Note: If filtering is active, we should check if the GT row matches filters.
-    // However, usually users want GT to persist or match logic.
-    // If the GT row contains 'Grand Total' it might fail filters like 'Region contains East'.
-    // But per user request "keep the grand total row always at the bottom", we prioritize showing it 
-    // when sorting is active, assuming it's part of the dataset.
-    // We will check filters on it just to be consistent, but often GT rows are aggregates.
-    
     if (grandTotalRowIndex !== -1) {
         let showGT = true;
         if (hasFilter && sheet.filters) {
              for (const filter of sheet.filters) {
                 const colIdx = colIndexCache[filter.columnId];
                 if (colIdx === -1) continue;
-                // If the filter is on the Label column and value is Grand Total, it might match or not.
-                // We'll apply strict filtering. If it disappears, it disappears.
                 const cell = sheet.cells[getCellId(colIdx, grandTotalRowIndex)];
                 if (!checkCondition(cell?.value, filter)) {
                     showGT = false;
@@ -290,4 +277,57 @@ export const getFilteredRows = (sheet: SheetData, explicitMaxRow?: number): numb
     }
 
     return visibleRows;
+};
+
+// Calculate smart granularity based on a set of dates
+export const determineSmartGranularity = (dates: number[]): TimeGranularity => {
+    if (dates.length < 2) return 'day';
+
+    const minDate = Math.min(...dates);
+    const maxDate = Math.max(...dates);
+    const spanMs = maxDate - minDate;
+    
+    // Estimate counts based on full span to check density
+    const days = spanMs / (1000 * 60 * 60 * 24);
+    if (days <= 20) return 'day';
+
+    const weeks = days / 7;
+    if (weeks <= 20) return 'week';
+
+    const months = days / 30;
+    if (months <= 20) return 'month';
+
+    const quarters = days / 90;
+    if (quarters <= 20) return 'quarter';
+
+    return 'year';
+};
+
+// Estimates the amount of data points in a specific column, accounting for filters
+export const getValidDataCount = (sheet: SheetData, colId: string): number => {
+    const colIdx = parseCellId(`${colId}1`)?.col;
+    if (colIdx === undefined) return 0;
+
+    const visibleRows = getFilteredRows(sheet);
+    if (visibleRows) {
+        return Math.max(0, visibleRows.length - 1);
+    }
+
+    let count = 0;
+    Object.keys(sheet.cells).forEach(k => {
+        const p = parseCellId(k);
+        if (p && p.col === colIdx && p.row > 0) {
+            count++;
+        }
+    });
+    return count;
+};
+
+// Determines time granularity based purely on the number of data points
+export const suggestGranularityByCount = (count: number): TimeGranularity => {
+    if (count >= 1000) return 'year';
+    if (count >= 360) return 'quarter';
+    if (count >= 90) return 'month';
+    if (count >= 21) return 'week';
+    return 'day';
 };

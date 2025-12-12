@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Canvas } from './components/Canvas';
 import { SheetNode } from './components/SheetNode';
@@ -6,90 +5,65 @@ import { ChartNode } from './components/ChartNode';
 import { NoteNode } from './components/NoteNode';
 import { Toolbar } from './components/Toolbar';
 import { Toast } from './components/Toast';
-import { CommandBar } from './components/CommandBar';
+import { GlobalCommandBar } from './components/GlobalCommandBar';
 import { DataConnectorDialog } from './components/DataConnectorDialog';
-import { SheetData, ChartData, NoteData, CanvasTransform, Position, CellData, ChartConfig, PivotConfig, ToolMode, SparklineConfig, Command, SelectionContext, CellFormat, ConnectorConfig, ConnectorType } from './types';
-import { INITIAL_COLS, INITIAL_ROWS, CELL_WIDTH, CELL_HEIGHT, HEADER_COL_WIDTH, HEADER_ROW_HEIGHT, DEFAULT_CHART_SIZE, CHART_COLORS, MAX_IMPORT_ROWS, MAX_IMPORT_COLS, MAX_RENDER_ROWS } from './constants';
+import { SheetData, ChartData, NoteData, CanvasTransform, Position, CellData, ChartConfig, PivotConfig, ToolMode, SparklineConfig, Command, SelectionContext, CellFormat, ConnectorConfig, ConnectorType, TimeGranularity, ChartType } from './types';
+import { INITIAL_COLS, INITIAL_ROWS, CELL_WIDTH, CELL_HEIGHT, HEADER_COL_WIDTH, HEADER_ROW_HEIGHT, DEFAULT_CHART_SIZE, CHART_COLORS, MAX_IMPORT_ROWS, MAX_IMPORT_COLS } from './constants';
 import { parseClipboardData } from './utils/clipboard';
 import { parseFile } from './utils/fileParser';
 import { getCellId, parseCellId, computeSheet } from './utils/formulas';
-import { saveAppState, loadAppState, AppState } from './utils/persistence';
 import { getSheetHeaders } from './utils/chartHelpers';
-import { generatePivotTable, refreshPivotTable } from './utils/pivotHelpers';
-import { generateSparklineTable, refreshSparklineTable } from './utils/sparklineHelpers';
-import { Upload, Moon, Sun, Table, StickyNote, Undo2, Redo2, Grid3X3, BarChart3, TrendingUp, Palette, AlignLeft, Trash2, ArrowDownAZ, ArrowUpAZ, Filter, MousePointer2, Hand, Hash, Percent, Image as ImageIcon, Database, FileSpreadsheet, BarChart2, Globe, Calendar } from 'lucide-react';
+import { inferColumnType, getFilteredRows, getValidDataCount, suggestGranularityByCount } from './utils/dataAnalysis';
+import { Upload, Moon, Sun, Table, StickyNote, Undo2, Redo2, Grid3X3, BarChart3, TrendingUp, Palette, AlignLeft, Trash2, ArrowDownAZ, ArrowUpAZ, Filter, MousePointer2, Hand, Hash, Percent, Image as ImageIcon, Database, FileSpreadsheet, BarChart2, Globe, Calendar, Minimize2, Maximize2, DollarSign, ArrowLeft, ArrowRight, Eraser, Type } from 'lucide-react';
+import { useStore, AppState } from './store';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
-const MAX_HISTORY = 50;
-
-interface HistoryState {
-  sheets: SheetData[];
-  charts: ChartData[];
-  notes: NoteData[];
-}
 
 const App: React.FC = () => {
-  // Initialize based on system preference
   const [darkMode, setDarkMode] = useState(() => 
     typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches
   );
   
-  const [isReady, setIsReady] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error' | 'idle'>('idle');
-
-  const [transform, setTransform] = useState<CanvasTransform>({
-    scale: 1,
-    offset: { x: 0, y: 0 },
-  });
-
-  const [toolMode, setToolMode] = useState<ToolMode>(ToolMode.SELECT);
-  const [isCommandBarOpen, setIsCommandBarOpen] = useState(false);
+  const initStore = useStore((state: AppState) => state.init);
+  const sheetIds = useStore((state: AppState) => state.sheetIds);
+  const chartIds = useStore((state: AppState) => state.chartIds);
+  const noteIds = useStore((state: AppState) => state.noteIds);
   
-  // Data Connector State
+  const selectedIds = useStore((state: AppState) => state.selectedIds);
+  const transform = useStore((state: AppState) => state.transform);
+  const setTransform = useStore((state: AppState) => state.setTransform);
+  const toolMode = useStore((state: AppState) => state.toolMode);
+  
+  const addSheet = useStore((state: AppState) => state.addSheet);
+  const updateSheet = useStore((state: AppState) => state.updateSheet);
+  const deleteSheet = useStore((state: AppState) => state.deleteSheet);
+  
+  const addChart = useStore((state: AppState) => state.addChart);
+  const deleteChart = useStore((state: AppState) => state.deleteChart);
+  
+  const addNote = useStore((state: AppState) => state.addNote);
+  const deleteNote = useStore((state: AppState) => state.deleteNote);
+  
+  const undo = useStore((state: AppState) => state.undo);
+  const redo = useStore((state: AppState) => state.redo);
+  const deleteSelected = useStore((state: AppState) => state.deleteSelected);
+  const select = useStore((state: AppState) => state.select);
+  const setToolMode = useStore((state: AppState) => state.setToolMode);
+  const saveSnapshot = useStore((state: AppState) => state.saveSnapshot);
+  
+  const [isCommandBarOpen, setIsCommandBarOpen] = useState(false);
   const [dataConnectorState, setDataConnectorState] = useState<{ isOpen: boolean; initialType?: ConnectorType }>({ isOpen: false });
 
-  const [sheets, setSheets] = useState<SheetData[]>(() => {
-    const initialSheet = {
-      id: 'demo-1',
-      title: 'Budget 2024',
-      position: { x: 100, y: 100 },
-      size: { width: 4, height: 6 },
-      cells: {
-        'A1': { raw: 'Item', value: null },
-        'B1': { raw: 'Cost', value: null },
-        'A2': { raw: 'Rent', value: null },
-        'B2': { raw: '1200', value: null },
-        'A3': { raw: 'Food', value: null },
-        'B3': { raw: '400', value: null },
-        'A4': { raw: 'Utils', value: null },
-        'B4': { raw: '150', value: null },
-        'A5': { raw: 'Total', value: null },
-        'B5': { raw: '=SUM(B2:B4)', value: null },
-      }
-    };
-    return [computeSheet(initialSheet)];
-  });
-
-  const [charts, setCharts] = useState<ChartData[]>([]);
-  const [notes, setNotes] = useState<NoteData[]>([]);
-
-  // Chart Colors State
+  // Chart Colors State (Local for now, or move to store if needed globally)
   const [defaultChartColor, setDefaultChartColor] = useState(CHART_COLORS[0]);
   const [customColors, setCustomColors] = useState<string[]>([]);
-  
   const chartPalette = useMemo(() => [...CHART_COLORS, ...customColors], [customColors]);
 
-  // Undo/Redo Stacks
-  const [history, setHistory] = useState<HistoryState[]>([]);
-  const [future, setFuture] = useState<HistoryState[]>([]);
-  
   // Track ID of note that should start in edit mode
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  
-  // Selection Context (Ref to avoid re-renders on every click)
-  const activeSelectionRef = useRef<SelectionContext>({ sheetId: null, cellId: null, range: null });
+  // Selection Context
+  const [activeSelection, setActiveSelection] = useState<SelectionContext>({ sheetId: null, cellId: null, range: null });
 
   // Delete Confirmation State
   const [deleteConfirmPending, setDeleteConfirmPending] = useState(false);
@@ -103,44 +77,16 @@ const App: React.FC = () => {
   const [selectionBox, setSelectionBox] = useState<{ start: Position, current: Position } | null>(null);
 
   const lastMousePos = useRef<Position>({ x: 0, y: 0 });
-  const dragStartSnapshot = useRef<HistoryState | null>(null);
+  const dragStartSnapshot = useRef<any>(null); // Simplified snapshot handling for drag
 
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [toast, setToast] = useState<{ message: string; visible: boolean }>({ message: '', visible: false });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Animation Refs
-  const animationFrameRef = useRef<number | undefined>(undefined);
-
-  // Load state on mount
   useEffect(() => {
-    const init = async () => {
-      const loaded: AppState = await loadAppState('default');
-      if (loaded && (loaded.sheets.length > 0 || loaded.charts.length > 0 || loaded.notes.length > 0)) {
-        setSheets(loaded.sheets);
-        setCharts(loaded.charts);
-        setNotes(loaded.notes);
-        if (loaded.transform) {
-          setTransform(loaded.transform);
-        }
-      }
-      if (loaded?.defaultChartColor) setDefaultChartColor(loaded.defaultChartColor);
-      if (loaded?.customColors) setCustomColors(loaded.customColors);
-      
-      setIsReady(true);
-      setSaveStatus('saved');
-    };
-    init();
+    initStore();
   }, []);
 
-  // Clean up animation on unmount
-  useEffect(() => {
-    return () => {
-      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-    }
-  }, []);
-
-  // Listen for system theme changes
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const handleChange = (e: MediaQueryListEvent) => setDarkMode(e.matches);
@@ -148,95 +94,18 @@ const App: React.FC = () => {
     return () => mediaQuery.removeEventListener('change', handleChange);
   }, []);
 
-  // Auto-save effect
-  useEffect(() => {
-    if (!isReady) return;
-    setSaveStatus('saving');
-    const timer = setTimeout(async () => {
-      try {
-        await saveAppState(sheets, charts, notes, transform, defaultChartColor, customColors);
-        setSaveStatus('saved');
-      } catch (e) {
-        console.error(e);
-        setSaveStatus('error');
-      }
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [sheets, charts, notes, transform, isReady, defaultChartColor, customColors]);
-
   const showToast = (message: string) => {
       setToast({ message, visible: true });
   };
 
-  const saveSnapshot = useCallback(() => {
-    setHistory(prev => {
-      const newHistory = [...prev, { sheets, charts, notes }];
-      if (newHistory.length > MAX_HISTORY) return newHistory.slice(newHistory.length - MAX_HISTORY);
-      return newHistory;
-    });
-    setFuture([]);
-  }, [sheets, charts, notes]);
-
-  const undo = useCallback(() => {
-    setHistory(prev => {
-      if (prev.length === 0) return prev;
-      const lastState = prev[prev.length - 1];
-      const remainingHistory = prev.slice(0, prev.length - 1);
-      setFuture(f => [...f, { sheets, charts, notes }]);
-      setSheets(lastState.sheets);
-      setCharts(lastState.charts);
-      setNotes(lastState.notes);
-      return remainingHistory;
-    });
-  }, [sheets, charts, notes]);
-
-  const redo = useCallback(() => {
-    setFuture(prev => {
-      if (prev.length === 0) return prev;
-      const nextState = prev[prev.length - 1];
-      const remainingFuture = prev.slice(0, prev.length - 1);
-      setHistory(h => {
-          const newH = [...h, { sheets, charts, notes }];
-          if (newH.length > MAX_HISTORY) return newH.slice(newH.length - MAX_HISTORY);
-          return newH;
-      });
-      setSheets(nextState.sheets);
-      setCharts(nextState.charts);
-      setNotes(nextState.notes);
-      return remainingFuture;
-    });
-  }, [sheets, charts, notes]);
-
   const deleteSelectedItems = useCallback(() => {
-    saveSnapshot();
-    const idsToDelete = new Set(selectedIds);
-    const deletedSheetIds = new Set<string>();
-    sheets.forEach(s => {
-        if (idsToDelete.has(s.id)) deletedSheetIds.add(s.id);
-    });
-
-    setSheets(prev => prev.filter(s => {
-        if (idsToDelete.has(s.id)) return false;
-        if (s.pivotConfig && deletedSheetIds.has(s.pivotConfig.sourceSheetId)) return false;
-        if (s.sparklineConfig && deletedSheetIds.has(s.sparklineConfig.sourceSheetId)) return false;
-        return true;
-    }));
-
-    setCharts(prev => prev.filter(c => {
-        if (idsToDelete.has(c.id)) return false;
-        if (deletedSheetIds.has(c.sourceSheetId)) return false;
-        return true;
-    }));
-
-    setNotes(prev => prev.filter(n => !idsToDelete.has(n.id)));
-    setSelectedIds(new Set());
-  }, [selectedIds, sheets, saveSnapshot]);
+    deleteSelected();
+  }, [deleteSelected]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
 
-      // Global Shortcuts that work everywhere (even in inputs)
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
           e.preventDefault();
           setIsCommandBarOpen(prev => !prev);
@@ -285,111 +154,198 @@ const App: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo, selectedIds, deleteConfirmPending, deleteSelectedItems]);
+  }, [undo, redo, selectedIds, deleteConfirmPending, deleteSelectedItems, setToolMode]);
 
-  // Animation Helper
-  const easeInOutCubic = (t: number) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-
-  const flyTo = useCallback((targetOffset: Position, targetScale?: number) => {
-    const startOffset = transform.offset;
-    const startScale = transform.scale;
-    const finalScale = targetScale !== undefined ? targetScale : startScale;
+  // Helper to calculate position for new content (Bottom Edge Strategy)
+  const getNextPosition = useCallback((width: number, height: number) => {
+    const state = useStore.getState();
+    const { sheets, charts, notes, transform } = state;
     
-    const startTime = performance.now();
-    const duration = 800;
-
-    if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-
-    const animate = (currentTime: number) => {
-      const elapsed = currentTime - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      const ease = easeInOutCubic(progress);
-
-      const newOffset = {
-        x: startOffset.x + (targetOffset.x - startOffset.x) * ease,
-        y: startOffset.y + (targetOffset.y - startOffset.y) * ease
-      };
-      const newScale = startScale + (finalScale - startScale) * ease;
-
-      setTransform({ offset: newOffset, scale: newScale });
-
-      if (progress < 1) {
-        animationFrameRef.current = requestAnimationFrame(animate);
-      } else {
-        animationFrameRef.current = undefined;
-      }
+    // Viewport Center X in Canvas Space
+    const viewportCenterX = (-transform.offset.x + window.innerWidth / 2) / transform.scale;
+    
+    let maxY = -Infinity;
+    
+    // Helper to check item bounds
+    const checkItem = (y: number, h: number) => {
+        const bottom = y + h;
+        if (bottom > maxY) maxY = bottom;
     };
 
-    animationFrameRef.current = requestAnimationFrame(animate);
-  }, [transform]);
+    const hasItems = Object.keys(sheets).length > 0 || Object.keys(charts).length > 0 || Object.keys(notes).length > 0;
 
-  const addTable = () => {
-    saveSnapshot();
-    const centerX = (-transform.offset.x + (window.innerWidth / 2)) / transform.scale;
-    const centerY = (-transform.offset.y + (window.innerHeight / 2)) / transform.scale;
+    if (!hasItems) {
+        const viewportCenterY = (-transform.offset.y + window.innerHeight / 2) / transform.scale;
+        return {
+            x: viewportCenterX - width / 2,
+            y: viewportCenterY - height / 2
+        };
+    }
+
+    // Scan all items
+    (Object.values(sheets) as SheetData[]).forEach(s => {
+        const h = (s.size.height * CELL_HEIGHT) + HEADER_ROW_HEIGHT;
+        checkItem(s.position.y, h);
+    });
+    (Object.values(charts) as ChartData[]).forEach(c => checkItem(c.position.y, c.size.height));
+    (Object.values(notes) as NoteData[]).forEach(n => checkItem(n.position.y, n.size.height));
+
+    const gap = 100; // Comfortable gap
+    return {
+        x: viewportCenterX - width / 2,
+        y: maxY + gap
+    };
+  }, []);
+
+  // Helper to animate view to center on a rectangle
+  const centerViewOn = useCallback((x: number, y: number, w: number, h: number) => {
+    const { scale } = useStore.getState().transform;
+    const viewportW = window.innerWidth;
+    const viewportH = window.innerHeight;
+
+    // Center point of the item
+    const itemCx = x + w / 2;
+    const itemCy = y + h / 2;
+
+    const newOffsetX = (viewportW / 2) - (itemCx * scale);
+    const newOffsetY = (viewportH / 2) - (itemCy * scale);
+
+    setTransform({ scale, offset: { x: newOffsetX, y: newOffsetY } });
+  }, [setTransform]);
+
+  // Helper to ensure item is visible in viewport, panning if necessary (Legacy support for charts/pivots)
+  const ensureVisible = useCallback((itemRect: { x: number; y: number; width: number; height: number }) => {
+    const { scale, offset } = useStore.getState().transform;
+    const padding = 60; // Comfortable padding
+    const viewportW = window.innerWidth;
+    const viewportH = window.innerHeight;
+
+    const screenLeft = itemRect.x * scale + offset.x;
+    const screenRight = (itemRect.x + itemRect.width) * scale + offset.x;
+    const screenTop = itemRect.y * scale + offset.y;
+    const screenBottom = (itemRect.y + itemRect.height) * scale + offset.y;
+
+    let newOffsetX = offset.x;
+    let newOffsetY = offset.y;
+    let needsUpdate = false;
+
+    // Check X
+    if (screenLeft < padding) {
+        newOffsetX = padding - itemRect.x * scale;
+        needsUpdate = true;
+    } else if (screenRight > viewportW - padding) {
+        const shift = screenRight - (viewportW - padding);
+        newOffsetX = offset.x - shift;
+        const newScreenLeft = itemRect.x * scale + newOffsetX;
+        if (newScreenLeft < padding) {
+             newOffsetX = padding - itemRect.x * scale;
+        }
+        needsUpdate = true;
+    }
+
+    // Check Y
+    if (screenTop < padding) {
+        newOffsetY = padding - itemRect.y * scale;
+        needsUpdate = true;
+    } else if (screenBottom > viewportH - padding) {
+        const shift = screenBottom - (viewportH - padding);
+        newOffsetY = offset.y - shift;
+        const newScreenTop = itemRect.y * scale + newOffsetY;
+        if (newScreenTop < padding) {
+            newOffsetY = padding - itemRect.y * scale;
+        }
+        needsUpdate = true;
+    }
+
+    if (needsUpdate) {
+        setTransform({ scale, offset: { x: newOffsetX, y: newOffsetY } });
+    }
+  }, [setTransform]);
+
+  const addTable = useCallback(() => {
+    const width = (INITIAL_COLS * CELL_WIDTH) + HEADER_COL_WIDTH;
+    const height = (INITIAL_ROWS * CELL_HEIGHT) + HEADER_ROW_HEIGHT;
+    const pos = getNextPosition(width, height);
 
     const newSheet: SheetData = {
       id: generateId(),
-      title: `Sheet ${sheets.length + 1}`,
-      position: { x: centerX - 100, y: centerY - 100 },
+      title: 'New Sheet',
+      position: pos,
       size: { width: INITIAL_COLS, height: INITIAL_ROWS },
       cells: {}
     };
-    setSheets(prev => [...prev, computeSheet(newSheet)]);
-    setSelectedIds(new Set([newSheet.id]));
-  };
+    addSheet(newSheet);
+    centerViewOn(pos.x, pos.y, width, height);
+  }, [addSheet, getNextPosition, centerViewOn]);
 
-  const addNote = () => {
-    saveSnapshot();
-    const centerX = (-transform.offset.x + (window.innerWidth / 2)) / transform.scale;
-    const centerY = (-transform.offset.y + (window.innerHeight / 2)) / transform.scale;
+  const handleAddNote = useCallback(() => {
+    const width = 400;
+    const height = 300;
+    const pos = getNextPosition(width, height);
 
     const newNote: NoteData = {
       id: generateId(),
-      position: { x: centerX, y: centerY },
-      size: { width: 400, height: 300 },
+      position: pos,
+      size: { width, height },
       content: '', 
       color: 'yellow'
     };
-    setNotes(prev => [...prev, newNote]);
+    addNote(newNote);
     setEditingNoteId(newNote.id);
-    setSelectedIds(new Set([newNote.id]));
-  };
+    centerViewOn(pos.x, pos.y, width, height);
+  }, [addNote, getNextPosition, centerViewOn]);
 
-  const handleInitChart = (sheetId: string, defaultColIndex?: number, selectedCols?: number[]) => {
-    saveSnapshot();
-    const sheet = sheets.find(s => s.id === sheetId);
+  const handleInitChart = useCallback((sheetId: string, defaultColIndex?: number, selectedCols?: number[], initialType?: ChartType) => {
+    const sheet = (useStore.getState() as AppState).sheets[sheetId];
     if (!sheet) return;
 
     const headers = getSheetHeaders(sheet);
-    let labelCol = headers.length > 0 ? headers[0].id : 'A';
-    let dataColumns: string[] = [];
-
-    if (selectedCols && selectedCols.length > 0) {
-        const selectedIds = selectedCols.map(idx => headers.find(h => h.index === idx)?.id).filter(id => id !== undefined) as string[];
-        if (selectedIds.length > 0) {
-            const firstSheetColId = headers.length > 0 ? headers[0].id : null;
-            const selectionIncludesFirstCol = firstSheetColId && selectedIds.includes(firstSheetColId);
-            if (selectionIncludesFirstCol) {
-                labelCol = selectedIds[0];
-                dataColumns = selectedIds.slice(1);
-            } else {
-                dataColumns = selectedIds;
-            }
-        }
-    } 
-
-    if (dataColumns.length === 0) {
-        let valueCol = headers.length > 1 ? headers[1].id : (headers.length > 0 ? headers[0].id : 'B');
-        if (defaultColIndex !== undefined) {
-           const selectedHeader = headers.find(h => h.index === defaultColIndex);
-           if (selectedHeader) valueCol = selectedHeader.id;
-        }
-        dataColumns = [valueCol];
+    
+    // 1. Smart X-Axis Selection (Group Column)
+    let groupColId = headers.length > 0 ? headers[0].id : 'A';
+    const dateCol = headers.find(h => inferColumnType(sheet, h.id) === 'date');
+    if (dateCol) {
+        groupColId = dateCol.id;
+    } else {
+        groupColId = headers[0]?.id || 'A';
     }
 
-    let rightAxisColumns: string[] | undefined = undefined;
-    if (dataColumns.length >= 2) rightAxisColumns = [dataColumns[1]];
+    // 2. Smart Metric Selection (Value Column)
+    let valueColId = '';
+    
+    if (selectedCols && selectedCols.length > 0) {
+        const selectedHeader = headers.find(h => selectedCols.includes(h.index) && h.id !== groupColId);
+        if (selectedHeader) {
+            valueColId = selectedHeader.id;
+        } else {
+             const anySelected = headers.find(h => selectedCols.includes(h.index));
+             if (anySelected) valueColId = anySelected.id;
+        }
+    }
+
+    if (!valueColId) {
+        const numCol = headers.find(h => h.id !== groupColId && inferColumnType(sheet, h.id) === 'number');
+        if (numCol) {
+            valueColId = numCol.id;
+        } else {
+            valueColId = headers.length > 1 ? headers[1].id : (headers[0]?.id || 'B');
+            if (valueColId === groupColId && headers.length > 1) {
+                 const other = headers.find(h => h.id !== groupColId);
+                 if (other) valueColId = other.id;
+            }
+        }
+    }
+
+    // 3. Smart Granularity
+    let timeGranularity: TimeGranularity | undefined = undefined;
+    const isGroupDate = inferColumnType(sheet, groupColId) === 'date';
+    
+    if (isGroupDate) {
+        const count = getValidDataCount(sheet, groupColId);
+        timeGranularity = suggestGranularityByCount(count);
+    }
+
+    const initialChartType = initialType || 'bar';
 
     const newChart: ChartData = {
         id: generateId(),
@@ -398,25 +354,35 @@ const App: React.FC = () => {
         size: DEFAULT_CHART_SIZE,
         title: `${sheet.title} Chart`,
         config: {
-            type: 'line',
-            labelColumn: labelCol,
-            dataColumns: dataColumns,
-            color: defaultChartColor, // Use persisted default color
+            type: initialChartType,
+            mode: 'group', 
+            groupCol: groupColId,
+            valueCol: valueColId,
+            operation: 'SUM',
+            timeGranularity: timeGranularity,
+            
+            labelColumn: groupColId,
+            dataColumns: [valueColId],
+            
+            color: defaultChartColor,
             highlightIndex: -1,
             animation: true,
-            rightAxisColumns: rightAxisColumns,
             showLabels: true
         },
         setupRequired: false
     };
 
-    setCharts(prev => [...prev, newChart]);
-    setSelectedIds(new Set([newChart.id]));
-  };
+    addChart(newChart);
+    ensureVisible({
+        x: newChart.position.x,
+        y: newChart.position.y,
+        width: newChart.size.width,
+        height: newChart.size.height
+    });
+  }, [defaultChartColor, addChart, ensureVisible]);
 
-  const handleInitPivot = (sheetId: string, defaultColIndex?: number) => {
-      saveSnapshot();
-      const sourceSheet = sheets.find(s => s.id === sheetId);
+  const handleInitPivot = useCallback((sheetId: string, defaultColIndex?: number) => {
+      const sourceSheet = (useStore.getState() as AppState).sheets[sheetId];
       if (!sourceSheet) return;
 
       const headers = getSheetHeaders(sourceSheet);
@@ -436,6 +402,7 @@ const App: React.FC = () => {
           values: [{ column: valueCol, operation: 'SUM' }]
       };
       
+      const newSheetSize = { width: 4, height: 15 };
       const newSheet: SheetData = {
           id: generateId(),
           title: `Pivot: ${sourceSheet.title}`,
@@ -443,21 +410,26 @@ const App: React.FC = () => {
               x: sourceSheet.position.x + (sourceSheet.size.width * CELL_WIDTH) + 60, 
               y: sourceSheet.position.y 
           },
-          size: { width: 4, height: 15 },
+          size: newSheetSize,
           cells: {},
           pivotConfig: initialConfig,
           setupRequired: true
       };
 
-      setSheets(prev => [...prev, newSheet]);
-      setSelectedIds(new Set([newSheet.id]));
-  };
+      addSheet(newSheet);
+      ensureVisible({
+          x: newSheet.position.x,
+          y: newSheet.position.y,
+          width: (newSheetSize.width * CELL_WIDTH) + HEADER_COL_WIDTH,
+          height: (newSheetSize.height * CELL_HEIGHT) + HEADER_ROW_HEIGHT
+      });
+  }, [addSheet, ensureVisible]);
 
-  const handleInitSparkline = (sheetId: string) => {
-      saveSnapshot();
-      const sourceSheet = sheets.find(s => s.id === sheetId);
+  const handleInitSparkline = useCallback((sheetId: string) => {
+      const sourceSheet = (useStore.getState() as AppState).sheets[sheetId];
       if (!sourceSheet) return;
 
+      const newSheetSize = { width: 4, height: 16 };
       const newSheet: SheetData = {
           id: generateId(),
           title: `Sparklines: ${sourceSheet.title}`,
@@ -465,7 +437,7 @@ const App: React.FC = () => {
               x: sourceSheet.position.x + (sourceSheet.size.width * CELL_WIDTH) + 60, 
               y: sourceSheet.position.y + 100
           },
-          size: { width: 4, height: 16 },
+          size: newSheetSize,
           cells: {},
           sparklineConfig: {
               sourceSheetId: sheetId,
@@ -475,12 +447,16 @@ const App: React.FC = () => {
           setupRequired: true
       };
       
-      setSheets(prev => [...prev, newSheet]);
-      setSelectedIds(new Set([newSheet.id]));
-  };
+      addSheet(newSheet);
+      ensureVisible({
+          x: newSheet.position.x,
+          y: newSheet.position.y,
+          width: (newSheetSize.width * CELL_WIDTH) + HEADER_COL_WIDTH,
+          height: (newSheetSize.height * CELL_HEIGHT) + HEADER_ROW_HEIGHT
+      });
+  }, [addSheet, ensureVisible]);
 
   const handleCanvasDoubleClick = (e: React.MouseEvent) => {
-    saveSnapshot();
     const x = (e.clientX - transform.offset.x) / transform.scale;
     const y = (e.clientY - transform.offset.y) / transform.scale;
 
@@ -491,32 +467,11 @@ const App: React.FC = () => {
       content: '', 
       color: 'gray'
     };
-    setNotes(prev => [...prev, newNote]);
+    addNote(newNote);
     setEditingNoteId(newNote.id);
-    setSelectedIds(new Set([newNote.id]));
   };
 
-  const updateSheet = (id: string, newData: SheetData) => {
-    setSheets(prev => {
-        const updatedSheets = prev.map(s => s.id === id ? newData : s);
-        
-        return updatedSheets.map(s => {
-            if (s.pivotConfig?.sourceSheetId === id && !s.setupRequired) {
-                return refreshPivotTable(s, newData);
-            }
-            if (s.sparklineConfig?.sourceSheetId === id && !s.setupRequired) {
-                return refreshSparklineTable(s, newData);
-            }
-            return s;
-        });
-    });
-  };
-  
-  const updateChart = (id: string, newData: ChartData) => {
-    setCharts(prev => prev.map(c => c.id === id ? newData : c));
-  };
-
-  const handleAddColor = (newColor: string) => {
+  const handleAddColor = useCallback((newColor: string) => {
       setDefaultChartColor(newColor);
       setCustomColors(prevColors => {
             if (!CHART_COLORS.includes(newColor) && !prevColors.includes(newColor)) {
@@ -524,44 +479,7 @@ const App: React.FC = () => {
             }
             return prevColors;
       });
-  };
-
-  const updateNote = (id: string, newData: NoteData) => {
-    setNotes(prev => prev.map(n => n.id === id ? newData : n));
-  };
-
-  const deleteSheet = (id: string) => {
-    saveSnapshot();
-    setSheets(prev => prev.filter(s => s.id !== id));
-    setCharts(prev => prev.filter(c => c.sourceSheetId !== id));
-    setSheets(prev => prev.filter(s => s.pivotConfig?.sourceSheetId !== id));
-    setSheets(prev => prev.filter(s => s.sparklineConfig?.sourceSheetId !== id));
-    setSelectedIds(prev => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-    });
-  };
-
-  const deleteChart = (id: string) => {
-      saveSnapshot();
-      setCharts(prev => prev.filter(c => c.id !== id));
-      setSelectedIds(prev => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-    });
-  };
-
-  const deleteNote = (id: string) => {
-    saveSnapshot();
-    setNotes(prev => prev.filter(n => n.id !== id));
-    setSelectedIds(prev => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-    });
-  };
+  }, []);
 
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
     if (toolMode === ToolMode.SELECT) {
@@ -570,34 +488,28 @@ const App: React.FC = () => {
             current: { x: e.clientX, y: e.clientY }
         });
         if (!e.shiftKey && !e.ctrlKey && !e.metaKey) {
-            setSelectedIds(new Set());
-            // Clear selection context
-            activeSelectionRef.current = { sheetId: null, cellId: null, range: null };
+            useStore.getState().clearSelection();
+            setActiveSelection({ sheetId: null, cellId: null, range: null });
         }
     }
   };
 
   const handleItemMouseDown = (e: React.MouseEvent, id: string, type: 'sheet' | 'chart' | 'note') => {
     e.stopPropagation();
-    dragStartSnapshot.current = { sheets, charts, notes };
+    dragStartSnapshot.current = true;
+    
     setDraggingId(id);
     setDraggingType(type);
     lastMousePos.current = { x: e.clientX, y: e.clientY };
 
     const isShift = e.shiftKey || e.ctrlKey || e.metaKey;
-    setSelectedIds(prev => {
-        const next = new Set(prev);
-        if (isShift) {
-            if (next.has(id)) next.delete(id);
-            else next.add(id);
-        } else {
-            if (!next.has(id)) {
-                next.clear();
-                next.add(id);
-            }
+    if (isShift) {
+        select([id], true);
+    } else {
+        if (!selectedIds.has(id)) {
+            select([id]);
         }
-        return next;
-    });
+    }
   };
 
   const handleGlobalMouseMove = useCallback((e: MouseEvent) => {
@@ -612,23 +524,17 @@ const App: React.FC = () => {
       lastMousePos.current = { x: e.clientX, y: e.clientY };
 
       if (dx === 0 && dy === 0) return;
-
-      setSheets(prev => prev.map(s => {
-        if (selectedIds.has(s.id)) return { ...s, position: { x: s.position.x + dx, y: s.position.y + dy } };
-        return s;
-      }));
-
-      setCharts(prev => prev.map(c => {
-          if (selectedIds.has(c.id)) return { ...c, position: { x: c.position.x + dx, y: c.position.y + dy } };
-          return c;
-      }));
-
-      setNotes(prev => prev.map(n => {
-          if (selectedIds.has(n.id)) return { ...n, position: { x: n.position.x + dx, y: n.position.y + dy } };
-          return n;
-      }));
+      
+      const s = useStore.getState() as AppState;
+      const ids = Array.from(s.selectedIds);
+      
+      ids.forEach(id => {
+          if (s.sheets[id]) s.updateSheet(id, { position: { x: s.sheets[id].position.x + dx, y: s.sheets[id].position.y + dy } });
+          else if (s.charts[id]) s.updateChart(id, { position: { x: s.charts[id].position.x + dx, y: s.charts[id].position.y + dy } });
+          else if (s.notes[id]) s.updateNote(id, { position: { x: s.notes[id].position.x + dx, y: s.notes[id].position.y + dy } });
+      });
     }
-  }, [draggingId, selectionBox, transform.scale, selectedIds]);
+  }, [draggingId, selectionBox, transform.scale]);
 
   const handleGlobalMouseUp = useCallback(() => {
     if (selectionBox) {
@@ -647,61 +553,39 @@ const App: React.FC = () => {
             height: Math.abs(endC.y - startC.y)
         };
 
-        const intersect = (item: { position: Position, size: { width: number, height: number } }, isSheet = false) => {
-             let w = item.size.width;
-             let h = item.size.height;
+        const state = useStore.getState() as AppState;
+        const intersect = (pos: Position, size: { width: number, height: number }, isSheet = false) => {
+             let w = size.width;
+             let h = size.height;
              if (isSheet) {
-                 const sheetData = item as unknown as SheetData;
-                 w = (sheetData.size.width * CELL_WIDTH) + HEADER_COL_WIDTH;
-                 h = (sheetData.size.height * CELL_HEIGHT) + HEADER_ROW_HEIGHT;
+                 w = (w * CELL_WIDTH) + HEADER_COL_WIDTH;
+                 h = (h * CELL_HEIGHT) + HEADER_ROW_HEIGHT;
              }
              return (
-                 item.position.x < box.x + box.width &&
-                 item.position.x + w > box.x &&
-                 item.position.y < box.y + box.height &&
-                 item.position.y + h > box.y
+                 pos.x < box.x + box.width &&
+                 pos.x + w > box.x &&
+                 pos.y < box.y + box.height &&
+                 pos.y + h > box.y
              );
         };
 
-        const newSelection = new Set(selectedIds);
-        sheets.forEach(s => { if (intersect(s, true)) newSelection.add(s.id); });
-        charts.forEach(c => { if (intersect(c)) newSelection.add(c.id); });
-        notes.forEach(n => { if (intersect(n)) newSelection.add(n.id); });
+        const newSelection: string[] = [];
+        (Object.values(state.sheets) as SheetData[]).forEach(s => { if (intersect(s.position, s.size, true)) newSelection.push(s.id); });
+        (Object.values(state.charts) as ChartData[]).forEach(c => { if (intersect(c.position, c.size)) newSelection.push(c.id); });
+        (Object.values(state.notes) as NoteData[]).forEach(n => { if (intersect(n.position, n.size)) newSelection.push(n.id); });
 
-        setSelectedIds(newSelection);
+        select(newSelection, true);
         setSelectionBox(null);
     }
 
     if (draggingId && dragStartSnapshot.current) {
-        const hasChanged = () => {
-            const snap = dragStartSnapshot.current;
-            if (!snap) return false;
-            let moved = false;
-            const checkItem = (id: string, list: any[], snapList: any[]) => {
-                const startObj = snapList.find((i: any) => i.id === id);
-                const currObj = list.find((i: any) => i.id === id);
-                return startObj && currObj && (startObj.position.x !== currObj.position.x || startObj.position.y !== currObj.position.y);
-            };
-            if (draggingType === 'sheet') moved = checkItem(draggingId, sheets, snap.sheets);
-            else if (draggingType === 'chart') moved = checkItem(draggingId, charts, snap.charts);
-            else if (draggingType === 'note') moved = checkItem(draggingId, notes, snap.notes);
-            return moved;
-        };
-
-        if (hasChanged()) {
-             setHistory(prev => {
-                const newHistory = [...prev, dragStartSnapshot.current!];
-                if (newHistory.length > MAX_HISTORY) return newHistory.slice(newHistory.length - MAX_HISTORY);
-                return newHistory;
-             });
-             setFuture([]);
-        }
+        saveSnapshot();
     }
 
     setDraggingId(null);
     setDraggingType(null);
     dragStartSnapshot.current = null;
-  }, [draggingId, draggingType, sheets, charts, notes, selectionBox, transform, selectedIds]);
+  }, [draggingId, draggingType, selectionBox, transform, select, saveSnapshot]);
 
   useEffect(() => {
     if (draggingId || selectionBox) {
@@ -718,17 +602,12 @@ const App: React.FC = () => {
   }, [draggingId, selectionBox, handleGlobalMouseMove, handleGlobalMouseUp]);
 
   const processImportedFiles = async (files: File[], targetPos?: { x: number, y: number }) => {
-    saveSnapshot();
-    let centerX: number, centerY: number;
-    if (targetPos) {
-        centerX = targetPos.x;
-        centerY = targetPos.y;
-    } else {
-        centerX = (-transform.offset.x + (window.innerWidth / 2)) / transform.scale;
-        centerY = (-transform.offset.y + (window.innerHeight / 2)) / transform.scale;
-    }
-    
     let createdCount = 0;
+    
+    // Store original target if drag-and-drop
+    const originX = targetPos ? targetPos.x : 0;
+    const originY = targetPos ? targetPos.y : 0;
+
     for (const file of files) {
         const result = await parseFile(file);
         if (!result) continue;
@@ -748,40 +627,48 @@ const App: React.FC = () => {
         const cells: Record<string, CellData> = {};
         matrix.forEach((rowVals, r) => {
             rowVals.forEach((val, c) => {
-                if (val && String(val).trim()) {
+                const strVal = String(val);
+                if (strVal && strVal.trim()) {
                     const id = getCellId(c, r);
-                    cells[id] = { raw: String(val).trim(), value: null };
+                    cells[id] = { raw: strVal.trim(), value: null };
                 }
             });
         });
 
-        const offsetX = createdCount * 30; 
-        const offsetY = createdCount * 30;
         const tableWidth = (constrainedCols * CELL_WIDTH) + HEADER_COL_WIDTH;
-        const centeringHeight = (constrainedRows * CELL_HEIGHT) + HEADER_ROW_HEIGHT;
+        const tableHeight = (constrainedRows * CELL_HEIGHT) + HEADER_ROW_HEIGHT;
+
+        let pos;
+        if (targetPos) {
+            pos = { 
+                x: originX + (createdCount * 30), 
+                y: originY + (createdCount * 30) 
+            };
+        } else {
+            // Auto position to the bottom if not dropping
+            pos = getNextPosition(tableWidth, tableHeight);
+        }
 
         const newSheet: SheetData = {
             id: generateId(),
-            title: file.name.replace(/\.[^/.]+$/, ""),
-            position: { 
-                x: centerX + offsetX - (tableWidth / 2),
-                y: centerY + offsetY - (centeringHeight / 2)
-            },
+            title: String(file.name).replace(/\.[^/.]+$/, ""),
+            position: pos,
             size: { width: constrainedCols, height: constrainedRows },
             cells
         };
 
-        setSheets(prev => [...prev, computeSheet(newSheet)]);
-        setSelectedIds(new Set([newSheet.id]));
+        addSheet(newSheet);
+        
+        // Only center view if not using drag and drop (user manually placed it otherwise)
+        if (!targetPos) {
+            centerViewOn(pos.x, pos.y, tableWidth, tableHeight);
+        }
+        
         createdCount++;
     }
   };
 
   const handleDataConnectImport = (title: string, matrix: string[][], config: ConnectorConfig) => {
-      saveSnapshot();
-      const centerX = (-transform.offset.x + (window.innerWidth / 2)) / transform.scale;
-      const centerY = (-transform.offset.y + (window.innerHeight / 2)) / transform.scale;
-
       let finalMatrix = matrix;
       let truncated = false;
       
@@ -806,29 +693,32 @@ const App: React.FC = () => {
       const constrainedRows = Math.min(finalRows, Math.max(INITIAL_ROWS, maxViewportRows));
       const constrainedCols = Math.min(finalCols, Math.max(INITIAL_COLS, maxViewportCols));
       const tableWidth = (constrainedCols * CELL_WIDTH) + HEADER_COL_WIDTH;
-      const centeringHeight = (constrainedRows * CELL_HEIGHT) + HEADER_ROW_HEIGHT;
+      const tableHeight = (constrainedRows * CELL_HEIGHT) + HEADER_ROW_HEIGHT;
 
       const cells: Record<string, CellData> = {};
       finalMatrix.forEach((rowVals, r) => {
           rowVals.forEach((val, c) => {
-              if (val.trim()) {
+              const strVal = String(val);
+              if (strVal.trim()) {
                   const id = getCellId(c, r);
-                  cells[id] = { raw: val.trim(), value: null };
+                  cells[id] = { raw: strVal.trim(), value: null };
               }
           });
       });
 
+      const pos = getNextPosition(tableWidth, tableHeight);
+
       const newSheet: SheetData = {
           id: generateId(),
           title: title,
-          position: { x: centerX - (tableWidth / 2), y: centerY - (centeringHeight / 2) },
+          position: pos,
           size: { width: constrainedCols, height: constrainedRows },
           cells,
-          connectorConfig: config // Store the connection info
+          connectorConfig: config 
       };
 
-      setSheets(prev => [...prev, computeSheet(newSheet)]);
-      setSelectedIds(new Set([newSheet.id]));
+      addSheet(newSheet);
+      centerViewOn(pos.x, pos.y, tableWidth, tableHeight);
       showToast(`Imported "${title}"`);
   };
 
@@ -850,7 +740,6 @@ const App: React.FC = () => {
       if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
-  // Global Paste for App level (creating new sheets from clipboard)
   useEffect(() => {
     const handleGlobalPaste = (e: ClipboardEvent) => {
         const target = e.target as HTMLElement;
@@ -863,13 +752,11 @@ const App: React.FC = () => {
         if (!matrix || matrix.length === 0) return;
 
         e.preventDefault();
-        saveSnapshot();
         if (truncated) showToast(`Large content truncated to ${MAX_IMPORT_ROWS} rows`);
 
         const rows = matrix.length;
         const cols = matrix.reduce((max, row) => Math.max(max, row.length), 0);
-        const centerX = (-transform.offset.x + (window.innerWidth / 2)) / transform.scale;
-        const centerY = (-transform.offset.y + (window.innerHeight / 2)) / transform.scale;
+        
         const finalCols = Math.max(cols, INITIAL_COLS);
         const finalRows = Math.max(rows, INITIAL_ROWS);
         const maxViewportRows = Math.floor((window.innerHeight - 200) / CELL_HEIGHT);
@@ -877,65 +764,43 @@ const App: React.FC = () => {
         const constrainedRows = Math.min(finalRows, Math.max(INITIAL_ROWS, maxViewportRows));
         const constrainedCols = Math.min(finalCols, Math.max(INITIAL_COLS, maxViewportCols));
         const tableWidth = (constrainedCols * CELL_WIDTH) + HEADER_COL_WIDTH;
-        const centeringHeight = (constrainedRows * CELL_HEIGHT) + HEADER_ROW_HEIGHT;
+        const tableHeight = (constrainedRows * CELL_HEIGHT) + HEADER_ROW_HEIGHT;
 
         const cells: Record<string, CellData> = {};
         matrix.forEach((rowVals, r) => {
             rowVals.forEach((val, c) => {
-                if (val.trim()) {
+                const strVal = String(val);
+                if (strVal.trim()) {
                     const id = getCellId(c, r);
-                    cells[id] = { raw: val.trim(), value: null };
+                    cells[id] = { raw: strVal.trim(), value: null };
                 }
             });
         });
 
+        const pos = getNextPosition(tableWidth, tableHeight);
+
         const newSheet: SheetData = {
             id: generateId(),
-            title: `Pasted Data ${sheets.length + 1}`,
-            position: { x: centerX - (tableWidth / 2), y: centerY - (centeringHeight / 2) },
+            title: `Pasted Data`,
+            position: pos,
             size: { width: constrainedCols, height: constrainedRows },
             cells
         };
 
-        setSheets(prev => [...prev, computeSheet(newSheet)]);
-        setSelectedIds(new Set([newSheet.id]));
+        addSheet(newSheet);
+        centerViewOn(pos.x, pos.y, tableWidth, tableHeight);
     };
 
     window.addEventListener('paste', handleGlobalPaste);
     return () => window.removeEventListener('paste', handleGlobalPaste);
-  }, [sheets.length, transform, saveSnapshot]);
-
-  const handleCopyNodeAsImage = async (id: string, type: 'sheet' | 'chart') => {
-      const elementId = type === 'sheet' ? `sheet-${id}` : `chart-${id}`;
-      const element = document.getElementById(elementId);
-      if (!element) return;
-      
-      try {
-          const html2canvas = (await import('html2canvas')).default;
-          const canvas = await html2canvas(element, {
-              backgroundColor: darkMode ? '#171717' : '#fafafa',
-              scale: 2
-          });
-          
-          canvas.toBlob(async (blob) => {
-              if (blob) {
-                  await navigator.clipboard.write([
-                      new ClipboardItem({ 'image/png': blob })
-                  ]);
-                  showToast("Copied to clipboard");
-              }
-          });
-      } catch (e) {
-          console.error(e);
-          showToast("Failed to copy image");
-      }
-  }
+  }, [getNextPosition, addSheet, centerViewOn]);
 
   const handleCopySelectionAsImage = async () => {
-    const selected = Array.from(selectedIds);
+    const selected = Array.from(selectedIds) as string[];
     if (selected.length === 0) return;
 
     showToast("Preparing image...");
+    const state = useStore.getState() as AppState;
 
     try {
         const html2canvas = (await import('html2canvas')).default;
@@ -943,11 +808,10 @@ const App: React.FC = () => {
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         const itemsToRender: { id: string, elementId: string, x: number, y: number, el: HTMLElement }[] = [];
 
-        // 1. Calculate Bounds and gather elements
         for (const id of selected) {
-            const sheet = sheets.find(s => s.id === id);
-            const chart = charts.find(c => c.id === id);
-            const note = notes.find(n => n.id === id);
+            const sheet = state.sheets[id];
+            const chart = state.charts[id];
+            const note = state.notes[id];
             
             let elementId = '';
             let x = 0, y = 0;
@@ -960,10 +824,6 @@ const App: React.FC = () => {
             const el = document.getElementById(elementId);
             if (!el) continue;
             
-            const rect = el.getBoundingClientRect();
-            // We can't rely on rect for x/y absolute because of canvas transform. 
-            // We rely on data x/y.
-            // But we DO need width/height from DOM because of dynamic sizing (like auto-resize cols).
             const w = el.offsetWidth;
             const h = el.offsetHeight;
             
@@ -988,7 +848,6 @@ const App: React.FC = () => {
         const ctx = masterCanvas.getContext('2d');
         if (!ctx) return;
         
-        // Render individually and composite
         for (const item of itemsToRender) {
             const canvas = await html2canvas(item.el, {
                 backgroundColor: null,
@@ -998,7 +857,6 @@ const App: React.FC = () => {
                 onclone: (clonedDoc) => {
                     const clonedEl = clonedDoc.getElementById(item.elementId);
                     if (clonedEl) {
-                        // Try to remove selection styles for cleaner output
                         clonedEl.classList.remove('ring-1', 'ring-teal-400', 'shadow-md', 'z-50');
                         if (clonedEl.classList.contains('border-teal-400')) {
                             clonedEl.classList.remove('border-teal-400');
@@ -1023,391 +881,11 @@ const App: React.FC = () => {
             }
         });
 
-    } catch (e) {
+    } catch (e: any) {
         console.error(e);
         showToast("Failed to copy image");
     }
   };
-
-  // Command Bar Generator
-  const getCommands = useCallback((): Command[] => {
-      const cmds: Command[] = [];
-      const ctx = activeSelectionRef.current;
-      const firstId = Array.from(selectedIds)[0];
-      const activeSheetId = ctx.sheetId || (selectedIds.size === 1 && firstId ? String(firstId) : null);
-      
-      // Determine context
-      const isSheetSelected = !!activeSheetId && sheets.some(s => s.id === activeSheetId);
-      const isChartSelected = selectedIds.size === 1 && charts.some(c => c.id === String(firstId));
-      const isNoteSelected = selectedIds.size === 1 && notes.some(n => n.id === String(firstId));
-      const isMultiSelect = selectedIds.size > 1;
-
-      if (isMultiSelect) {
-        cmds.push({
-            id: 'copy-selection-image',
-            label: 'Copy Selection as Image',
-            category: 'Canvas',
-            icon: <ImageIcon size={16} />,
-            action: handleCopySelectionAsImage
-        });
-      }
-
-      // -- CONTEXT ACTIONS --
-
-      if (isSheetSelected) {
-          const sheet = sheets.find(s => s.id === activeSheetId);
-          if (sheet) {
-              const activeCol = ctx.cellId ? parseCellId(ctx.cellId)?.col : undefined;
-              
-              cmds.push({
-                  id: 'ctx-chart',
-                  label: 'Visualize Data',
-                  subLabel: sheet.title,
-                  icon: <BarChart3 size={16} />,
-                  category: 'Suggested',
-                  action: () => handleInitChart(sheet.id, activeCol),
-              });
-              
-              if (!sheet.pivotConfig && !sheet.sparklineConfig) {
-                  cmds.push({
-                      id: 'ctx-pivot',
-                      label: 'Create Pivot Table',
-                      subLabel: sheet.title,
-                      icon: <Table size={16} />,
-                      category: 'Suggested',
-                      action: () => handleInitPivot(sheet.id, activeCol),
-                  });
-                  cmds.push({
-                    id: 'ctx-sparkline',
-                    label: 'Create Sparklines',
-                    subLabel: sheet.title,
-                    icon: <TrendingUp size={16} />,
-                    category: 'Suggested',
-                    action: () => handleInitSparkline(sheet.id),
-                  });
-              }
-
-              // Filter Action
-              cmds.push({
-                id: 'ctx-filter',
-                label: sheet.showFilterPanel ? 'Hide Filters' : 'Filter Data',
-                subLabel: sheet.title,
-                icon: <Filter size={16} />,
-                category: 'Sheet',
-                action: () => {
-                    saveSnapshot();
-                    updateSheet(sheet.id, { ...sheet, showFilterPanel: !sheet.showFilterPanel });
-                }
-              });
-
-              // Cell Formatting Context & Sort
-              if (activeCol !== undefined) {
-                  const colLetter = getCellId(activeCol, -1).replace(/[0-9]/g, '');
-
-                  // Sort Actions
-                  cmds.push({
-                    id: 'ctx-sort-asc',
-                    label: `Sort A to Z (Column ${colLetter})`,
-                    category: 'Sheet',
-                    icon: <ArrowDownAZ size={16} />,
-                    action: () => {
-                        saveSnapshot();
-                        updateSheet(sheet.id, { ...sheet, sort: { columnId: colLetter, direction: 'asc' }});
-                    }
-                  });
-                  cmds.push({
-                    id: 'ctx-sort-desc',
-                    label: `Sort Z to A (Column ${colLetter})`,
-                    category: 'Sheet',
-                    icon: <ArrowUpAZ size={16} />,
-                    action: () => {
-                        saveSnapshot();
-                        updateSheet(sheet.id, { ...sheet, sort: { columnId: colLetter, direction: 'desc' }});
-                    }
-                  });
-
-                  // Format Actions
-                  const applyFormat = (type: 'number' | 'currency' | 'percent' | 'text' | 'date', visual?: 'bar' | 'heatmap', dateFormat?: string) => {
-                      saveSnapshot();
-                      const newCells = { ...sheet.cells };
-                      let hasChange = false;
-                      Object.keys(newCells).forEach(k => {
-                          const pos = parseCellId(k);
-                          if (pos && pos.col === activeCol) {
-                              const cell = newCells[k];
-                              const newFormat: CellFormat = { ...(cell.format || { type: 'text' }) };
-                              if (type === 'currency') { (newFormat as any).type = 'currency'; (newFormat as any).symbol = '$'; (newFormat as any).decimals = 2; }
-                              else if (type === 'percent') { (newFormat as any).type = 'percent'; (newFormat as any).decimals = 1; }
-                              else if (type === 'number') { (newFormat as any).type = 'number'; (newFormat as any).decimals = 2; }
-                              else if (type === 'date') { 
-                                  (newFormat as any).type = 'date'; 
-                                  (newFormat as any).dateFormat = dateFormat || 'YYYY-MM-DD'; 
-                              }
-                              else { (newFormat as any).type = 'text'; }
-                              
-                              if (visual) newFormat.visual = visual;
-
-                              newCells[k] = { ...cell, format: newFormat };
-                              hasChange = true;
-                          }
-                      });
-                      if (hasChange) updateSheet(sheet.id, { ...sheet, cells: newCells });
-                  };
-
-                  cmds.push({
-                      id: 'ctx-format-number',
-                      label: 'Format Column as Number',
-                      category: 'Cell',
-                      icon: <Hash size={16} />,
-                      action: () => applyFormat('number')
-                  });
-                  cmds.push({
-                      id: 'ctx-format-percent',
-                      label: 'Format Column as Percent',
-                      category: 'Cell',
-                      icon: <Percent size={16} />,
-                      action: () => applyFormat('percent')
-                  });
-                  cmds.push({
-                      id: 'ctx-format-currency',
-                      label: 'Format Column as Currency',
-                      category: 'Cell',
-                      icon: <AlignLeft size={16} />,
-                      action: () => applyFormat('currency')
-                  });
-                  cmds.push({
-                      id: 'ctx-format-date-iso',
-                      label: 'Format Column as Date (YYYY-MM-DD)',
-                      category: 'Cell',
-                      icon: <Calendar size={16} />,
-                      action: () => applyFormat('date', undefined, 'YYYY-MM-DD')
-                  });
-                  cmds.push({
-                      id: 'ctx-visual-bar',
-                      label: 'Add Data Bar to Column',
-                      category: 'Cell',
-                      icon: <AlignLeft size={16} />,
-                      action: () => applyFormat('number', 'bar')
-                  });
-                  cmds.push({
-                      id: 'ctx-visual-heatmap',
-                      label: 'Add Heatmap to Column',
-                      category: 'Cell',
-                      icon: <Palette size={16} />,
-                      action: () => applyFormat('number', 'heatmap')
-                  });
-              }
-
-              cmds.push({
-                  id: 'ctx-copy-image-sheet',
-                  label: 'Copy Sheet as Image',
-                  subLabel: sheet.title,
-                  icon: <ImageIcon size={16} />,
-                  category: 'Sheet',
-                  action: () => handleCopyNodeAsImage(sheet.id, 'sheet')
-              });
-
-              cmds.push({
-                  id: 'ctx-delete-sheet',
-                  label: 'Delete Sheet',
-                  subLabel: sheet.title,
-                  icon: <Trash2 size={16} />,
-                  category: 'Sheet',
-                  action: () => deleteSheet(sheet.id)
-              });
-          }
-      }
-
-      if (isChartSelected) {
-          const chartId = String(firstId);
-          cmds.push({
-              id: 'ctx-copy-image-chart',
-              label: 'Copy Chart as Image',
-              category: 'Chart',
-              icon: <ImageIcon size={16} />,
-              action: () => handleCopyNodeAsImage(chartId, 'chart')
-          });
-          cmds.push({
-              id: 'ctx-delete-chart',
-              label: 'Delete Chart',
-              icon: <Trash2 size={16} />,
-              category: 'Chart',
-              action: () => deleteChart(chartId)
-          });
-      }
-
-      if (isNoteSelected) {
-          const noteId = String(firstId);
-          cmds.push({
-              id: 'ctx-delete-note',
-              label: 'Delete Note',
-              icon: <Trash2 size={16} />,
-              category: 'Canvas',
-              action: () => deleteNote(noteId)
-          });
-      }
-
-      // -- NAVIGATION --
-      
-      sheets.forEach(s => {
-          cmds.push({
-              id: `nav-sheet-${s.id}`,
-              label: s.title,
-              category: 'Navigation',
-              icon: <Grid3X3 size={16} />,
-              action: () => {
-                  const viewportW = window.innerWidth;
-                  const viewportH = window.innerHeight;
-                  const sheetW = (s.size.width * CELL_WIDTH) + HEADER_COL_WIDTH;
-                  const sheetH = (s.size.height * CELL_HEIGHT) + HEADER_ROW_HEIGHT;
-                  
-                  const targetX = (viewportW / 2) - (s.position.x + sheetW / 2) * transform.scale;
-                  const targetY = (viewportH / 2) - (s.position.y + sheetH / 2) * transform.scale;
-
-                  flyTo({ x: targetX, y: targetY });
-                  
-                  // Reorder to bring to front
-                  setSheets(prev => [...prev.filter(item => item.id !== s.id), s]);
-                  setSelectedIds(new Set([s.id]));
-              }
-          });
-      });
-
-      charts.forEach(c => {
-        cmds.push({
-            id: `nav-chart-${c.id}`,
-            label: c.title,
-            category: 'Navigation',
-            icon: <BarChart3 size={16} />,
-            action: () => {
-                const viewportW = window.innerWidth;
-                const viewportH = window.innerHeight;
-                
-                const targetX = (viewportW / 2) - (c.position.x + c.size.width / 2) * transform.scale;
-                const targetY = (viewportH / 2) - (c.position.y + c.size.height / 2) * transform.scale;
-
-                flyTo({ x: targetX, y: targetY });
-
-                // Reorder to bring to front
-                setCharts(prev => [...prev.filter(item => item.id !== c.id), c]);
-                setSelectedIds(new Set([c.id]));
-            }
-        });
-      });
-
-      notes.forEach(n => {
-        const preview = n.content.replace(/<[^>]*>?/gm, '').substring(0, 20) || 'Empty Note';
-        cmds.push({
-            id: `nav-note-${n.id}`,
-            label: `Note: ${preview}`,
-            category: 'Navigation',
-            icon: <StickyNote size={16} />,
-            action: () => {
-                const viewportW = window.innerWidth;
-                const viewportH = window.innerHeight;
-
-                const targetX = (viewportW / 2) - (n.position.x + n.size.width / 2) * transform.scale;
-                const targetY = (viewportH / 2) - (n.position.y + n.size.height / 2) * transform.scale;
-
-                flyTo({ x: targetX, y: targetY });
-
-                // Reorder to bring to front
-                setNotes(prev => [...prev.filter(item => item.id !== n.id), n]);
-                setSelectedIds(new Set([n.id]));
-            }
-        });
-      });
-
-      // -- GLOBAL ACTIONS --
-
-      cmds.push({
-          id: 'add-table',
-          label: 'Add New Table',
-          category: 'Canvas',
-          icon: <Grid3X3 size={16} />,
-          action: addTable
-      });
-      cmds.push({
-          id: 'add-note',
-          label: 'Add Note',
-          category: 'Canvas',
-          icon: <StickyNote size={16} />,
-          action: addNote
-      });
-      cmds.push({
-        id: 'connect-data',
-        label: 'Connect Data Source...',
-        category: 'Canvas',
-        icon: <Database size={16} />,
-        action: () => setDataConnectorState({ isOpen: true })
-      });
-      cmds.push({
-        id: 'connect-data-gsheet',
-        label: 'Import from Google Sheets',
-        category: 'Data',
-        icon: <FileSpreadsheet size={16} />,
-        action: () => setDataConnectorState({ isOpen: true, initialType: 'google-sheets' })
-      });
-      cmds.push({
-        id: 'connect-data-analytics',
-        label: 'Import from Google Analytics',
-        category: 'Data',
-        icon: <BarChart2 size={16} />,
-        action: () => setDataConnectorState({ isOpen: true, initialType: 'google-analytics' })
-      });
-      cmds.push({
-        id: 'connect-data-csv',
-        label: 'Import from CSV URL',
-        category: 'Data',
-        icon: <Globe size={16} />,
-        action: () => setDataConnectorState({ isOpen: true, initialType: 'csv-url' })
-      });
-      cmds.push({
-          id: 'import-file',
-          label: 'Import File (CSV/Excel)',
-          category: 'Canvas',
-          icon: <Upload size={16} />,
-          action: () => fileInputRef.current?.click()
-      });
-      cmds.push({
-          id: 'toggle-theme',
-          label: `Switch to ${darkMode ? 'Light' : 'Dark'} Mode`,
-          category: 'Canvas',
-          icon: darkMode ? <Sun size={16} /> : <Moon size={16} />,
-          action: () => setDarkMode(!darkMode)
-      });
-      cmds.push({
-          id: 'toggle-mouse-mode',
-          label: toolMode === ToolMode.SELECT ? 'Switch to Pan Mode (Space)' : 'Switch to Select Mode (V)',
-          category: 'Canvas',
-          icon: toolMode === ToolMode.SELECT ? <Hand size={16} /> : <MousePointer2 size={16} />,
-          shortcut: toolMode === ToolMode.SELECT ? ['Space'] : ['V'],
-          action: () => setToolMode(toolMode === ToolMode.SELECT ? ToolMode.PAN : ToolMode.SELECT)
-      });
-
-      if (history.length > 0) {
-        cmds.push({
-            id: 'undo',
-            label: 'Undo',
-            shortcut: ['Ctrl', 'Z'],
-            category: 'Canvas',
-            icon: <Undo2 size={16} />,
-            action: undo
-        });
-      }
-      if (future.length > 0) {
-        cmds.push({
-            id: 'redo',
-            label: 'Redo',
-            shortcut: ['Ctrl', 'Shift', 'Z'],
-            category: 'Canvas',
-            icon: <Redo2 size={16} />,
-            action: redo
-        });
-      }
-
-      return cmds;
-  }, [sheets, charts, notes, transform, darkMode, history.length, future.length, undo, redo, selectedIds, flyTo, toolMode, defaultChartColor, customColors]);
 
   return (
     <div 
@@ -1440,10 +918,20 @@ const App: React.FC = () => {
 
         <Toast message={toast.message} isVisible={toast.visible} onClose={() => setToast({ ...toast, visible: false })} />
 
-        <CommandBar 
+        <GlobalCommandBar 
             isOpen={isCommandBarOpen} 
             onClose={() => setIsCommandBarOpen(false)} 
-            commands={isCommandBarOpen ? getCommands() : []}
+            darkMode={darkMode}
+            setDarkMode={setDarkMode}
+            activeSelection={activeSelection}
+            onAddTable={addTable}
+            onAddNote={handleAddNote}
+            onImport={() => fileInputRef.current?.click()}
+            onConnectData={() => setDataConnectorState({ isOpen: true })}
+            onCopyImage={handleCopySelectionAsImage}
+            onInitChart={handleInitChart}
+            onInitPivot={handleInitPivot}
+            onInitSparkline={handleInitSparkline}
         />
         
         {dataConnectorState.isOpen && (
@@ -1455,88 +943,53 @@ const App: React.FC = () => {
         )}
 
         <Canvas 
-            transform={transform} 
-            setTransform={setTransform} 
             darkMode={darkMode} 
-            toolMode={toolMode}
             onDoubleClick={handleCanvasDoubleClick}
             onMouseDown={handleCanvasMouseDown}
         >
-          {sheets.map(sheet => {
-            // Find source sheet for pivots or sparklines
-            let sourceSheet: SheetData | undefined;
-            if (sheet.pivotConfig) sourceSheet = sheets.find(s => s.id === sheet.pivotConfig?.sourceSheetId);
-            else if (sheet.sparklineConfig) sourceSheet = sheets.find(s => s.id === sheet.sparklineConfig?.sourceSheetId);
-
-            return (
-                <SheetNode
-                  key={sheet.id}
-                  data={sheet}
-                  sourceSheet={sourceSheet}
-                  selected={selectedIds.has(sheet.id)}
-                  scale={transform.scale}
-                  onUpdate={updateSheet}
-                  onDelete={deleteSheet}
-                  onMouseDown={(e) => handleItemMouseDown(e, sheet.id, 'sheet')}
-                  onSelect={() => { if (!selectedIds.has(sheet.id)) setSelectedIds(new Set([sheet.id])); }}
-                  onAddChart={handleInitChart}
-                  onAddPivot={handleInitPivot}
-                  onAddSparkline={handleInitSparkline}
-                  onToast={showToast}
-                  onHistorySave={saveSnapshot}
-                  isPendingDelete={selectedIds.has(sheet.id) && deleteConfirmPending}
-                  onSelectionContextChange={(ctx) => activeSelectionRef.current = ctx}
-                />
-            );
-          })}
-          {charts.map(chart => (
-              <ChartNode 
-                  key={chart.id}
-                  data={chart}
-                  sourceSheet={sheets.find(s => s.id === chart.sourceSheetId)}
-                  scale={transform.scale}
-                  selected={selectedIds.has(chart.id)}
-                  onUpdate={updateChart}
-                  onDelete={deleteChart}
-                  onMouseDown={(e) => handleItemMouseDown(e, chart.id, 'chart')}
-                  darkMode={darkMode}
-                  onHistorySave={saveSnapshot}
-                  isPendingDelete={selectedIds.has(chart.id) && deleteConfirmPending}
-                  palette={chartPalette}
-                  onAddCustomColor={handleAddColor}
+          {sheetIds.map(id => (
+              <SheetNode
+                key={id}
+                id={id}
+                onAddChart={handleInitChart}
+                onAddPivot={handleInitPivot}
+                onAddSparkline={handleInitSparkline}
+                onToast={showToast}
+                isPendingDelete={selectedIds.has(id) && deleteConfirmPending}
+                onSelectionContextChange={setActiveSelection}
+                onMouseDown={(e) => handleItemMouseDown(e, id, 'sheet')}
               />
           ))}
-          {notes.map(note => (
-              <NoteNode
-                  key={note.id}
-                  data={note}
-                  scale={transform.scale}
-                  selected={selectedIds.has(note.id)}
-                  onUpdate={updateNote}
-                  onDelete={deleteNote}
-                  onMouseDown={(e) => handleItemMouseDown(e, note.id, 'note')}
+          {chartIds.map(id => (
+              <ChartNode 
+                  key={id}
+                  id={id}
                   darkMode={darkMode}
-                  initialEditing={note.id === editingNoteId}
-                  onHistorySave={saveSnapshot}
-                  isPendingDelete={selectedIds.has(note.id) && deleteConfirmPending}
+                  isPendingDelete={selectedIds.has(id) && deleteConfirmPending}
+                  palette={chartPalette}
+                  onAddCustomColor={handleAddColor}
+                  onMouseDown={(e) => handleItemMouseDown(e, id, 'chart')}
+              />
+          ))}
+          {noteIds.map(id => (
+              <NoteNode
+                  key={id}
+                  id={id}
+                  darkMode={darkMode}
+                  initialEditing={id === editingNoteId}
+                  isPendingDelete={selectedIds.has(id) && deleteConfirmPending}
+                  onMouseDown={(e) => handleItemMouseDown(e, id, 'note')}
               />
           ))}
         </Canvas>
         
         <Toolbar 
             onAddTable={addTable}
-            onAddNote={addNote}
+            onAddNote={handleAddNote}
             onImport={() => fileInputRef.current?.click()}
             onConnectData={() => setDataConnectorState({ isOpen: true })}
             darkMode={darkMode}
             toggleDarkMode={() => setDarkMode(!darkMode)}
-            saveStatus={saveStatus}
-            onUndo={undo}
-            onRedo={redo}
-            canUndo={history.length > 0}
-            canRedo={future.length > 0}
-            toolMode={toolMode}
-            setToolMode={setToolMode}
             onOpenCommandBar={() => setIsCommandBarOpen(true)}
             hidden={isCommandBarOpen}
         />

@@ -129,8 +129,9 @@ export enum ToolMode {
   PAN = 'PAN',
 }
 
-export type ChartType = 'line' | 'bar' | 'pie' | 'area';
+export type ChartType = 'line' | 'bar' | 'pie' | 'area' | 'scatter' | 'treemap';
 export type ChartMode = 'metrics' | 'group';
+export type TimeGranularity = 'day' | 'week' | 'month' | 'quarter' | 'year';
 
 export interface ChartConfig {
   mode?: ChartMode; // Default to 'metrics' if undefined
@@ -144,6 +145,7 @@ export interface ChartConfig {
   seriesGroupCol?: string; // Series Split in Group Mode
   valueCol?: string;
   operation?: PivotOperation;
+  timeGranularity?: TimeGranularity; // If groupCol is a date
 
   color: string;
   highlightIndex: number; // -1 for none
@@ -187,7 +189,7 @@ export interface Command {
   subLabel?: string;
   icon?: React.ReactNode;
   shortcut?: string[]; 
-  category: 'Suggested' | 'Navigation' | 'Sheet' | 'Cell' | 'Canvas' | 'Chart' | 'Calculator' | 'Data';
+  category: 'Suggested' | 'Navigation' | 'Sheet' | 'Cell' | 'Canvas' | 'Chart' | 'Calculator' | 'Data' | 'Go to';
   action: () => void;
   keywords?: string[]; // For better search matching
 }

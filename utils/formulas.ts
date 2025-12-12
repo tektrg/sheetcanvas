@@ -1,3 +1,4 @@
+
 import { CellData, SheetData } from '../types';
 import { Tokenizer, Parser, evaluateAST } from './formulaEngine';
 
@@ -40,7 +41,9 @@ export const evaluateFormula = (raw: string, getValue: (id: string) => any): str
   }
 
   try {
-    const formulaBody = raw.substring(1).toUpperCase();
+    // We do NOT uppercase the whole body here, to preserve string literal case (e.g. ="Yes")
+    // The Tokenizer handles case insensitivity for Keywords/Cell IDs.
+    const formulaBody = raw.substring(1);
     const tokens = new Tokenizer(formulaBody).getAllTokens();
     const parser = new Parser(tokens);
     const ast = parser.parse();
@@ -54,13 +57,50 @@ export const evaluateFormula = (raw: string, getValue: (id: string) => any): str
     return result;
 
   } catch (e) {
-    console.warn("Eval error", e);
+    // console.warn("Eval error", e);
     return "#ERROR";
   }
 };
 
+export const extractCellReferences = (raw: string): string[] => {
+  if (!raw || !raw.startsWith('=')) return [];
+  
+  try {
+      const tokens = new Tokenizer(raw.substring(1)).getAllTokens();
+      const refs = new Set<string>();
+      
+      for(let i=0; i<tokens.length; i++) {
+          const t = tokens[i];
+          if (t.type === 'CELL') {
+              // Check for range A1:B2
+              if (tokens[i+1]?.type === 'COLON' && tokens[i+2]?.type === 'CELL') {
+                  const start = parseCellId(t.value);
+                  const end = parseCellId(tokens[i+2].value);
+                  if (start && end) {
+                      const minCol = Math.min(start.col, end.col);
+                      const maxCol = Math.max(start.col, end.col);
+                      const minRow = Math.min(start.row, end.row);
+                      const maxRow = Math.max(start.row, end.row);
+                      for(let c=minCol; c<=maxCol; c++) {
+                          for(let r=minRow; r<=maxRow; r++) {
+                              refs.add(getCellId(c, r));
+                          }
+                      }
+                  }
+                  i += 2; // Skip colon and second cell
+              } else {
+                  refs.add(t.value);
+              }
+          }
+      }
+      return Array.from(refs);
+  } catch (e) {
+      return [];
+  }
+};
+
 export const computeSheet = (sheet: SheetData): SheetData => {
-  const cells = { ...sheet.cells };
+  const cells = sheet.cells; // Don't spread yet, we want to check refs
   const computedCache: Record<string, number | string | null> = {};
   const visiting = new Set<string>();
 
@@ -100,12 +140,28 @@ export const computeSheet = (sheet: SheetData): SheetData => {
   };
 
   const newCells: Record<string, CellData> = {};
+  let hasChanges = false;
+
   Object.keys(cells).forEach(key => {
-     newCells[key] = { 
-         ...cells[key], 
-         value: getVal(key) 
-     };
+     const newValue = getVal(key);
+     const oldCell = cells[key];
+
+     // Granular Update Optimization:
+     // If the value hasn't changed, reuse the old object reference.
+     // This allows React.memo to skip re-rendering this cell.
+     if (oldCell.value === newValue) {
+        newCells[key] = oldCell;
+     } else {
+        newCells[key] = { 
+            ...oldCell, 
+            value: newValue 
+        };
+        hasChanges = true;
+     }
   });
   
+  // If nothing changed (unlikely given we usually call this after an edit), return original sheet
+  if (!hasChanges) return sheet;
+
   return { ...sheet, cells: newCells };
 };

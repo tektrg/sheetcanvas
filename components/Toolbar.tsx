@@ -2,21 +2,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Grid3X3, Moon, Sun, Loader2, StickyNote, Undo2, Redo2, Upload, MousePointer2, Hand, MoreHorizontal, Keyboard, Info, Search, Database } from 'lucide-react';
 import { ToolMode } from '../types';
+import { useStore } from '../store';
 
 interface ToolbarProps {
   onAddTable: () => void;
   onAddNote: () => void;
   onImport: () => void;
-  onConnectData: () => void; // New Prop
+  onConnectData: () => void;
   darkMode: boolean;
   toggleDarkMode: () => void;
-  saveStatus: 'saved' | 'saving' | 'error' | 'idle';
-  onUndo: () => void;
-  onRedo: () => void;
-  canUndo: boolean;
-  canRedo: boolean;
-  toolMode: ToolMode;
-  setToolMode: (mode: ToolMode) => void;
   onOpenCommandBar: () => void;
   hidden?: boolean;
 }
@@ -57,16 +51,16 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onConnectData,
   darkMode, 
   toggleDarkMode, 
-  saveStatus,
-  onUndo,
-  onRedo,
-  canUndo,
-  canRedo,
-  toolMode,
-  setToolMode,
   onOpenCommandBar,
   hidden
 }) => {
+  const toolMode = useStore(state => state.toolMode);
+  const setToolMode = useStore(state => state.setToolMode);
+  const undo = useStore(state => state.undo);
+  const redo = useStore(state => state.redo);
+  const canUndo = useStore(state => state.history.length > 0);
+  const canRedo = useStore(state => state.future.length > 0);
+
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const moreButtonRef = useRef<HTMLButtonElement>(null);
@@ -103,8 +97,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       <div className="flex items-center gap-1 p-1.5 bg-white/90 dark:bg-neutral-900/90 backdrop-blur-xl shadow-xl border border-neutral-200/50 dark:border-neutral-700/50 rounded-full transition-all">
         
         {/* Undo/Redo Group */}
-        <ToolbarButton onClick={onUndo} icon={Undo2} tooltip="Undo (Ctrl+Z)" disabled={!canUndo} />
-        <ToolbarButton onClick={onRedo} icon={Redo2} tooltip="Redo (Ctrl+Shift+Z)" disabled={!canRedo} />
+        <ToolbarButton onClick={undo} icon={Undo2} tooltip="Undo (Ctrl+Z)" disabled={!canUndo} />
+        <ToolbarButton onClick={redo} icon={Redo2} tooltip="Redo (Ctrl+Shift+Z)" disabled={!canRedo} />
 
         <div className="h-4 w-px bg-neutral-200 dark:bg-neutral-700 mx-1" />
 
@@ -145,25 +139,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                     className="absolute bottom-full right-0 mb-4 w-72 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-xl border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl p-4 flex flex-col gap-4 animate-scale-in origin-bottom-right z-50 cursor-default"
                  >
                     
-                    {/* Save Status */}
-                    <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">Status</span>
-                        <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700">
-                           {saveStatus === 'saving' ? (
-                                <Loader2 size={12} className="animate-spin text-neutral-500" />
-                           ) : saveStatus === 'error' ? (
-                                <div className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]" />
-                           ) : (
-                                <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]" />
-                           )}
-                           <span className="text-[10px] font-medium text-neutral-600 dark:text-neutral-300">
-                               {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'error' ? 'Error' : 'Saved'}
-                           </span>
-                        </div>
-                    </div>
-
-                    <div className="h-px bg-neutral-100 dark:bg-neutral-800" />
-
                     {/* Theme */}
                     <div className="flex items-center justify-between">
                          <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-300">

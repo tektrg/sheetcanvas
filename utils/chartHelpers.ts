@@ -1,6 +1,8 @@
 
 
-import { SheetData, CellData, ChartConfig, PivotOperation } from '../types';
+
+
+import { SheetData, CellData, ChartConfig, PivotOperation, TimeGranularity } from '../types';
 import { parseCellId, getCellId } from './formulas';
 import { getFilteredRows } from './dataAnalysis';
 import { formatValue } from './formatting';
@@ -46,6 +48,44 @@ const aggregate = (values: number[], op: PivotOperation): number => {
     }
 };
 
+const formatDateBucket = (timestamp: number, granularity: TimeGranularity): string => {
+    const d = new Date(timestamp);
+    if (isNaN(d.getTime())) return 'Invalid Date';
+
+    switch (granularity) {
+        case 'day': 
+            return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        case 'week': {
+            // ISO week approximation
+            const tempD = new Date(d.valueOf());
+            const dayNum = (d.getDay() + 6) % 7;
+            tempD.setDate(tempD.getDate() - dayNum + 3);
+            const firstThursday = tempD.valueOf();
+            tempD.setMonth(0, 1);
+            if (tempD.getDay() !== 4) {
+                tempD.setMonth(0, 1 + ((4 - tempD.getDay()) + 7) % 7);
+            }
+            const weekNum = 1 + Math.ceil((firstThursday - tempD.valueOf()) / 604800000);
+            return `W${weekNum} ${d.getFullYear()}`;
+        }
+        case 'month': 
+            return d.toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
+        case 'quarter': 
+            return `Q${Math.floor(d.getMonth() / 3) + 1} ${d.getFullYear()}`;
+        case 'year': 
+            return String(d.getFullYear());
+        default: 
+            return d.toLocaleDateString();
+    }
+};
+
+const parseDateValue = (val: any): number | null => {
+    if (val instanceof Date) return val.getTime();
+    if (typeof val === 'number') return val;
+    const d = Date.parse(String(val));
+    return isNaN(d) ? null : d;
+};
+
 export const extractChartData = (sheet: SheetData, config: ChartConfig) => {
   if (!sheet) return [];
 
@@ -76,8 +116,14 @@ export const extractChartData = (sheet: SheetData, config: ChartConfig) => {
 
       if (groupColIdx === undefined || valueColIdx === undefined) return [];
 
+      // If we have granularity, we need to handle sorting specially (by timestamp, not string label)
+      const isDateGrouping = !!config.timeGranularity;
+      
       // Map<GroupKey, Map<SeriesKey, number[]>>
+      // If date grouping, GroupKey is the formatted string, but we track order separately
       const dataMap = new Map<string, Map<string, number[]>>();
+      const groupSortMap = new Map<string, number>(); // Label -> Timestamp/Order
+
       // If no series split, we use a default series key
       const DEFAULT_SERIES_KEY = 'value_0';
 
@@ -86,10 +132,35 @@ export const extractChartData = (sheet: SheetData, config: ChartConfig) => {
           const groupCell = sheet.cells[groupKeyId];
           
           if (groupCell?.value === null || groupCell?.value === undefined) return;
-          const groupKey = String(groupCell.value);
+          
+          let groupKey = String(groupCell.value);
+          let sortValue: number | string = groupKey;
 
           // Check for Pivot Table Grand Total and exclude it
           if (sheet.pivotConfig && groupKey === 'Grand Total') return;
+
+          if (isDateGrouping && config.timeGranularity) {
+              const ts = parseDateValue(groupCell.value);
+              if (ts !== null) {
+                  groupKey = formatDateBucket(ts, config.timeGranularity);
+                  sortValue = ts;
+                  
+                  // For binning, we want to align the sortValue to the bucket start to ensure correct ordering
+                  // E.g. all dates in Jan 2024 should sort roughly same, but we can just use the first seen TS 
+                  // or normalize. For simplicity, we keep first seen TS for this bucket or update if smaller?
+                  // Better: keep track of the earliest timestamp for a formatted key.
+                  if (!groupSortMap.has(groupKey) || ts < groupSortMap.get(groupKey)!) {
+                      groupSortMap.set(groupKey, ts);
+                  }
+              } else {
+                  // Failed to parse date, treat as string "Invalid"
+                  groupKey = 'Invalid Date';
+                  sortValue = 0;
+              }
+          } else {
+              // Regular grouping, use string sort
+              groupSortMap.set(groupKey, 0); // Not used for date sorting
+          }
 
           const valId = getCellId(valueColIdx, r);
           const valCell = sheet.cells[valId];
@@ -105,7 +176,6 @@ export const extractChartData = (sheet: SheetData, config: ChartConfig) => {
           let seriesKey = DEFAULT_SERIES_KEY;
           if (seriesColIdx !== undefined) {
               const seriesCell = sheet.cells[getCellId(seriesColIdx, r)];
-              // Handle empty series explicitly or just stringify
               seriesKey = String(seriesCell?.value ?? '(Empty)');
           }
 
@@ -117,12 +187,31 @@ export const extractChartData = (sheet: SheetData, config: ChartConfig) => {
       });
 
       const chartData: any[] = [];
-      const sortedGroupKeys = Array.from(dataMap.keys()).sort();
+      let sortedGroupKeys: string[];
+
+      if (isDateGrouping) {
+          sortedGroupKeys = Array.from(dataMap.keys()).sort((a, b) => {
+              const tsA = groupSortMap.get(a) || 0;
+              const tsB = groupSortMap.get(b) || 0;
+              return tsA - tsB;
+          });
+      } else {
+          sortedGroupKeys = Array.from(dataMap.keys()).sort();
+      }
 
       sortedGroupKeys.forEach(key => {
           const seriesMap = dataMap.get(key)!;
           const dataPoint: any = { name: key };
           
+          // Try to capture numeric x_raw from the key if it looks like a number
+          const numKey = parseFloat(key);
+          if (!isNaN(numKey)) {
+              dataPoint.x_raw = numKey;
+          } else if (groupSortMap.has(key)) {
+              // Use timestamp as raw X for time grouping
+              dataPoint.x_raw = groupSortMap.get(key);
+          }
+
           seriesMap.forEach((values, sKey) => {
               dataPoint[sKey] = aggregate(values, op);
           });
@@ -147,8 +236,16 @@ export const extractChartData = (sheet: SheetData, config: ChartConfig) => {
       if (!labelCell?.value && String(labelCell?.value) !== '0') return; 
       if (sheet.pivotConfig && String(labelCell.value) === 'Grand Total') return;
 
+      // Try to parse raw numeric X value
+      let rawX = labelCell?.value;
+      if (typeof rawX !== 'number') {
+          const num = parseFloat(String(rawX));
+          if (!isNaN(num)) rawX = num;
+      }
+
       const dataPoint: any = {
           name: formatValue(labelCell?.value, labelCell?.format),
+          x_raw: rawX
       };
 
       dataColIndices.forEach((colIdx, i) => {

@@ -1,8 +1,11 @@
+
+
+
 import React, { useState, useMemo } from 'react';
 import { SheetData, ChartType, ChartConfig } from '../types';
 import { getSheetHeaders } from '../utils/chartHelpers';
 import { CHART_COLORS } from '../constants';
-import { X, BarChart3, LineChart, PieChart } from 'lucide-react';
+import { X, BarChart3, LineChart, PieChart, AreaChart, ScatterChart, LayoutGrid } from 'lucide-react';
 
 interface ChartCreationDialogProps {
   sheet: SheetData;
@@ -66,11 +69,14 @@ export const ChartCreationDialog: React.FC<ChartCreationDialogProps> = ({
           {/* Chart Type Selection */}
           <div>
             <label className="block text-sm font-medium text-neutral-600 dark:text-neutral-400 mb-2">Chart Type</label>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
               {[
                 { id: 'bar', label: 'Bar', icon: BarChart3 },
                 { id: 'line', label: 'Line', icon: LineChart },
+                { id: 'area', label: 'Area', icon: AreaChart },
                 { id: 'pie', label: 'Pie', icon: PieChart },
+                { id: 'scatter', label: 'Scatter', icon: ScatterChart },
+                { id: 'treemap', label: 'Treemap', icon: LayoutGrid },
               ].map(item => (
                 <button
                   key={item.id}
@@ -81,8 +87,8 @@ export const ChartCreationDialog: React.FC<ChartCreationDialogProps> = ({
                       : 'border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800'
                     }`}
                 >
-                  <item.icon size={24} />
-                  <span className="text-xs font-medium">{item.label}</span>
+                  <item.icon size={20} />
+                  <span className="text-[10px] font-medium">{item.label}</span>
                 </button>
               ))}
             </div>

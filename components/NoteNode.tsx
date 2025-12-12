@@ -1,30 +1,42 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { NoteData } from '../types';
 import { GripVertical, Trash2, Bold, Italic, Underline, List, ListOrdered } from 'lucide-react';
+import { useStore } from '../store';
 
 interface NoteNodeProps {
-  data: NoteData;
-  scale: number;
-  selected: boolean;
-  onUpdate: (id: string, newData: NoteData) => void;
-  onDelete: (id: string) => void;
-  onMouseDown: (e: React.MouseEvent) => void;
+  id: string;
   darkMode?: boolean;
   initialEditing?: boolean;
-  onHistorySave?: () => void;
   isPendingDelete?: boolean;
+  onMouseDown: (e: React.MouseEvent) => void;
 }
 
-export const NoteNode: React.FC<NoteNodeProps> = ({ data, scale, selected, onUpdate, onDelete, onMouseDown, darkMode, initialEditing, onHistorySave, isPendingDelete }) => {
+export const NoteNode: React.FC<NoteNodeProps> = ({ id, darkMode, initialEditing, isPendingDelete, onMouseDown }) => {
+  const data = useStore(state => state.notes[id]);
+  const selected = useStore(state => state.selectedIds.has(id));
+  const scale = useStore(state => state.transform.scale);
+  const updateNote = useStore(state => state.updateNote);
+  const deleteNote = useStore(state => state.deleteNote);
+  const saveSnapshot = useStore(state => state.saveSnapshot);
+
   const [isEditing, setIsEditing] = useState(initialEditing || false);
   const [resizing, setResizing] = useState<{ startX: number; startY: number; startW: number; startH: number } | null>(null);
   
+  const [displayContent, setDisplayContent] = useState(data?.content || '');
+
   const editorRef = useRef<HTMLDivElement>(null);
+
+  if (!data) return null;
+
+  useEffect(() => {
+      setDisplayContent(data.content);
+  }, [data.content]);
 
   useEffect(() => {
     if (isEditing && editorRef.current) {
-      if (editorRef.current.innerHTML !== data.content) {
-         editorRef.current.innerHTML = data.content;
+      if (editorRef.current.innerHTML !== displayContent) {
+         editorRef.current.innerHTML = displayContent;
       }
       editorRef.current.focus();
       
@@ -37,7 +49,7 @@ export const NoteNode: React.FC<NoteNodeProps> = ({ data, scale, selected, onUpd
         sel.addRange(range);
       }
     }
-  }, [isEditing]);
+  }, [isEditing, displayContent]);
 
   useEffect(() => {
     if (!resizing) return;
@@ -45,8 +57,7 @@ export const NoteNode: React.FC<NoteNodeProps> = ({ data, scale, selected, onUpd
       const dx = (e.clientX - resizing.startX) / scale;
       const dy = (e.clientY - resizing.startY) / scale;
       
-      onUpdate(data.id, {
-        ...data,
+      updateNote(data.id, {
         size: {
           width: Math.max(100, resizing.startW + dx),
           height: Math.max(48, resizing.startH + dy)
@@ -60,12 +71,12 @@ export const NoteNode: React.FC<NoteNodeProps> = ({ data, scale, selected, onUpd
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [resizing, scale, data, onUpdate]);
+  }, [resizing, scale, data.id, updateNote]);
 
   const handleResizeStart = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    if (onHistorySave) onHistorySave();
+    saveSnapshot();
     setResizing({
       startX: e.clientX,
       startY: e.clientY,
@@ -83,9 +94,11 @@ export const NoteNode: React.FC<NoteNodeProps> = ({ data, scale, selected, onUpd
 
   const handleBlur = () => {
       if (editorRef.current) {
-          if (editorRef.current.innerHTML !== data.content) {
-              if (onHistorySave) onHistorySave();
-              onUpdate(data.id, { ...data, content: editorRef.current.innerHTML });
+          const currentHtml = editorRef.current.innerHTML;
+          if (currentHtml !== data.content) {
+              saveSnapshot();
+              setDisplayContent(currentHtml);
+              updateNote(data.id, { content: currentHtml });
           }
       }
       setIsEditing(false);
@@ -141,7 +154,7 @@ export const NoteNode: React.FC<NoteNodeProps> = ({ data, scale, selected, onUpd
 
          {!isEditing && (
              <button 
-                onClick={() => onDelete(data.id)}
+                onClick={() => deleteNote(data.id)}
                 className="p-1.5 text-neutral-300 hover:text-red-500 transition-colors"
                 title="Delete"
              >
@@ -157,19 +170,17 @@ export const NoteNode: React.FC<NoteNodeProps> = ({ data, scale, selected, onUpd
             contentEditable={isEditing}
             suppressContentEditableWarning
             onBlur={handleBlur}
-            dangerouslySetInnerHTML={{ __html: data.content }}
+            dangerouslySetInnerHTML={!isEditing ? { __html: displayContent } : undefined}
             onDoubleClick={() => setIsEditing(true)}
             style={{ 
                 overflowWrap: 'break-word',
-                backgroundColor: 'transparent' // Background handled by parent or canvas usually, or we can add bg here
+                backgroundColor: 'transparent'
             }}
          />
          
-         {/* Note Background Card effect if desired, usually notes are just text in Notion but sometimes Callouts. 
-             For this app, let's keep it clean but add a hover border? */}
          <div className={`absolute inset-0 border border-transparent rounded-lg pointer-events-none -z-10 transition-colors ${!selected ? 'group-hover:border-neutral-200 dark:group-hover:border-neutral-700' : ''}`} />
          
-         {(!data.content || data.content === '<br>' || data.content === '') && !isEditing && (
+         {(!displayContent || displayContent === '<br>' || displayContent === '') && !isEditing && (
              <div className="absolute top-3 left-3 opacity-40 italic pointer-events-none text-sm text-neutral-500 select-none">
                  Type something...
              </div>

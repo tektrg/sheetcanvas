@@ -1,8 +1,6 @@
-
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
-  ComposedChart, Line, Bar, PieChart, Pie, Cell, 
+  ComposedChart, Line, Bar, Area, PieChart, Pie, Cell, Scatter, Treemap,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList
 } from 'recharts';
 import { ChartData, SheetData, ChartType, ChartConfig, CellFormat } from '../types';
@@ -13,32 +11,93 @@ import { CHART_COLORS } from '../constants';
 import { GripHorizontal, Trash2, Settings2, X, Download, Video, Play, Copy, Image as ImageIcon, Loader2 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { ChartConfigPanel } from './ChartConfigPanel';
+import { useStore } from '../store';
 
 interface ChartNodeProps {
-  data: ChartData;
-  sourceSheet?: SheetData;
-  scale: number;
-  selected: boolean;
-  onUpdate: (id: string, newData: ChartData) => void;
-  onDelete: (id: string) => void;
-  onMouseDown: (e: React.MouseEvent) => void;
+  id: string;
   darkMode?: boolean;
-  onHistorySave?: () => void;
   isPendingDelete?: boolean;
   palette?: string[];
   onAddCustomColor?: (color: string) => void;
+  onMouseDown: (e: React.MouseEvent) => void;
 }
 
-export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, selected, onUpdate, onDelete, onMouseDown, darkMode, onHistorySave, isPendingDelete, palette, onAddCustomColor }) => {
+const getFaviconUrl = (label: string) => {
+    if (!label || typeof label !== 'string') return null;
+    const cleanLabel = label.trim();
+    if (cleanLabel.includes(' ')) return null; 
+    
+    // Check for domain-like structure
+    // Must contain a dot, no spaces, and look like a domain/url
+    // Exclude simple numbers that might look like 1.2
+    if (/^[\d.,-]+$/.test(cleanLabel)) return null;
+
+    const isUrl = /^(https?:\/\/)?([a-z0-9-]+\.)+[a-z]{2,}(\/.*)?$/i.test(cleanLabel);
+    
+    if (isUrl) {
+        let domain = cleanLabel.replace(/^(https?:\/\/)/, '').split('/')[0];
+        return `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
+    }
+    return null;
+};
+
+const CustomXAxisTick = ({ x, y, payload, fill, chartId }: any) => {
+    const favicon = getFaviconUrl(payload.value);
+    const clipId = `clip-axis-${chartId}-${payload.index}`;
+
+    return (
+        <g transform={`translate(${x},${y})`}>
+            {favicon ? (
+                <>
+                    <defs>
+                        <clipPath id={clipId}>
+                            <rect x={-8} y={8} width={16} height={16} rx={3} ry={3} />
+                        </clipPath>
+                    </defs>
+                    <image 
+                        x={-8} 
+                        y={8} 
+                        href={favicon} 
+                        width={16} 
+                        height={16} 
+                        clipPath={`url(#${clipId})`}
+                        style={{ pointerEvents: 'none' }}
+                    />
+                </>
+            ) : (
+                <text 
+                    x={0} 
+                    y={0} 
+                    dy={10} 
+                    textAnchor="middle" 
+                    fill={fill} 
+                    fontSize={11}
+                >
+                    {payload.value}
+                </text>
+            )}
+        </g>
+    );
+};
+
+export const ChartNode: React.FC<ChartNodeProps> = ({ id, darkMode, isPendingDelete, palette, onAddCustomColor, onMouseDown }) => {
+  const data = useStore(state => state.charts[id]);
+  const selected = useStore(state => state.selectedIds.has(id));
+  const scale = useStore(state => state.transform.scale);
+  const updateChart = useStore(state => state.updateChart);
+  const deleteChart = useStore(state => state.deleteChart);
+  const saveSnapshot = useStore(state => state.saveSnapshot);
+  
+  const sourceSheet = useStore(state => data ? state.sheets[data.sourceSheetId] : undefined);
+
   const [showConfig, setShowConfig] = useState(false);
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [overrideData, setOverrideData] = useState<any[] | null>(null);
   
-  const isSetup = data.setupRequired;
   // Local state for setup mode
-  const [tempConfig, setTempConfig] = useState<ChartConfig>(data.config);
+  const [tempConfig, setTempConfig] = useState<ChartConfig>(data?.config || {} as any);
 
   const chartAreaRef = useRef<HTMLDivElement>(null);
   const settingsPanelRef = useRef<HTMLDivElement>(null);
@@ -47,7 +106,9 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, 
   const [playbackKey, setPlaybackKey] = useState(0); 
   const [resizing, setResizing] = useState<{ startX: number; startY: number; startW: number; startH: number } | null>(null);
 
-  // Hook to stop scroll propagation natively
+  if (!data) return null;
+  const isSetup = data.setupRequired;
+
   useEffect(() => {
     const handleWheel = (e: WheelEvent) => {
         e.stopPropagation();
@@ -71,17 +132,15 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, 
 
   const processedData = useMemo(() => {
     if (!sourceSheet) return [];
-    // Pass the full config to extractChartData, so it can handle grouping vs metrics mode
     return extractChartData(sourceSheet, data.config);
   }, [sourceSheet, data.config]);
 
-  // Derived Series for Split By Mode
   const dynamicSeriesKeys = useMemo(() => {
       if (data.config.mode === 'group' && data.config.seriesGroupCol && processedData.length > 0) {
           const keys = new Set<string>();
           processedData.forEach((row: any) => {
               Object.keys(row).forEach(k => {
-                  if (k !== 'name') keys.add(k);
+                  if (k !== 'name' && k !== 'x_raw') keys.add(k);
               });
           });
           return Array.from(keys).sort();
@@ -92,9 +151,8 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, 
   const headers = useMemo(() => sourceSheet ? getSheetHeaders(sourceSheet) : [], [sourceSheet]);
 
   const getSeriesLabel = (colId: string) => {
-    // In group mode with split, the key itself is the label
     if (data.config.mode === 'group') {
-        if (data.config.seriesGroupCol) return colId; // dynamic key IS the label
+        if (data.config.seriesGroupCol) return colId; 
         return `${data.config.operation || 'SUM'} of ${headers.find(h => h.id === data.config.valueCol)?.label || data.config.valueCol}`;
     }
     return headers.find(h => h.id === colId)?.label || `Column ${colId}`;
@@ -104,14 +162,12 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, 
       if (!sourceSheet) return undefined;
       const colIdx = headers.find(h => h.id === colId)?.index;
       if (colIdx === undefined) return undefined;
-      // Get format from first data row (row 1)
       const cellId = getCellId(colIdx, 1);
       return sourceSheet.cells[cellId]?.format;
   };
 
   const getAxisFormat = (axisId: 'left' | 'right') => {
       if (data.config.mode === 'group') {
-          // In group mode, use the format of the value column for the left axis
           if (axisId === 'left' && data.config.valueCol) {
                return getFormatForSeries(data.config.valueCol);
           }
@@ -127,16 +183,15 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, 
       return getFormatForSeries(axisCols[0]);
   };
 
-  const axisFormatLeft = useMemo(() => getAxisFormat('left'), [data.config, sourceSheet]);
-  const axisFormatRight = useMemo(() => getAxisFormat('right'), [data.config, sourceSheet]);
+  const axisFormatLeft = getAxisFormat('left');
+  const axisFormatRight = getAxisFormat('right');
 
   const tooltipFormatter = (value: number, name: string, item: any) => {
-    // Recharts passes dataKey in item.dataKey (e.g., "value_0" or "North")
     let format;
     if (data.config.mode === 'group') {
-         // In group mode, all values come from the same value column
          if (data.config.valueCol) format = getFormatForSeries(data.config.valueCol);
     } else {
+         // Try to find the series column based on dataKey which is usually value_Index
          if (typeof item.dataKey === 'string' && item.dataKey.startsWith('value_')) {
              const idx = parseInt(item.dataKey.split('_')[1], 10);
              const colId = data.config.dataColumns[idx];
@@ -146,19 +201,25 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, 
     return [formatValue(value, format), name];
   };
 
+  const tooltipLabelFormatter = (label: any, payload: any[]) => {
+      if (payload && payload.length > 0 && payload[0].payload && payload[0].payload.name) {
+          return payload[0].payload.name;
+      }
+      return label;
+  };
+
   const handleConfigChange = (newConfig: ChartConfig) => {
       if (isSetup) {
           setTempConfig(newConfig);
       } else {
-          if (onHistorySave) onHistorySave();
-          onUpdate(data.id, { ...data, config: newConfig });
+          saveSnapshot();
+          updateChart(data.id, { config: newConfig });
       }
   };
 
   const handleSetupConfirm = () => {
-      if (onHistorySave) onHistorySave();
-      onUpdate(data.id, {
-          ...data,
+      saveSnapshot();
+      updateChart(data.id, {
           config: tempConfig,
           setupRequired: false
       });
@@ -167,7 +228,6 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, 
   const maxDataValues = useMemo(() => {
     if (!processedData || processedData.length === 0) return { left: 'auto', right: 'auto' };
     
-    // Calculate max values considering stacking logic
     let maxLeft = 0;
     let maxRight = 0;
 
@@ -177,7 +237,6 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, 
         let rowMaxLeft = 0;
         let rowMaxRight = 0;
 
-        // If in Group Mode
         if (data.config.mode === 'group') {
              if (dynamicSeriesKeys) {
                  dynamicSeriesKeys.forEach(k => {
@@ -190,12 +249,11 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, 
                  rowMaxLeft = Math.max(rowMaxLeft, val);
              }
         } else {
-            // Metrics Mode
             data.config.dataColumns.forEach((colId, i) => {
                 const val = Number(row[`value_${i}`]) || 0;
                 const isRight = data.config.rightAxisColumns?.includes(colId);
                 const type = data.config.seriesTypes?.[colId] || data.config.type;
-                const isStacked = data.config.stacked && type === 'bar';
+                const isStacked = data.config.stacked && (type === 'bar' || type === 'area');
 
                 if (isRight) {
                     if (isStacked) {
@@ -217,7 +275,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, 
         maxRight = Math.max(maxRight, rightStack, rowMaxRight);
     });
 
-    const formatMax = (m: number) => m <= 0 ? 'auto' : Math.ceil(m * 1.1);
+    const formatMax = (m: number) => m <= 0 ? 'auto' : (m * 1.1);
 
     return {
         left: formatMax(maxLeft),
@@ -228,7 +286,6 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, 
   const activeData = overrideData || processedData;
   const isAnimationActive = !overrideData && data.config.animation;
 
-  // Generate color palette: Primary color first, then palette colors excluding primary
   const seriesPalette = useMemo(() => {
       const basePool = palette || CHART_COLORS;
       return [data.config.color, ...basePool.filter(c => c !== data.config.color)];
@@ -239,8 +296,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, 
     const handleMouseMove = (e: MouseEvent) => {
       const dx = (e.clientX - resizing.startX) / scale;
       const dy = (e.clientY - resizing.startY) / scale;
-      onUpdate(data.id, {
-        ...data,
+      updateChart(data.id, {
         size: { 
           width: Math.max(200, resizing.startW + dx),
           height: Math.max(200, resizing.startH + dy)
@@ -254,7 +310,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, 
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [resizing, scale, data, onUpdate]);
+  }, [resizing, scale, data.id, updateChart]);
 
   const handleCopyImage = async () => {
     if (!chartAreaRef.current) return;
@@ -313,7 +369,6 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, 
              const frameData = finalData.map((item: any) => {
                  const newItem: any = { ...item };
                  Object.keys(newItem).forEach(k => {
-                     // Check if value key (works for both value_X and dynamic keys if numeric)
                      if (typeof newItem[k] === 'number') {
                          newItem[k] = newItem[k] * eased;
                      }
@@ -387,6 +442,94 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, 
      }
   };
 
+  // Custom Content for Treemap to support borderRadius, margin, and gradient
+  const CustomTreemapContent = (props: any) => {
+    const { x, y, width, height, index, payload, name, depth } = props;
+    
+    // Ignore root node (depth < 1) to prevent background coloring
+    if (depth < 1) return null;
+
+    const color = seriesPalette[index % seriesPalette.length];
+    const favicon = getFaviconUrl(name);
+    const clipId = `clip-tree-${id}-${index}`;
+    
+    // Safety check
+    if (!width || !height) return null;
+
+    return (
+      <g>
+        <defs>
+          <linearGradient id={`grad-treemap-${id}-${index}`} x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor={color} stopOpacity={1} />
+            <stop offset="100%" stopColor={color} stopOpacity={0.65} />
+          </linearGradient>
+          <clipPath id={clipId}>
+             <rect 
+                x={x + width / 2 - 12} 
+                y={y + height / 2 - 12} 
+                width={24} 
+                height={24} 
+                rx={4} 
+                ry={4} 
+             />
+          </clipPath>
+        </defs>
+        <rect
+          x={x + 2}
+          y={y + 2}
+          width={Math.max(0, width - 4)}
+          height={Math.max(0, height - 4)}
+          rx={6}
+          ry={6}
+          fill={`url(#grad-treemap-${id}-${index})`}
+          stroke="none"
+          className="transition-all duration-300 hover:brightness-110"
+        />
+        {favicon ? (
+             width > 24 && height > 24 && (
+                 <image
+                    x={x + width / 2 - 12}
+                    y={y + height / 2 - 12}
+                    width={24}
+                    height={24}
+                    href={favicon}
+                    clipPath={`url(#${clipId})`}
+                    style={{ pointerEvents: 'none' }}
+                 />
+             )
+        ) : (
+            width > 40 && height > 24 && (
+            <text
+                x={x + width / 2}
+                y={y + height / 2}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fill="#fff"
+                fontSize={Math.min(13, width / 7)}
+                fontWeight={600}
+                style={{ textShadow: '0 1px 2px rgba(0,0,0,0.3)', pointerEvents: 'none' }}
+            >
+                {name}
+            </text>
+            )
+        )}
+        {width > 60 && height > 40 && payload && payload.value && (
+          <text
+            x={x + width / 2}
+            y={y + height / 2 + (favicon ? 20 : 14)}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fill="rgba(255,255,255,0.9)"
+            fontSize={Math.min(10, width / 9)}
+            style={{ pointerEvents: 'none' }}
+          >
+            {axisFormatLeft ? formatValue(payload.value, axisFormatLeft) : payload.value}
+          </text>
+        )}
+      </g>
+    );
+  };
+
   const renderChart = () => {
     const CommonProps = {
       data: activeData,
@@ -410,9 +553,37 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, 
     };
 
     const isGroupMode = data.config.mode === 'group';
-
-    // Determine if we need the right Y axis
     const hasRightAxis = !isGroupMode && data.config.dataColumns.some(col => data.config.rightAxisColumns?.includes(col));
+    const isScatter = data.config.type === 'scatter';
+
+    if (data.config.type === 'treemap') {
+        const dataKey = isGroupMode && dynamicSeriesKeys ? dynamicSeriesKeys[0] : "value_0";
+        const format0 = isGroupMode 
+            ? (data.config.valueCol ? getFormatForSeries(data.config.valueCol) : undefined)
+            : getFormatForSeries(data.config.dataColumns[0]);
+
+        // Pre-process data for Treemap aesthetics: Limit items and Sort
+        const sortedData = [...activeData]
+            .map(d => ({ ...d, size: Number(d[dataKey]) || 0 })) // Flatten size for Recharts
+            .sort((a, b) => b.size - a.size)
+            .slice(0, 16); // Limit to top 16 for aesthetics
+
+        return (
+            <ResponsiveContainer width="100%" height="100%">
+                <Treemap
+                    data={sortedData}
+                    dataKey="size"
+                    nameKey="name"
+                    stroke="transparent"
+                    fill="transparent"
+                    content={<CustomTreemapContent />}
+                    {...animProps}
+                >
+                    <Tooltip contentStyle={tooltipStyle} formatter={(v: number, n: string) => [formatValue(v, format0), n]} />
+                </Treemap>
+            </ResponsiveContainer>
+        );
+    }
 
     if (data.config.type === 'pie') {
       const format0 = isGroupMode 
@@ -422,15 +593,6 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, 
       const seriesName = isGroupMode 
             ? `${data.config.operation || 'SUM'} of ${data.config.valueCol}` 
             : getSeriesLabel(data.config.dataColumns[0]);
-
-      // Note: Pie chart ignores Split By seriesGroupCol because Pie expects 1 value per category.
-      // If Split By is active, we might have multiple values per category. Recharts Pie handles objects with {name, value}.
-      // Our data structure for Split By is { name: "Jan", "North": 100, "South": 200 }.
-      // This structure doesn't map well to Pie unless we pick ONE series or FLATTEN it.
-      // For now, Group Mode Pie falls back to default single series behavior (value_0) logic in `extractChartData`, 
-      // or we just take the first series if dynamic. 
-      // Current `extractChartData` produces simple list if no split col. If split col, it produces keys.
-      // Pie chart is not suitable for split series.
 
       return (
         <PieChart {...CommonProps}>
@@ -461,223 +623,442 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, 
       );
     }
 
-    // Composed Chart for Bar and Line (allows mixing)
-    return (
-        <ComposedChart {...CommonProps}>
-            <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
-            <XAxis dataKey="name" tick={{fontSize: 11, fill: textColor}} axisLine={false} tickLine={false} dy={10} />
-            
-            <YAxis 
-                yAxisId="left" 
-                tick={{fontSize: 11, fill: textColor}} 
-                domain={[0, maxDataValues.left]} 
+    // --- Prepare ComposedChart Children & Defs (To avoid wrapping components in Fragments) ---
+    const chartChildren: React.ReactNode[] = [];
+    const defs: React.ReactNode[] = [];
+
+    // 1. Grid & Axes
+    chartChildren.push(<CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} key="grid" />);
+    
+    // X Axis Configuration
+    if (isScatter) {
+        chartChildren.push(
+            <XAxis 
+                type="number" 
+                dataKey="x_raw" 
+                tick={<CustomXAxisTick fill={textColor} chartId={data.id} />} 
                 axisLine={false} 
                 tickLine={false} 
-                dx={-10}
-                tickFormatter={(val) => formatValue(val, axisFormatLeft)}
+                dy={10} 
+                domain={['auto', 'auto']}
+                key="xaxis" 
             />
-            {hasRightAxis && (
-                <YAxis 
-                    yAxisId="right" 
-                    orientation="right" 
-                    tick={{fontSize: 11, fill: textColor}} 
-                    domain={[0, maxDataValues.right]} 
-                    axisLine={false} 
-                    tickLine={false} 
-                    dx={10} 
-                    tickFormatter={(val) => formatValue(val, axisFormatRight)}
-                />
-            )}
-            
-            <Tooltip contentStyle={tooltipStyle} cursor={{fill: darkMode ? '#404040' : '#f7f7f5'}} formatter={tooltipFormatter} />
-            <Legend wrapperStyle={{ color: textColor }} />
-            
-            {/* GROUP MODE SERIES */}
-            {isGroupMode && (
-                dynamicSeriesKeys ? (
-                    // Multiple Split Series
-                    dynamicSeriesKeys.map((key, index) => {
-                        const color = seriesPalette[index % seriesPalette.length];
-                        if (data.config.type === 'bar') {
-                            return (
-                                <Bar 
-                                    key={key}
-                                    dataKey={key}
-                                    name={key}
-                                    fill={color}
-                                    yAxisId="left"
-                                    radius={data.config.stacked ? [0,0,0,0] : [4, 4, 0, 0]}
-                                    stackId={data.config.stacked ? 'a' : undefined}
-                                    {...animProps}
-                                >
-                                    {data.config.showLabels && (
-                                        <LabelList 
-                                            dataKey={key}
-                                            position={data.config.stacked ? "inside" : "top"} 
-                                            style={{ fill: data.config.stacked ? '#fff' : textColor, fontSize: 10, fontWeight: 500 }} 
-                                            formatter={(v: number) => formatValue(v, axisFormatLeft)}
-                                        />
-                                    )}
-                                </Bar>
-                            );
-                        } else {
-                            return (
-                                <Line
-                                    key={key}
-                                    type="monotone"
-                                    dataKey={key}
-                                    name={key}
-                                    stroke={color}
-                                    yAxisId="left"
-                                    strokeWidth={3}
-                                    dot={{ r: 4, fill: '#fff', stroke: color, strokeWidth: 2 }}
-                                    activeDot={{ r: 6, strokeWidth: 0 }}
-                                    {...animProps}
-                                >
-                                    {data.config.showLabels && (
-                                        <LabelList 
-                                            dataKey={key}
-                                            position="top" 
-                                            offset={10}
-                                            style={{ fill: textColor, fontSize: 10, fontWeight: 500 }}
-                                            formatter={(v: number) => formatValue(v, axisFormatLeft)}
-                                        />
-                                    )}
-                                </Line>
-                            );
-                        }
-                    })
-                ) : (
-                    // Single Aggregate Series
-                    data.config.type === 'bar' ? (
-                        <Bar 
-                            yAxisId="left"
-                            dataKey="value_0"
-                            name={getSeriesLabel(data.config.valueCol || '')}
-                            fill={data.config.color}
-                            radius={[4, 4, 0, 0]}
-                            {...animProps}
-                        >
-                            {activeData.map((entry: any, i: number) => (
-                                    <Cell 
-                                        key={`cell-${i}`} 
-                                        fill={i === data.config.highlightIndex ? '#f2c94c' : seriesPalette[0]} 
-                                    />
-                            ))}
-                            {data.config.showLabels && (
-                                    <LabelList 
-                                        dataKey="value_0"
-                                        position="top" 
-                                        style={{ fill: textColor, fontSize: 10, fontWeight: 500 }} 
-                                        formatter={(v: number) => formatValue(v, axisFormatLeft)}
-                                    />
-                            )}
-                        </Bar>
-                    ) : (
-                        <Line
-                            yAxisId="left"
-                            type="monotone"
-                            dataKey="value_0"
-                            name={getSeriesLabel(data.config.valueCol || '')}
-                            stroke={data.config.color}
-                            strokeWidth={3}
-                            dot={{ r: 4, fill: '#fff', stroke: data.config.color, strokeWidth: 2 }}
-                            activeDot={{ r: 6, strokeWidth: 0 }}
-                            {...animProps}
-                        >
-                            {data.config.showLabels && (
-                                    <LabelList 
-                                        dataKey="value_0"
-                                        position="top" 
-                                        offset={10}
-                                        style={{ fill: textColor, fontSize: 10, fontWeight: 500 }}
-                                        formatter={(v: number) => formatValue(v, axisFormatLeft)}
-                                    />
-                            )}
-                        </Line>
-                    )
-                )
-            )}
+        );
+    } else {
+        chartChildren.push(
+            <XAxis 
+                dataKey="name" 
+                tick={<CustomXAxisTick fill={textColor} chartId={data.id} />} 
+                axisLine={false} 
+                tickLine={false} 
+                dy={10} 
+                key="xaxis" 
+                interval="preserveStartEnd"
+            />
+        );
+    }
 
-            {/* METRICS MODE SERIES (Multiple Series) */}
-            {!isGroupMode && data.config.dataColumns.map((colId, index) => {
-                const isRight = data.config.rightAxisColumns?.includes(colId);
-                const axisId = isRight ? "right" : "left";
-                const seriesType = data.config.seriesTypes?.[colId] || data.config.type;
-                const stackId = (data.config.stacked && seriesType === 'bar') ? (isRight ? "b" : "a") : undefined;
+    chartChildren.push(
+        <YAxis 
+            yAxisId="left" 
+            tick={{fontSize: 11, fill: textColor}} 
+            domain={[0, maxDataValues.left]} 
+            axisLine={false} 
+            tickLine={false} 
+            dx={-10}
+            tickFormatter={(val) => formatValue(val, axisFormatLeft)}
+            key="yaxis-left"
+        />
+    );
+    if (hasRightAxis) {
+        chartChildren.push(
+            <YAxis 
+                yAxisId="right" 
+                orientation="right" 
+                tick={{fontSize: 11, fill: textColor}} 
+                domain={[0, maxDataValues.right]} 
+                axisLine={false} 
+                tickLine={false} 
+                dx={10} 
+                tickFormatter={(val) => formatValue(val, axisFormatRight)}
+                key="yaxis-right"
+            />
+        );
+    }
+    chartChildren.push(<Tooltip contentStyle={tooltipStyle} cursor={{fill: darkMode ? '#404040' : '#f7f7f5'}} formatter={tooltipFormatter} labelFormatter={tooltipLabelFormatter} key="tooltip" />);
+    chartChildren.push(<Legend wrapperStyle={{ color: textColor }} key="legend" />);
+
+    // 2. Series Rendering
+    if (isGroupMode) {
+        if (dynamicSeriesKeys) {
+            dynamicSeriesKeys.forEach((key, index) => {
                 const color = seriesPalette[index % seriesPalette.length];
-                const seriesFormat = getFormatForSeries(colId);
-
-                if (seriesType === 'bar') {
-                    return (
+                
+                if (data.config.type === 'bar') {
+                    chartChildren.push(
                         <Bar 
-                            key={`${colId}-${index}`}
-                            yAxisId={axisId}
-                            dataKey={`value_${index}`} 
-                            name={getSeriesLabel(colId)} 
-                            fill={color} 
+                            key={key}
+                            dataKey={key}
+                            name={key}
+                            fill={color}
+                            yAxisId="left"
                             radius={data.config.stacked ? [0,0,0,0] : [4, 4, 0, 0]}
-                            stackId={stackId}
+                            stackId={data.config.stacked ? 'a' : undefined}
                             {...animProps}
                         >
-                            {/* Individual cell highlighting only for single-series charts usually, but kept for consistency */}
-                            {data.config.dataColumns.length === 1 && activeData.map((entry: any, i: number) => (
-                                <Cell 
-                                    key={`cell-${i}`} 
-                                    fill={i === data.config.highlightIndex ? '#f2c94c' : seriesPalette[0]} 
-                                />
-                            ))}
                             {data.config.showLabels && (
                                 <LabelList 
-                                    dataKey={`value_${index}`} 
+                                    dataKey={key}
                                     position={data.config.stacked ? "inside" : "top"} 
-                                    style={{ fill: data.config.stacked ? '#fff' : textColor, fontSize: 10, fontWeight: 500 }} 
-                                    formatter={(v: number) => formatValue(v, seriesFormat)}
+                                    fill={data.config.stacked ? '#fff' : textColor}
+                                    fontSize={10}
+                                    fontWeight={500}
+                                    formatter={(v: number) => formatValue(v, axisFormatLeft)}
                                 />
                             )}
                         </Bar>
                     );
-                } else {
-                    return (
-                        <Line 
-                            key={`${colId}-${index}`}
-                            yAxisId={axisId}
-                            type="monotone" 
-                            dataKey={`value_${index}`} 
-                            name={getSeriesLabel(colId)}
-                            stroke={color} 
-                            strokeWidth={3}
-                            dot={(props: any) => {
-                                // Simple dot unless highlight
-                                if (data.config.dataColumns.length === 1) {
-                                    const isHighlighted = props.index === data.config.highlightIndex;
-                                    return (
-                                        <circle 
-                                            cx={props.cx} cy={props.cy} r={isHighlighted ? 6 : 4} 
-                                            fill={isHighlighted ? '#f2c94c' : '#fff'} 
-                                            stroke={color}
-                                            strokeWidth={2}
-                                        />
-                                    );
-                                }
-                                return <circle cx={props.cx} cy={props.cy} r={4} fill="#fff" stroke={color} strokeWidth={2} />;
-                            }}
-                            activeDot={{ r: 6, strokeWidth: 0 }}
+                } else if (data.config.type === 'area') {
+                    const gradId = `grad-${data.id}-${String(key).replace(/[^a-zA-Z0-9]/g, '')}`;
+                    defs.push(
+                        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1" key={gradId}>
+                            <stop offset="5%" stopColor={color} stopOpacity={0.8}/>
+                            <stop offset="95%" stopColor="#ffffff" stopOpacity={0.1}/>
+                        </linearGradient>
+                    );
+                    chartChildren.push(
+                        <Area
+                            key={key}
+                            type="monotone"
+                            dataKey={key}
+                            name={key}
+                            stroke={color}
+                            fill={`url(#${gradId})`}
+                            yAxisId="left"
+                            strokeWidth={2}
+                            stackId={data.config.stacked ? 'a' : undefined}
                             {...animProps}
                         >
-                             {data.config.showLabels && (
+                            {data.config.showLabels && (
                                 <LabelList 
-                                    dataKey={`value_${index}`} 
+                                    dataKey={key}
                                     position="top" 
                                     offset={10}
                                     style={{ fill: textColor, fontSize: 10, fontWeight: 500 }}
-                                    formatter={(v: number) => formatValue(v, seriesFormat)}
+                                    formatter={(v: number) => formatValue(v, axisFormatLeft)}
+                                />
+                            )}
+                        </Area>
+                    );
+                } else if (data.config.type === 'scatter') {
+                    chartChildren.push(
+                        <Scatter
+                            key={key}
+                            name={key}
+                            dataKey={key}
+                            fill={color}
+                            yAxisId="left"
+                            {...animProps}
+                        >
+                            {data.config.showLabels && (
+                                <LabelList 
+                                    dataKey={key}
+                                    position="top" 
+                                    offset={10}
+                                    style={{ fill: textColor, fontSize: 10, fontWeight: 500 }}
+                                    formatter={(v: number) => formatValue(v, axisFormatLeft)}
+                                />
+                            )}
+                        </Scatter>
+                    );
+                } else {
+                    chartChildren.push(
+                        <Line
+                            key={key}
+                            type="monotone"
+                            dataKey={key}
+                            name={key}
+                            stroke={color}
+                            yAxisId="left"
+                            strokeWidth={3}
+                            dot={{ r: 4, fill: '#fff', stroke: color, strokeWidth: 2 }}
+                            activeDot={{ r: 6, strokeWidth: 0 }}
+                            {...animProps}
+                        >
+                            {data.config.showLabels && (
+                                <LabelList 
+                                    dataKey={key}
+                                    position="top" 
+                                    offset={10}
+                                    fill={textColor}
+                                    fontSize={10}
+                                    fontWeight={500}
+                                    formatter={(v: number) => formatValue(v, axisFormatLeft)}
                                 />
                             )}
                         </Line>
                     );
                 }
-            })}
+            });
+        } else {
+            // Group Mode - Single Series (e.g. Sum of Value)
+            const color = data.config.color;
+            const key = "value_0";
+            const name = getSeriesLabel(data.config.valueCol || '');
+
+            if (data.config.type === 'bar') {
+                chartChildren.push(
+                    <Bar 
+                        key={key}
+                        yAxisId="left"
+                        dataKey={key}
+                        name={name}
+                        fill={color}
+                        radius={[4, 4, 0, 0]}
+                        {...animProps}
+                    >
+                        {activeData.map((entry: any, i: number) => (
+                                <Cell 
+                                    key={`cell-${i}`} 
+                                    fill={i === data.config.highlightIndex ? '#f2c94c' : seriesPalette[0]} 
+                                />
+                        ))}
+                        {data.config.showLabels && (
+                                <LabelList 
+                                    dataKey={key}
+                                    position="top" 
+                                    fill={textColor}
+                                    fontSize={10}
+                                    fontWeight={500}
+                                    formatter={(v: number) => formatValue(v, axisFormatLeft)}
+                                />
+                        )}
+                    </Bar>
+                );
+            } else if (data.config.type === 'area') {
+                const gradId = `grad-${data.id}-val0`;
+                defs.push(
+                    <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1" key={gradId}>
+                        <stop offset="5%" stopColor={color} stopOpacity={0.8}/>
+                        <stop offset="95%" stopColor="#ffffff" stopOpacity={0.1}/>
+                    </linearGradient>
+                );
+                chartChildren.push(
+                    <Area
+                        key={key}
+                        yAxisId="left"
+                        type="monotone"
+                        dataKey={key}
+                        name={name}
+                        stroke={color}
+                        fill={`url(#${gradId})`}
+                        strokeWidth={2}
+                        {...animProps}
+                    >
+                        {data.config.showLabels && (
+                                <LabelList 
+                                    dataKey={key}
+                                    position="top" 
+                                    offset={10}
+                                    style={{ fill: textColor, fontSize: 10, fontWeight: 500 }}
+                                    formatter={(v: number) => formatValue(v, axisFormatLeft)}
+                                />
+                        )}
+                    </Area>
+                );
+            } else if (data.config.type === 'scatter') {
+                chartChildren.push(
+                    <Scatter
+                        key={key}
+                        name={name}
+                        dataKey={key}
+                        fill={color}
+                        yAxisId="left"
+                        {...animProps}
+                    >
+                        {data.config.showLabels && (
+                            <LabelList 
+                                dataKey={key}
+                                position="top" 
+                                offset={10}
+                                style={{ fill: textColor, fontSize: 10, fontWeight: 500 }}
+                                formatter={(v: number) => formatValue(v, axisFormatLeft)}
+                            />
+                        )}
+                    </Scatter>
+                );
+            } else {
+                chartChildren.push(
+                    <Line
+                        key={key}
+                        yAxisId="left"
+                        type="monotone"
+                        dataKey={key}
+                        name={name}
+                        stroke={color}
+                        strokeWidth={3}
+                        dot={{ r: 4, fill: '#fff', stroke: color, strokeWidth: 2 }}
+                        activeDot={{ r: 6, strokeWidth: 0 }}
+                        {...animProps}
+                    >
+                        {data.config.showLabels && (
+                                <LabelList 
+                                    dataKey={key}
+                                    position="top" 
+                                    offset={10}
+                                    fill={textColor}
+                                    fontSize={10}
+                                    fontWeight={500}
+                                    formatter={(v: number) => formatValue(v, axisFormatLeft)}
+                                />
+                        )}
+                    </Line>
+                );
+            }
+        }
+    } else {
+        // Metrics Mode
+        data.config.dataColumns.forEach((colId, index) => {
+            const isRight = data.config.rightAxisColumns?.includes(colId);
+            const axisId = isRight ? "right" : "left";
+            const seriesType = data.config.seriesTypes?.[colId] || data.config.type;
+            const stackId = (data.config.stacked && (seriesType === 'bar' || seriesType === 'area')) ? (isRight ? "b" : "a") : undefined;
+            const color = seriesPalette[index % seriesPalette.length];
+            const seriesFormat = getFormatForSeries(colId);
+            const key = `value_${index}`;
+            const name = getSeriesLabel(colId);
+
+            if (seriesType === 'bar') {
+                chartChildren.push(
+                    <Bar 
+                        key={key}
+                        yAxisId={axisId}
+                        dataKey={key}
+                        name={name}
+                        fill={color}
+                        radius={data.config.stacked ? [0,0,0,0] : [4, 4, 0, 0]}
+                        stackId={stackId}
+                        {...animProps}
+                    >
+                        {data.config.dataColumns.length === 1 && activeData.map((entry: any, i: number) => (
+                            <Cell 
+                                key={`cell-${i}`} 
+                                fill={i === data.config.highlightIndex ? '#f2c94c' : seriesPalette[0]} 
+                            />
+                        ))}
+                        {data.config.showLabels && (
+                            <LabelList 
+                                dataKey={key}
+                                position={data.config.stacked ? "inside" : "top"} 
+                                fill={data.config.stacked ? '#fff' : textColor}
+                                fontSize={10}
+                                fontWeight={500}
+                                formatter={(v: number) => formatValue(v, seriesFormat)}
+                            />
+                        )}
+                    </Bar>
+                );
+            } else if (seriesType === 'area') {
+                const gradId = `grad-${data.id}-${index}`;
+                defs.push(
+                    <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1" key={gradId}>
+                        <stop offset="5%" stopColor={color} stopOpacity={0.8}/>
+                        <stop offset="95%" stopColor="#ffffff" stopOpacity={0.1}/>
+                    </linearGradient>
+                );
+                chartChildren.push(
+                    <Area
+                        key={key}
+                        yAxisId={axisId}
+                        type="monotone"
+                        dataKey={key}
+                        name={name}
+                        stroke={color}
+                        fill={`url(#${gradId})`}
+                        strokeWidth={2}
+                        stackId={stackId}
+                        {...animProps}
+                    >
+                        {data.config.showLabels && (
+                            <LabelList 
+                                dataKey={key}
+                                position="top" 
+                                offset={10}
+                                style={{ fill: textColor, fontSize: 10, fontWeight: 500 }}
+                                formatter={(v: number) => formatValue(v, seriesFormat)}
+                            />
+                        )}
+                    </Area>
+                );
+            } else if (seriesType === 'scatter') {
+                chartChildren.push(
+                    <Scatter
+                        key={key}
+                        name={name}
+                        dataKey={key}
+                        fill={color}
+                        yAxisId={axisId}
+                        {...animProps}
+                    >
+                        {data.config.showLabels && (
+                            <LabelList 
+                                dataKey={key}
+                                position="top" 
+                                offset={10}
+                                style={{ fill: textColor, fontSize: 10, fontWeight: 500 }}
+                                formatter={(v: number) => formatValue(v, seriesFormat)}
+                            />
+                        )}
+                    </Scatter>
+                );
+            } else {
+                chartChildren.push(
+                    <Line 
+                        key={key}
+                        yAxisId={axisId}
+                        type="monotone" 
+                        dataKey={key} 
+                        name={name}
+                        stroke={color} 
+                        strokeWidth={3}
+                        dot={(props: any) => {
+                            if (data.config.dataColumns.length === 1) {
+                                const isHighlighted = props.index === data.config.highlightIndex;
+                                return (
+                                    <circle 
+                                        cx={props.cx} cy={props.cy} r={isHighlighted ? 6 : 4} 
+                                        fill={isHighlighted ? '#f2c94c' : '#fff'} 
+                                        stroke={color}
+                                        strokeWidth={2}
+                                    />
+                                );
+                            }
+                            return <circle cx={props.cx} cy={props.cy} r={4} fill="#fff" stroke={color} strokeWidth={2} />;
+                        }}
+                        activeDot={{ r: 6, strokeWidth: 0 }}
+                        {...animProps}
+                    >
+                            {data.config.showLabels && (
+                            <LabelList 
+                                dataKey={key}
+                                position="top" 
+                                offset={10}
+                                fill={textColor}
+                                fontSize={10}
+                                fontWeight={500}
+                                formatter={(v: number) => formatValue(v, seriesFormat)}
+                            />
+                        )}
+                    </Line>
+                );
+            }
+        });
+    }
+
+    return (
+        <ComposedChart {...CommonProps}>
+            <defs>{defs}</defs>
+            {chartChildren}
         </ComposedChart>
     );
   };
@@ -761,7 +1142,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, 
                         Settings
                     </span>
                 </button>
-                <button onClick={() => onDelete(data.id)} className="group/btn relative p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 text-neutral-400 hover:text-red-500 rounded-md">
+                <button onClick={() => deleteChart(data.id)} className="group/btn relative p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 text-neutral-400 hover:text-red-500 rounded-md">
                     <Trash2 size={14} />
                     <span className="absolute top-full mt-2 left-1/2 -translate-x-1/2 px-2 py-1 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 text-[10px] font-medium rounded-md opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-sm z-50">
                         Delete
@@ -770,7 +1151,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, 
             </div>
         )}
         {isSetup && (
-            <button onClick={() => onDelete(data.id)} className="group/btn relative p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 rounded-md">
+            <button onClick={() => deleteChart(data.id)} className="group/btn relative p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 rounded-md">
                 <X size={14} />
                 <span className="absolute top-full mt-2 left-1/2 -translate-x-1/2 px-2 py-1 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 text-[10px] font-medium rounded-md opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-sm z-50">
                     Close
@@ -789,7 +1170,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, 
                     onChange={handleConfigChange}
                     isSetupMode={true}
                     onConfirm={handleSetupConfirm}
-                    onCancel={() => onDelete(data.id)}
+                    onCancel={() => deleteChart(data.id)}
                     palette={palette}
                     onAddCustomColor={onAddCustomColor}
                 />
@@ -806,7 +1187,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, 
             </div>
          )}
 
-         <div ref={chartAreaRef} className="w-full h-full bg-white dark:bg-neutral-850 px-4 pb-4 pt-0">
+         <div ref={chartAreaRef} className="w-full h-full px-4 pb-4 pt-0">
             <ResponsiveContainer width="100%" height="100%">
                 {renderChart() || <div className="flex items-center justify-center h-full text-neutral-400 text-sm">No data selected</div>}
             </ResponsiveContainer>
@@ -834,7 +1215,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ data, sourceSheet, scale, 
         className="absolute bottom-0 right-0 w-5 h-5 cursor-nwse-resize z-20 flex items-center justify-center"
         onMouseDown={(e) => {
             e.stopPropagation();
-            if (onHistorySave) onHistorySave();
+            saveSnapshot();
             setResizing({ startX: e.clientX, startY: e.clientY, startW: data.size.width, startH: data.size.height });
         }}
       >
