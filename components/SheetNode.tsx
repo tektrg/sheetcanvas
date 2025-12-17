@@ -37,6 +37,7 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
   const updateSheet = useStore(state => state.updateSheet);
   const deleteSheet = useStore(state => state.deleteSheet);
   const saveSnapshot = useStore(state => state.saveSnapshot);
+  const select = useStore(state => state.select);
   
   // Select Source Sheet if needed
   const sourceSheetId = data?.pivotConfig?.sourceSheetId || data?.sparklineConfig?.sourceSheetId;
@@ -763,8 +764,13 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
   };
 
   const handleCellMouseDown = (e: React.MouseEvent, cellId: string) => {
-     // CRITICAL: Ensure the sheet itself is selected in the global state when a cell is clicked
-     onMouseDown(e);
+     // CRITICAL: Prevent the default sheet drag behavior initiated by parent onMouseDown
+     e.stopPropagation();
+     
+     // Ensure the sheet is selected
+     if (!selected) {
+         select([data.id]);
+     }
 
      if (isEditing) {
          const raw = editingRaw || '';
@@ -778,7 +784,7 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
 
          if (isTrigger || refMatch || rangeMatch) {
              e.preventDefault(); 
-             e.stopPropagation();
+             // e.stopPropagation() already called above
              
              let prefix = raw;
              
