@@ -627,10 +627,6 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
         const newCells = { ...data.cells };
         Object.keys(newCells).forEach(key => {
             const pos = parseCellId(key);
-            // Typically "Clear" means clear content but keep structure. 
-            // Clearing header is risky but user asked for generic clear. 
-            // We'll clear row > 0 to preserve headers usually, but for raw flexibility let's clear all except header row?
-            // Let's clear row > 0 to be safe for typical usage.
             if (pos && pos.col === colIndex && pos.row > 0) {
                 delete newCells[key];
             }
@@ -764,10 +760,8 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
   };
 
   const handleCellMouseDown = (e: React.MouseEvent, cellId: string) => {
-     // CRITICAL: Prevent the default sheet drag behavior initiated by parent onMouseDown
      e.stopPropagation();
      
-     // Ensure the sheet is selected
      if (!selected) {
          select([data.id]);
      }
@@ -784,7 +778,6 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
 
          if (isTrigger || refMatch || rangeMatch) {
              e.preventDefault(); 
-             // e.stopPropagation() already called above
              
              let prefix = raw;
              
@@ -890,7 +883,7 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
     };
     
     const handleMouseMove = (e: MouseEvent) => {
-        const currentData = dataRef.current; // Access latest data via ref to avoid stale closure
+        const currentData = dataRef.current;
         
         if (colResizing) {
             const dx = (e.clientX - colResizing.startX) / scale;
@@ -921,7 +914,7 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
         window.removeEventListener('mouseup', handleMouseUp);
         window.removeEventListener('mousemove', handleMouseMove);
     };
-  }, [colResizing, resizing, scale, updateSheet]); // Removed data and data.id deps
+  }, [colResizing, resizing, scale, updateSheet]);
 
   const handleCopyImage = async () => {
     if (!containerRef.current) return;
@@ -1065,7 +1058,6 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                     isSetupMode={isSetup}
                     onConfirm={(newConfig) => {
                          saveSnapshot();
-                         // Logic now handled in store updateSheet, just pass config
                          updateSheet(data.id, { pivotConfig: newConfig, setupRequired: false });
                          setShowPivotConfig(false);
                     }}
@@ -1097,10 +1089,22 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                     position: 'relative',
                 }}
             >
-                <div className="sticky top-0 z-40 bg-white/95 dark:bg-neutral-850/95 flex border-b border-neutral-100 dark:border-neutral-800"
-                     style={{ height: HEADER_ROW_HEIGHT, width: '100%' }}
+                {/* 1. Corner (Sticky Top & Left) */}
+                <div 
+                    className="sticky top-0 left-0 z-50 bg-neutral-50 dark:bg-neutral-800 border-r border-b border-neutral-100 dark:border-neutral-800" 
+                    style={{ width: HEADER_COL_WIDTH, height: HEADER_ROW_HEIGHT }}
+                />
+
+                {/* 2. Col Headers (Sticky Top) */}
+                <div 
+                    className="sticky top-0 z-40 bg-white/95 dark:bg-neutral-850/95 border-b border-neutral-100 dark:border-neutral-800 flex"
+                    style={{ 
+                        width: '100%', 
+                        height: HEADER_ROW_HEIGHT, 
+                        marginTop: `-${HEADER_ROW_HEIGHT}px`, 
+                        paddingLeft: HEADER_COL_WIDTH 
+                    }}
                 >
-                    <div className="sticky left-0 top-0 z-50 bg-neutral-50/95 dark:bg-neutral-800/95 border-r border-neutral-100 dark:border-neutral-800 flex-shrink-0" style={{ width: HEADER_COL_WIDTH, height: HEADER_ROW_HEIGHT }} />
                     {colVirtualizer.getVirtualItems().map((virtualCol) => {
                         const c = virtualCol.index;
                         const colLabel = getCellId(c, -1).replace(/[0-9]/g, '');
@@ -1115,7 +1119,6 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                                 key={virtualCol.key}
                                 style={{
                                     position: 'absolute',
-                                    top: 0,
                                     left: virtualCol.start + HEADER_COL_WIDTH,
                                     width: virtualCol.size,
                                     height: HEADER_ROW_HEIGHT
@@ -1159,24 +1162,32 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                     })}
                 </div>
 
-                {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-                    const rIndex = virtualRow.index;
-                    const actualRowIdx = visibleRowIndices ? visibleRowIndices[rIndex] : rIndex;
-                    
-                    const isActiveRow = activeCell && parseCellId(activeCell)?.row === actualRowIdx;
-                    const isSelectedRow = selectionRange && actualRowIdx >= selBounds.minRow && actualRowIdx <= selBounds.maxRow;
-                    const isHeaderRow = actualRowIdx === 0;
-                    const isGrandTotal = isPivot && String(data.cells[getCellId(0, actualRowIdx)]?.value) === 'Grand Total';
+                {/* 3. Row Headers (Sticky Left) */}
+                <div 
+                    className="sticky left-0 z-30 bg-neutral-50/95 dark:bg-neutral-800/95 border-r border-neutral-100 dark:border-neutral-800"
+                    style={{ 
+                        width: HEADER_COL_WIDTH, 
+                        height: rowVirtualizer.getTotalSize(),
+                    }}
+                >
+                    {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                        const rIndex = virtualRow.index;
+                        const actualRowIdx = visibleRowIndices ? visibleRowIndices[rIndex] : rIndex;
+                        const isActiveRow = activeCell && parseCellId(activeCell)?.row === actualRowIdx;
+                        const isSelectedRow = selectionRange && actualRowIdx >= selBounds.minRow && actualRowIdx <= selBounds.maxRow;
+                        const isHeaderRow = actualRowIdx === 0;
+                        const isGrandTotal = isPivot && String(data.cells[getCellId(0, actualRowIdx)]?.value) === 'Grand Total';
 
-                    return (
-                        <React.Fragment key={virtualRow.key}>
+                        return (
                             <div
+                                key={`row-header-${virtualRow.key}`}
                                 style={{
                                     position: 'absolute',
-                                    top: virtualRow.start + HEADER_ROW_HEIGHT,
+                                    top: virtualRow.start,
                                     left: 0,
                                     width: HEADER_COL_WIDTH,
-                                    height: CELL_HEIGHT
+                                    height: CELL_HEIGHT,
+                                    pointerEvents: 'auto'
                                 }}
                                 onMouseDown={(e) => { 
                                     e.stopPropagation(); setHeaderMenuOpen(null); setRowMenuOpen(null);
@@ -1187,11 +1198,11 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                                     setEditingRaw(initialRaw);
                                     if(initialRaw.startsWith('=')) handleEditChange(initialRaw); 
                                 }}
-                                className={`sticky left-0 z-30 group/row flex items-center justify-center text-[10px] font-medium border-r border-b border-neutral-100 dark:border-neutral-800 select-none cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-700
+                                className={`group/row flex items-center justify-center text-[10px] font-medium border-b border-neutral-100 dark:border-neutral-800 select-none cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-700
                                     ${isSelectedRow ? 'bg-teal-50/90 dark:bg-teal-900/90 text-teal-600 dark:text-teal-400' : 
                                     (isActiveRow ? 'bg-neutral-50/90 dark:bg-neutral-800/90 text-neutral-600 dark:text-neutral-400' : 
                                         (isHeaderRow || isGrandTotal ? 'bg-neutral-50/90 dark:bg-neutral-800/90 text-teal-600/80 dark:text-teal-400/80' : 
-                                        'bg-neutral-50/95 dark:bg-neutral-800/95 text-neutral-400 dark:text-neutral-500')
+                                        'bg-transparent text-neutral-400 dark:text-neutral-500')
                                     )}
                                 `}
                             >
@@ -1211,7 +1222,19 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                                     isReadOnly={isReadOnly}
                                 />
                             </div>
+                        );
+                    })}
+                </div>
 
+                {/* 4. Cells Loop */}
+                {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                    const rIndex = virtualRow.index;
+                    const actualRowIdx = visibleRowIndices ? visibleRowIndices[rIndex] : rIndex;
+                    const isHeaderRow = actualRowIdx === 0;
+                    const isGrandTotal = isPivot && String(data.cells[getCellId(0, actualRowIdx)]?.value) === 'Grand Total';
+
+                    return (
+                        <React.Fragment key={virtualRow.key}>
                             {colVirtualizer.getVirtualItems().map((virtualCol) => {
                                 const cIndex = virtualCol.index;
                                 const cellId = getCellId(cIndex, actualRowIdx);
