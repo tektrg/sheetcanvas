@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Canvas } from './components/Canvas';
 import { SheetNode } from './components/SheetNode';
@@ -39,9 +40,11 @@ const App: React.FC = () => {
   const deleteSheet = useStore((state: AppState) => state.deleteSheet);
   
   const addChart = useStore((state: AppState) => state.addChart);
+  const updateChart = useStore((state: AppState) => state.updateChart);
   const deleteChart = useStore((state: AppState) => state.deleteChart);
   
   const addNote = useStore((state: AppState) => state.addNote);
+  const updateNote = useStore((state: AppState) => state.updateNote);
   const deleteNote = useStore((state: AppState) => state.deleteNote);
   
   const undo = useStore((state: AppState) => state.undo);
@@ -72,6 +75,7 @@ const App: React.FC = () => {
   // Dragging State
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [draggingType, setDraggingType] = useState<'sheet' | 'chart' | 'note' | null>(null);
+  const dragInitialPositions = useRef<Record<string, Position>>({});
   
   // Selection Box State
   const [selectionBox, setSelectionBox] = useState<{ start: Position, current: Position } | null>(null);
@@ -502,7 +506,10 @@ const App: React.FC = () => {
     setDraggingType(type);
     lastMousePos.current = { x: e.clientX, y: e.clientY };
 
+    const state = useStore.getState();
     const isShift = e.shiftKey || e.ctrlKey || e.metaKey;
+    
+    // Selection logic
     if (isShift) {
         select([id], true);
     } else {
@@ -510,33 +517,82 @@ const App: React.FC = () => {
             select([id]);
         }
     }
+
+    // IMPORTANT: Capture initial positions for DIRECT DOM MANIPULATION
+    // This allows us to move elements without re-rendering React components
+    // We check state again because select() might have updated it
+    const updatedState = useStore.getState();
+    const currentSelected = updatedState.selectedIds;
+    const newDragPositions: Record<string, Position> = {};
+
+    currentSelected.forEach(selId => {
+        let pos: Position | null = null;
+        if (updatedState.sheets[selId]) pos = updatedState.sheets[selId].position;
+        else if (updatedState.charts[selId]) pos = updatedState.charts[selId].position;
+        else if (updatedState.notes[selId]) pos = updatedState.notes[selId].position;
+        
+        if (pos) {
+            newDragPositions[selId] = { ...pos };
+        }
+    });
+    
+    // Ensure the clicked item is tracked even if something went wrong with selection sync
+    if (!newDragPositions[id]) {
+         let pos: Position | null = null;
+         if (type === 'sheet') pos = updatedState.sheets[id].position;
+         else if (type === 'chart') pos = updatedState.charts[id].position;
+         else if (type === 'note') pos = updatedState.notes[id].position;
+         if (pos) newDragPositions[id] = { ...pos };
+    }
+
+    dragInitialPositions.current = newDragPositions;
+
+    // OPTIMIZATION: Set will-change once at start of drag
+    Object.keys(newDragPositions).forEach(key => {
+        const el = document.getElementById(`sheet-${key}`) || document.getElementById(`chart-${key}`) || document.getElementById(`note-${key}`);
+        if (el) el.style.willChange = 'left, top';
+    });
   };
 
-  const handleGlobalMouseMove = useCallback((e: MouseEvent) => {
-    if (selectionBox) {
-        setSelectionBox(prev => prev ? ({ ...prev, current: { x: e.clientX, y: e.clientY } }) : null);
-        return;
-    }
+  // Better Move Handler with Total Delta
+  const dragStartMousePos = useRef<Position | null>(null);
 
-    if (draggingId) {
-      const dx = (e.clientX - lastMousePos.current.x) / transform.scale;
-      const dy = (e.clientY - lastMousePos.current.y) / transform.scale;
-      lastMousePos.current = { x: e.clientX, y: e.clientY };
+  const handleGlobalMouseMoveOptimized = useCallback((e: MouseEvent) => {
+      if (selectionBox) {
+          setSelectionBox(prev => prev ? ({ ...prev, current: { x: e.clientX, y: e.clientY } }) : null);
+          return;
+      }
 
-      if (dx === 0 && dy === 0) return;
-      
-      const s = useStore.getState() as AppState;
-      const ids = Array.from(s.selectedIds);
-      
-      ids.forEach(id => {
-          if (s.sheets[id]) s.updateSheet(id, { position: { x: s.sheets[id].position.x + dx, y: s.sheets[id].position.y + dy } });
-          else if (s.charts[id]) s.updateChart(id, { position: { x: s.charts[id].position.x + dx, y: s.charts[id].position.y + dy } });
-          else if (s.notes[id]) s.updateNote(id, { position: { x: s.notes[id].position.x + dx, y: s.notes[id].position.y + dy } });
-      });
-    }
+      if (draggingId && dragStartMousePos.current) {
+          const startPos = dragStartMousePos.current;
+          const deltaX = (e.clientX - startPos.x) / transform.scale;
+          const deltaY = (e.clientY - startPos.y) / transform.scale;
+
+          Object.entries(dragInitialPositions.current).forEach(([id, initialPos]) => {
+              // Explicit cast to Position to avoid 'unknown' type errors
+              const pos = initialPos as Position;
+              let el = document.getElementById(`sheet-${id}`);
+              if (!el) el = document.getElementById(`chart-${id}`);
+              if (!el) el = document.getElementById(`note-${id}`);
+
+              if (el) {
+                  el.style.left = `${pos.x + deltaX}px`;
+                  el.style.top = `${pos.y + deltaY}px`;
+                  // NOTE: will-change is already set in onMouseDown
+              }
+          });
+      }
   }, [draggingId, selectionBox, transform.scale]);
 
-  const handleGlobalMouseUp = useCallback(() => {
+  // Hook up the refined handler
+  useEffect(() => {
+      if (draggingId) {
+          dragStartMousePos.current = { x: lastMousePos.current.x, y: lastMousePos.current.y };
+      }
+  }, [draggingId]);
+
+
+  const handleGlobalMouseUp = useCallback((e: MouseEvent) => {
     if (selectionBox) {
         const { start, current } = selectionBox;
         const toCanvas = (x: number, y: number) => ({
@@ -578,28 +634,61 @@ const App: React.FC = () => {
         setSelectionBox(null);
     }
 
-    if (draggingId && dragStartSnapshot.current) {
-        saveSnapshot();
+    // Commit Drag Changes
+    if (draggingId && dragStartMousePos.current) {
+        const deltaX = (e.clientX - dragStartMousePos.current.x) / transform.scale;
+        const deltaY = (e.clientY - dragStartMousePos.current.y) / transform.scale;
+
+        // Only save if there was movement
+        if (Math.abs(deltaX) > 1 || Math.abs(deltaY) > 1) {
+            if (dragStartSnapshot.current) saveSnapshot();
+
+            const s = useStore.getState() as AppState;
+            Object.entries(dragInitialPositions.current).forEach(([id, initialPos]) => {
+                const pos = initialPos as Position;
+                const newPos = { x: pos.x + deltaX, y: pos.y + deltaY };
+                
+                // Cleanup DOM hints
+                let el = document.getElementById(`sheet-${id}`);
+                if (!el) el = document.getElementById(`chart-${id}`);
+                if (!el) el = document.getElementById(`note-${id}`);
+                if (el) el.style.willChange = 'auto';
+
+                if (s.sheets[id]) updateSheet(id, { position: newPos });
+                else if (s.charts[id]) updateChart(id, { position: newPos });
+                else if (s.notes[id]) updateNote(id, { position: newPos });
+            });
+        } else {
+            // Even if no movement, cleanup will-change
+            Object.keys(dragInitialPositions.current).forEach(id => {
+                let el = document.getElementById(`sheet-${id}`);
+                if (!el) el = document.getElementById(`chart-${id}`);
+                if (!el) el = document.getElementById(`note-${id}`);
+                if (el) el.style.willChange = 'auto';
+            });
+        }
     }
 
     setDraggingId(null);
     setDraggingType(null);
     dragStartSnapshot.current = null;
-  }, [draggingId, draggingType, selectionBox, transform, select, saveSnapshot]);
+    dragStartMousePos.current = null;
+    dragInitialPositions.current = {};
+  }, [draggingId, draggingType, selectionBox, transform, select, saveSnapshot, updateSheet, updateChart, updateNote]);
 
   useEffect(() => {
     if (draggingId || selectionBox) {
-      window.addEventListener('mousemove', handleGlobalMouseMove);
+      window.addEventListener('mousemove', handleGlobalMouseMoveOptimized);
       window.addEventListener('mouseup', handleGlobalMouseUp);
     } else {
-      window.removeEventListener('mousemove', handleGlobalMouseMove);
+      window.removeEventListener('mousemove', handleGlobalMouseMoveOptimized);
       window.removeEventListener('mouseup', handleGlobalMouseUp);
     }
     return () => {
-      window.removeEventListener('mousemove', handleGlobalMouseMove);
+      window.removeEventListener('mousemove', handleGlobalMouseMoveOptimized);
       window.removeEventListener('mouseup', handleGlobalMouseUp);
     };
-  }, [draggingId, selectionBox, handleGlobalMouseMove, handleGlobalMouseUp]);
+  }, [draggingId, selectionBox, handleGlobalMouseMoveOptimized, handleGlobalMouseUp]);
 
   const processImportedFiles = async (files: File[], targetPos?: { x: number, y: number }) => {
     let createdCount = 0;
