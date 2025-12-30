@@ -6,7 +6,7 @@ import { formatValue } from '../utils/formatting';
 import { parseClipboardData } from '../utils/clipboard';
 import { getFilteredRows } from '../utils/dataAnalysis';
 import { CELL_WIDTH, CELL_HEIGHT, HEADER_COL_WIDTH, HEADER_ROW_HEIGHT, MIN_COL_WIDTH, MAX_RENDER_ROWS } from '../constants';
-import { GripHorizontal, Trash2, BarChart3, ChevronDown, MoreVertical, Table, Settings2, X, Image as ImageIcon, Loader2, AlertCircle, Filter, TrendingUp, Link } from 'lucide-react';
+import { GripHorizontal, Trash2, BarChart3, ChevronDown, MoreVertical, Table, Settings2, X, Image as ImageIcon, Loader2, AlertCircle, Filter, TrendingUp, Link, RefreshCcw, Code2 } from 'lucide-react';
 import { PivotConfigPanel } from './PivotConfigPanel';
 import { SparklineConfigPanel } from './SparklineConfigPanel';
 import { FilterPanel } from './FilterPanel';
@@ -16,6 +16,8 @@ import { SheetCell } from './SheetCell';
 import html2canvas from 'html2canvas';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useStore } from '../store';
+import { clickhouseResultToMatrix, queryClickhouse } from '../utils/clickhouseBackend';
+import { INITIAL_COLS, INITIAL_ROWS, MAX_IMPORT_COLS, MAX_IMPORT_ROWS } from '../constants';
 
 interface SheetNodeProps {
   id: string;
@@ -75,6 +77,9 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
   
   const [showPivotConfig, setShowPivotConfig] = useState(false);
   const [showSparklineConfig, setShowSparklineConfig] = useState(false);
+  const [showClickhouseSql, setShowClickhouseSql] = useState(false);
+  const [clickhouseSqlDraft, setClickhouseSqlDraft] = useState<string>('');
+  const [isClickhouseRefreshing, setIsClickhouseRefreshing] = useState(false);
   
   const showFilterPanel = !!data?.showFilterPanel;
   const [preselectedFilterCol, setPreselectedFilterCol] = useState<string | null>(null);
@@ -84,6 +89,19 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
   const gridRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const dataRef = useRef(data);
+  const updateSheetRef = useRef(updateSheet);
+  const scaleRef = useRef(scale);
+  const colResizingRef = useRef<{ index: number; startX: number; startWidth: number } | null>(null);
+  const resizingRef = useRef<{
+    type: 'right' | 'bottom' | 'corner';
+    startX: number;
+    startY: number;
+    startCols: number;
+    startRows: number;
+  } | null>(null);
+  const resizeRafIdRef = useRef<number | null>(null);
+  const queuedColWidthRef = useRef<{ index: number; width: number } | null>(null);
+  const queuedSizeRef = useRef<{ width: number; height: number } | null>(null);
   
   const [resizing, setResizing] = useState<{
     type: 'right' | 'bottom' | 'corner';
@@ -97,6 +115,18 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
   useEffect(() => {
       dataRef.current = data;
   }, [data]);
+  useEffect(() => {
+      updateSheetRef.current = updateSheet;
+  }, [updateSheet]);
+  useEffect(() => {
+      scaleRef.current = scale;
+  }, [scale]);
+  useEffect(() => {
+      colResizingRef.current = colResizing;
+  }, [colResizing]);
+  useEffect(() => {
+      resizingRef.current = resizing;
+  }, [resizing]);
 
   if (!data) return null;
 
@@ -105,17 +135,109 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
   const isSetup = !!data.setupRequired;
   const isConnected = !!data.connectorConfig;
   const isReadOnly = isPivot || isSparkline || isConnected;
+  const isClickhouseConnected = data.connectorConfig?.type === 'clickhouse';
+
+  const lastRefreshedAt =
+    isClickhouseConnected && typeof data.connectorConfig?.params?.lastRefreshedAt === 'number'
+      ? (data.connectorConfig?.params?.lastRefreshedAt as number)
+      : null;
+
+  const applyMatrixToSheet = (matrix: string[][]) => {
+    let finalMatrix = matrix;
+    let truncated = false;
+
+    if (finalMatrix.length > MAX_IMPORT_ROWS) {
+      finalMatrix = finalMatrix.slice(0, MAX_IMPORT_ROWS);
+      truncated = true;
+    }
+    if (finalMatrix.length > 0 && finalMatrix[0].length > MAX_IMPORT_COLS) {
+      finalMatrix = finalMatrix.map(row => row.slice(0, MAX_IMPORT_COLS));
+      truncated = true;
+    }
+
+    const rows = finalMatrix.length;
+    const cols = finalMatrix.reduce((max, row) => Math.max(max, row.length), 0);
+    const finalCols = Math.max(cols, INITIAL_COLS);
+    const finalRows = Math.max(rows, INITIAL_ROWS);
+    const maxViewportRows = Math.floor((window.innerHeight - 200) / CELL_HEIGHT);
+    const maxViewportCols = Math.floor((window.innerWidth - 200) / CELL_WIDTH);
+    const constrainedRows = Math.min(finalRows, Math.max(INITIAL_ROWS, maxViewportRows));
+    const constrainedCols = Math.min(finalCols, Math.max(INITIAL_COLS, maxViewportCols));
+
+    const newCells: Record<string, CellData> = {};
+    finalMatrix.forEach((rowVals, r) => {
+      rowVals.forEach((val, c) => {
+        const strVal = String(val);
+        if (strVal.trim()) {
+          const id = getCellId(c, r);
+          newCells[id] = { raw: strVal.trim(), value: null };
+        }
+      });
+    });
+    return {
+      cells: newCells,
+      size: { width: constrainedCols, height: constrainedRows },
+      truncated
+    };
+  };
+
+  const refreshClickhouse = async (opts?: { sqlOverride?: string; showToasts?: boolean }) => {
+    if (!isClickhouseConnected) return;
+    const connectorId = String(data.connectorConfig?.params?.connectorId || '');
+    const sql = (opts?.sqlOverride ?? String(data.connectorConfig?.params?.sql || '')).trim();
+    if (!connectorId || !sql) {
+      if (onToast) onToast('Missing ClickHouse connector or SQL');
+      return;
+    }
+
+    setIsClickhouseRefreshing(true);
+    saveSnapshot();
+    try {
+      const result = await queryClickhouse({ connectorId, sql });
+      const matrix = clickhouseResultToMatrix(result);
+      const next = applyMatrixToSheet(matrix);
+      const nextConfig = {
+          ...data.connectorConfig!,
+          params: {
+              ...data.connectorConfig!.params,
+              sql,
+              lastRefreshedAt: Date.now(),
+              truncated: !!result.truncated,
+              lastError: ''
+          }
+      };
+
+      updateSheet(data.id, { size: next.size, cells: next.cells, connectorConfig: nextConfig });
+      if (next.truncated && onToast) onToast(`Dataset truncated to ${MAX_IMPORT_ROWS} rows / ${MAX_IMPORT_COLS} cols`);
+      if (opts?.showToasts !== false && onToast) onToast('Refreshed');
+    } catch (e: any) {
+      const msg = e?.message || 'Refresh failed';
+      updateSheet(data.id, {
+        connectorConfig: {
+          ...data.connectorConfig!,
+          params: {
+            ...data.connectorConfig!.params,
+            sql,
+            lastError: msg
+          }
+        }
+      });
+      if (onToast) onToast(msg);
+    } finally {
+      setIsClickhouseRefreshing(false);
+    }
+  };
 
   // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
     const grid = gridRef.current;
     if (!grid) return;
-    const handleWheel = (e: WheelEvent) => {
-        e.stopPropagation();
-    };
-    grid.addEventListener('wheel', handleWheel, { passive: false });
-    return () => grid.removeEventListener('wheel', handleWheel);
-  }, []);
+	    const handleWheel = (e: WheelEvent) => {
+	        e.stopPropagation();
+	    };
+	    grid.addEventListener('wheel', handleWheel, { passive: true });
+	    return () => grid.removeEventListener('wheel', handleWheel);
+	  }, []);
 
   // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
@@ -874,47 +996,103 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
 
   // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
+    const commitQueuedResizeUpdates = () => {
+      const currentData = dataRef.current;
+      if (!currentData) return;
+
+      const patch: Partial<SheetData> = {};
+
+      const colUpdate = queuedColWidthRef.current;
+      if (colUpdate) {
+        const key = String(colUpdate.index);
+        const existingWidth = currentData.colWidths?.[key];
+        if (existingWidth !== colUpdate.width) {
+          patch.colWidths = { ...currentData.colWidths, [key]: colUpdate.width };
+        }
+      }
+
+      const sizeUpdate = queuedSizeRef.current;
+      if (sizeUpdate) {
+        if (sizeUpdate.width !== currentData.size.width || sizeUpdate.height !== currentData.size.height) {
+          patch.size = { width: sizeUpdate.width, height: sizeUpdate.height };
+        }
+      }
+
+      queuedColWidthRef.current = null;
+      queuedSizeRef.current = null;
+
+      if (Object.keys(patch).length > 0) {
+        updateSheetRef.current(currentData.id, patch);
+      }
+    };
+
+    const scheduleResizeCommit = () => {
+      if (resizeRafIdRef.current !== null) return;
+      resizeRafIdRef.current = requestAnimationFrame(() => {
+        resizeRafIdRef.current = null;
+        commitQueuedResizeUpdates();
+      });
+    };
+
     const handleMouseUp = () => {
-        setIsSelecting(false);
-        setColResizing(null);
-        setResizing(null);
-        setFormulaDragStart(null);
-        setFormulaDragPrefix(null);
+      if (resizeRafIdRef.current !== null) {
+        cancelAnimationFrame(resizeRafIdRef.current);
+        resizeRafIdRef.current = null;
+      }
+      commitQueuedResizeUpdates();
+
+      setIsSelecting(false);
+      setColResizing(null);
+      setResizing(null);
+      setFormulaDragStart(null);
+      setFormulaDragPrefix(null);
     };
     
     const handleMouseMove = (e: MouseEvent) => {
-        const currentData = dataRef.current;
-        
-        if (colResizing) {
-            const dx = (e.clientX - colResizing.startX) / scale;
-            const newWidth = Math.max(MIN_COL_WIDTH, colResizing.startWidth + dx);
-            updateSheet(currentData.id, { colWidths: { ...currentData.colWidths, [String(colResizing.index)]: newWidth } });
+      const currentData = dataRef.current;
+      if (!currentData) return;
+
+      const currentScale = scaleRef.current || 1;
+
+      const activeColResizing = colResizingRef.current;
+      if (activeColResizing) {
+        const dx = (e.clientX - activeColResizing.startX) / currentScale;
+        const newWidth = Math.max(MIN_COL_WIDTH, activeColResizing.startWidth + dx);
+        queuedColWidthRef.current = { index: activeColResizing.index, width: newWidth };
+      }
+
+      const activeResizing = resizingRef.current;
+      if (activeResizing) {
+        const dx = (e.clientX - activeResizing.startX) / currentScale;
+        const dy = (e.clientY - activeResizing.startY) / currentScale;
+        let newCols = activeResizing.startCols;
+        let newRows = activeResizing.startRows;
+        if (activeResizing.type === 'right' || activeResizing.type === 'corner') {
+          const deltaCols = Math.round(dx / CELL_WIDTH);
+          newCols = Math.max(1, activeResizing.startCols + deltaCols);
         }
-        if (resizing) {
-            const dx = (e.clientX - resizing.startX) / scale;
-            const dy = (e.clientY - resizing.startY) / scale;
-            let newCols = resizing.startCols;
-            let newRows = resizing.startRows;
-            if (resizing.type === 'right' || resizing.type === 'corner') {
-                const deltaCols = Math.round(dx / CELL_WIDTH);
-                newCols = Math.max(1, resizing.startCols + deltaCols);
-            }
-            if (resizing.type === 'bottom' || resizing.type === 'corner') {
-                const deltaRows = Math.round(dy / CELL_HEIGHT);
-                newRows = Math.max(1, resizing.startRows + deltaRows);
-            }
-            if (newCols !== currentData.size.width || newRows !== currentData.size.height) {
-                updateSheet(currentData.id, { size: { width: newCols, height: newRows } });
-            }
+        if (activeResizing.type === 'bottom' || activeResizing.type === 'corner') {
+          const deltaRows = Math.round(dy / CELL_HEIGHT);
+          newRows = Math.max(1, activeResizing.startRows + deltaRows);
         }
+        if (newCols !== currentData.size.width || newRows !== currentData.size.height) {
+          queuedSizeRef.current = { width: newCols, height: newRows };
+        }
+      }
+
+      if (queuedColWidthRef.current || queuedSizeRef.current) scheduleResizeCommit();
     };
     window.addEventListener('mouseup', handleMouseUp);
     window.addEventListener('mousemove', handleMouseMove);
     return () => {
-        window.removeEventListener('mouseup', handleMouseUp);
-        window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('mousemove', handleMouseMove);
+      if (resizeRafIdRef.current !== null) {
+        cancelAnimationFrame(resizeRafIdRef.current);
+        resizeRafIdRef.current = null;
+      }
     };
-  }, [colResizing, resizing, scale, updateSheet]);
+  }, []);
 
   const handleCopyImage = async () => {
     if (!containerRef.current) return;
@@ -1006,6 +1184,33 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                 <button onClick={handleCopyImage} className="group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors" disabled={isExporting}>
                     {isExporting ? <Loader2 size={14} className="animate-spin" /> : <ImageIcon size={14} />}
                 </button>
+                {isClickhouseConnected && (
+                    <>
+                        <button
+                            onClick={() => refreshClickhouse({ showToasts: true })}
+                            disabled={isClickhouseRefreshing}
+                            className={`group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md transition-colors ${
+                                isClickhouseRefreshing ? 'bg-neutral-100 dark:bg-neutral-800 cursor-not-allowed' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                            }`}
+                            title={lastRefreshedAt ? `Refresh (last: ${new Date(lastRefreshedAt).toLocaleString()})` : 'Refresh'}
+                        >
+                            {isClickhouseRefreshing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCcw size={14} />}
+                        </button>
+                        <button
+                            onClick={() => {
+                                const next = !showClickhouseSql;
+                                setShowClickhouseSql(next);
+                                if (next) setClickhouseSqlDraft(String(data.connectorConfig?.params?.sql || ''));
+                            }}
+                            className={`group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md transition-colors ${
+                                showClickhouseSql ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                            }`}
+                            title="Edit SQL"
+                        >
+                            <Code2 size={14} />
+                        </button>
+                    </>
+                )}
                 {isPivot && (
                     <button onClick={() => setShowPivotConfig(!showPivotConfig)} className={`group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md transition-colors ${showPivotConfig ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}>
                         <Settings2 size={14} />
@@ -1042,6 +1247,55 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                 filteredCount={recordCounts.filteredCount}
                 totalCount={recordCounts.totalCount}
             />
+        )}
+        {showClickhouseSql && isClickhouseConnected && (
+            <div className="border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50/60 dark:bg-neutral-900/40 p-3">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mb-2">
+                    SQL
+                </div>
+                <textarea
+                    className="w-full min-h-[120px] bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm font-mono text-neutral-900 dark:text-neutral-100 outline-none focus:ring-2 focus:ring-teal-500/50"
+                    value={clickhouseSqlDraft}
+                    onChange={(e) => setClickhouseSqlDraft(e.target.value)}
+                    placeholder="SELECT ..."
+                />
+                <div className="flex justify-end gap-2 mt-2">
+                    <button
+                        onClick={() => setShowClickhouseSql(false)}
+                        className="px-3 py-1.5 text-xs font-medium text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        onClick={() => {
+                            const sql = clickhouseSqlDraft.trim();
+                            if (!sql) return;
+                            saveSnapshot();
+                            updateSheet(data.id, {
+                                connectorConfig: {
+                                    ...data.connectorConfig!,
+                                    params: { ...data.connectorConfig!.params, sql }
+                                }
+                            });
+                            setShowClickhouseSql(false);
+                        }}
+                        className="px-3 py-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-200 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors"
+                    >
+                        Save
+                    </button>
+                    <button
+                        onClick={async () => {
+                            const sql = clickhouseSqlDraft.trim();
+                            if (!sql) return;
+                            setShowClickhouseSql(false);
+                            await refreshClickhouse({ sqlOverride: sql, showToasts: true });
+                        }}
+                        className="px-3 py-1.5 text-xs font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition-colors"
+                    >
+                        Save & Refresh
+                    </button>
+                </div>
+            </div>
         )}
       </div>
 

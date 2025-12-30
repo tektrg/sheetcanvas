@@ -53,10 +53,14 @@ export const NoteNode: React.FC<NoteNodeProps> = ({ id, darkMode, initialEditing
 
   useEffect(() => {
     if (!resizing) return;
-    const handleMouseMove = (e: MouseEvent) => {
-      const dx = (e.clientX - resizing.startX) / scale;
-      const dy = (e.clientY - resizing.startY) / scale;
-      
+    let rafId: number | null = null;
+    let lastPos: { x: number; y: number } | null = null;
+
+    const commitResize = () => {
+      if (!lastPos) return;
+      const dx = (lastPos.x - resizing.startX) / scale;
+      const dy = (lastPos.y - resizing.startY) / scale;
+
       updateNote(data.id, {
         size: {
           width: Math.max(100, resizing.startW + dx),
@@ -64,12 +68,34 @@ export const NoteNode: React.FC<NoteNodeProps> = ({ id, darkMode, initialEditing
         }
       });
     };
-    const handleMouseUp = () => setResizing(null);
+
+    const scheduleCommit = () => {
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        commitResize();
+      });
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      lastPos = { x: e.clientX, y: e.clientY };
+      scheduleCommit();
+    };
+
+    const handleMouseUp = () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      commitResize();
+      setResizing(null);
+    };
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
+      if (rafId !== null) cancelAnimationFrame(rafId);
     };
   }, [resizing, scale, data.id, updateNote]);
 
