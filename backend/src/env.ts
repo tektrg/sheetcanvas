@@ -1,0 +1,9 @@
+export type Env = {
+  DB: D1Database;
+  ALLOWED_ORIGINS?: string;
+  DEFAULT_TIMEOUT_MS?: string;
+  MAX_ROWS?: string;
+  ENCRYPTION_KEY_B64: string;
+  API_BEARER_TOKEN?: string;
+};
+

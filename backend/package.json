@@ -1,0 +1,19 @@
+{
+  "name": "flexsheet-backend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev src/index.ts",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "hono": "^4.9.0",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250710.0",
+    "wrangler": "^4.45.2",
+    "typescript": "~5.8.2"
+  }
+}
+
