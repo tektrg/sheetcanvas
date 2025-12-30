@@ -87,7 +87,7 @@ export interface SortConfig {
 }
 
 // Data Connector Types
-export type ConnectorType = 'google-sheets' | 'google-analytics' | 'csv-url';
+export type ConnectorType = 'google-sheets' | 'google-analytics' | 'csv-url' | 'clickhouse';
 
 export interface ConnectorConfig {
   type: ConnectorType;
