@@ -93,7 +93,7 @@ export interface ConnectorConfig {
   type: ConnectorType;
   name: string;
   // Generic params bucket
-  params: Record<string, string | number | boolean>;
+  params: Record<string, unknown>;
 }
 
 export interface ConnectorResult {
