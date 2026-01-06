@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ConnectorConfig, ConnectorType } from '../types';
 import { X, Database, FileSpreadsheet, BarChart2, Globe, Loader2, CheckCircle2, AlertCircle, KeyRound, RefreshCcw, Code2 } from 'lucide-react';
 import { fetchDataFromConnector } from '../utils/dataConnectors';
@@ -85,6 +85,23 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
   const [chTesting, setChTesting] = useState(false);
   const [chSaving, setChSaving] = useState(false);
   const [chTestOk, setChTestOk] = useState<boolean | null>(null);
+  const clickhouseSqlRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    document.body.dataset.modalOpen = 'true';
+    return () => {
+      delete document.body.dataset.modalOpen;
+    };
+  }, []);
+
+  useEffect(() => {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement) active.blur();
+
+    if (selectedType === 'clickhouse') {
+      requestAnimationFrame(() => clickhouseSqlRef.current?.focus());
+    }
+  }, [selectedType]);
 
   const loadClickhouseConnectors = async () => {
     const connectors = await listClickhouseConnectors();
@@ -535,12 +552,13 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
 
                     <div>
                         <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1.5 uppercase">SQL</label>
-                        <textarea
-                            className="w-full min-h-[160px] bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm font-mono text-neutral-900 dark:text-neutral-100 outline-none focus:ring-2 focus:ring-teal-500/50"
-                            value={chSql}
-                            onChange={e => setChSql(e.target.value)}
-                            placeholder="SELECT ..."
-                        />
+	                        <textarea
+	                            ref={clickhouseSqlRef}
+	                            className="w-full min-h-[160px] bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm font-mono text-neutral-900 dark:text-neutral-100 outline-none focus:ring-2 focus:ring-teal-500/50"
+	                            value={chSql}
+	                            onChange={e => setChSql(e.target.value)}
+	                            placeholder="SELECT ..."
+	                        />
                         <p className="mt-1 text-[10px] text-neutral-400">
                             Runs via backend proxy. Only SELECT/WITH queries are allowed.
                         </p>
@@ -839,7 +857,18 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          onClose();
+        }
+      }}
+    >
       <div className="absolute inset-0 bg-black/20 dark:bg-black/50 backdrop-blur-sm" onClick={onClose} />
       <div className="bg-white dark:bg-neutral-850 rounded-xl shadow-2xl w-full max-w-2xl border border-neutral-200 dark:border-neutral-700 relative z-10 flex overflow-hidden h-[500px]">
         
