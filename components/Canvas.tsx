@@ -87,7 +87,26 @@ export const Canvas: React.FC<CanvasProps> = ({ children, darkMode, onDoubleClic
     if (e.ctrlKey || e.metaKey) {
       const zoomIntensity = 0.001;
       newScale = Math.min(Math.max(transformRef.current.scale - e.deltaY * zoomIntensity, MIN_SCALE), MAX_SCALE);
-      // Zoom towards mouse pointer logic could be added here, currently center zoom-ish
+
+      // Zoom toward mouse position relative to the canvas container
+      const container = containerRef.current;
+      if (container) {
+        const rect = container.getBoundingClientRect();
+        const focalScreen = {
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top
+        };
+
+        const worldPoint = {
+            x: (focalScreen.x - transformRef.current.offset.x) / transformRef.current.scale,
+            y: (focalScreen.y - transformRef.current.offset.y) / transformRef.current.scale
+        };
+
+        newOffset = {
+            x: focalScreen.x - worldPoint.x * newScale,
+            y: focalScreen.y - worldPoint.y * newScale
+        };
+      }
     } else {
         newOffset.x -= e.deltaX;
         newOffset.y -= e.deltaY;
