@@ -61,12 +61,14 @@ cd backend
 wrangler d1 execute DB --local --file ./schema.sql
 
 # required for local encryption (create your own 32-byte key)
-node -e "console.log('ENCRYPTION_KEY_B64='+require('crypto').randomBytes(32).toString('base64'))" > .dev.vars
+node -e "console.log('ENCRYPTION_KEY_B64='+require('crypto').randomBytes(32).toString('base64'))" >> .dev.vars
 
 # start the worker
 HOME=$PWD/.home WRANGLER_LOG_PATH=$PWD/.wrangler-logs WRANGLER_LOG=info \
 wrangler dev src/index.ts --config wrangler.toml --local --port 8787
 ```
+
+If you already have a local D1 database from an older schema, the worker will auto-add newly introduced columns on startup; you can also re-run the schema step above to create the table from scratch.
 
 If you change the frontend dev server port, update `ALLOWED_ORIGINS` in `backend/wrangler.toml` (or override it via `.dev.vars`).
 
