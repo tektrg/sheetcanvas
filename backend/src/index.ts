@@ -1,12 +1,25 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { Env } from "./env";
-import { toJsonError } from "./errors";
+import { HttpError, toJsonError } from "./errors";
 import { requireBearerToken } from "./auth";
 import { decryptString, encryptString } from "./crypto";
 import { executeClickhouseQuery } from "./clickhouse";
-import { getConnectorById, insertClickhouseConnector, listConnectors } from "./db";
-import { clickhouseCreateSchema, clickhouseQuerySchema, clickhouseTestSchema } from "./validation";
+import {
+  exchangeGoogleAnalyticsCode,
+  listGoogleAnalyticsProperties,
+  refreshGoogleAnalyticsAccessToken,
+  runGoogleAnalyticsReport
+} from "./googleAnalytics";
+import { getConnectorById, insertClickhouseConnector, insertGoogleAnalyticsConnector, listConnectors } from "./db";
+import {
+  clickhouseCreateSchema,
+  clickhouseQuerySchema,
+  clickhouseTestSchema,
+  googleAnalyticsAuthExchangeSchema,
+  googleAnalyticsPropertiesSchema,
+  googleAnalyticsQuerySchema
+} from "./validation";
 
 function parseAllowedOrigins(origins: string | undefined) {
   const v = (origins ?? "").trim();
@@ -49,6 +62,15 @@ app.options("*", (c) => c.body(null, 204));
 
 app.onError((err, c) => {
   const { status, body } = toJsonError(err);
+  if (status >= 500) {
+    const url = new URL(c.req.url);
+    console.error("[flexsheet-backend] unhandled error", {
+      method: c.req.method,
+      path: url.pathname,
+      status,
+      error: err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : err
+    });
+  }
   return c.json(body, status);
 });
 
@@ -106,6 +128,15 @@ app.post("/api/query/clickhouse", async (c) => {
   if (!parsed.success) return c.json({ error: { code: "bad_request", message: parsed.error.message } }, 400);
 
   const connector = await getConnectorById(c.env, parsed.data.connectorId);
+  if (connector.type !== "clickhouse") {
+    throw new HttpError(400, "unsupported_connector", "Unsupported connector type");
+  }
+  if (!connector.url || !connector.username) {
+    throw new HttpError(400, "missing_config", "Connector is missing connection details");
+  }
+  if (!connector.password_ciphertext_b64 || !connector.password_iv_b64) {
+    throw new HttpError(400, "missing_secret", "Connector is missing credentials");
+  }
   const password = await decryptString(
     connector.password_ciphertext_b64,
     connector.password_iv_b64,
@@ -129,6 +160,121 @@ app.post("/api/query/clickhouse", async (c) => {
     rows: result.rows,
     rowCount: result.rowCount,
     truncated: result.rows.length >= maxRows
+  });
+});
+
+app.post("/api/connectors/google-analytics/auth/exchange", async (c) => {
+  requireBearerToken(c.req.raw, c.env);
+  const parsed = googleAnalyticsAuthExchangeSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: { code: "bad_request", message: parsed.error.message } }, 400);
+
+  const clientId = c.env.GOOGLE_CLIENT_ID?.trim();
+  if (!clientId) throw new HttpError(500, "missing_config", "GOOGLE_CLIENT_ID is not set");
+
+  const token = await exchangeGoogleAnalyticsCode({
+    code: parsed.data.code,
+    codeVerifier: parsed.data.codeVerifier,
+    redirectUri: parsed.data.redirectUri,
+    clientId,
+    clientSecret: c.env.GOOGLE_CLIENT_SECRET?.trim()
+  });
+
+  if (!token.refresh_token) {
+    throw new HttpError(400, "missing_refresh_token", "No refresh token returned. Re-consent is required.");
+  }
+
+  const { ciphertextB64, ivB64 } = await encryptString(token.refresh_token, c.env.ENCRYPTION_KEY_B64);
+  const configJson = JSON.stringify({ scope: token.scope ?? null });
+
+  const connector = await insertGoogleAnalyticsConnector(c.env, {
+    id: crypto.randomUUID(),
+    name: "Google Analytics",
+    config_json: configJson,
+    secret_ciphertext_b64: ciphertextB64,
+    secret_iv_b64: ivB64,
+    created_at_ms: Date.now(),
+    updated_at_ms: Date.now()
+  });
+
+  return c.json({ connector }, 201);
+});
+
+app.post("/api/connectors/google-analytics/properties", async (c) => {
+  requireBearerToken(c.req.raw, c.env);
+  const parsed = googleAnalyticsPropertiesSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: { code: "bad_request", message: parsed.error.message } }, 400);
+
+  const connector = await getConnectorById(c.env, parsed.data.connectorId);
+  if (connector.type !== "google-analytics") {
+    throw new HttpError(400, "unsupported_connector", "Unsupported connector type");
+  }
+
+  const clientId = c.env.GOOGLE_CLIENT_ID?.trim();
+  if (!clientId) throw new HttpError(500, "missing_config", "GOOGLE_CLIENT_ID is not set");
+  if (!connector.secret_ciphertext_b64 || !connector.secret_iv_b64) {
+    throw new HttpError(400, "missing_secret", "Connector is missing credentials");
+  }
+
+  const refreshToken = await decryptString(
+    connector.secret_ciphertext_b64,
+    connector.secret_iv_b64,
+    c.env.ENCRYPTION_KEY_B64
+  );
+
+  const access = await refreshGoogleAnalyticsAccessToken({
+    refreshToken,
+    clientId,
+    clientSecret: c.env.GOOGLE_CLIENT_SECRET?.trim()
+  });
+
+  const properties = await listGoogleAnalyticsProperties({ accessToken: access.access_token });
+
+  return c.json({ properties });
+});
+
+app.post("/api/query/google-analytics", async (c) => {
+  requireBearerToken(c.req.raw, c.env);
+  const body = await c.req.json().catch(() => null);
+  const parsed = googleAnalyticsQuerySchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: { code: "bad_request", message: parsed.error.message } }, 400);
+
+  const connector = await getConnectorById(c.env, parsed.data.connectorId);
+  if (connector.type !== "google-analytics") {
+    throw new HttpError(400, "unsupported_connector", "Unsupported connector type");
+  }
+
+  const clientId = c.env.GOOGLE_CLIENT_ID?.trim();
+  if (!clientId) throw new HttpError(500, "missing_config", "GOOGLE_CLIENT_ID is not set");
+  if (!connector.secret_ciphertext_b64 || !connector.secret_iv_b64) {
+    throw new HttpError(400, "missing_secret", "Connector is missing credentials");
+  }
+
+  const refreshToken = await decryptString(
+    connector.secret_ciphertext_b64,
+    connector.secret_iv_b64,
+    c.env.ENCRYPTION_KEY_B64
+  );
+
+  const access = await refreshGoogleAnalyticsAccessToken({
+    refreshToken,
+    clientId,
+    clientSecret: c.env.GOOGLE_CLIENT_SECRET?.trim()
+  });
+
+  const maxRows = getMaxRows(c.env);
+  const normalizedPropertyId = parsed.data.propertyId.replace(/^properties\//i, "");
+  const result = await runGoogleAnalyticsReport({
+    accessToken: access.access_token,
+    propertyId: normalizedPropertyId,
+    report: parsed.data.report,
+    maxRows
+  });
+
+  return c.json({
+    columns: result.columns,
+    rows: result.rows,
+    rowCount: result.rowCount,
+    truncated: result.truncated
   });
 });
 
