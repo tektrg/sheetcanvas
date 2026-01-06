@@ -1,5 +1,6 @@
 
 import { ConnectorConfig, ConnectorResult } from '../types';
+import { googleAnalyticsResultToMatrix, queryGoogleAnalytics, type GoogleAnalyticsReport } from './googleAnalyticsBackend';
 
 /**
  * Simulator function to mimic Google Sheets API response
@@ -50,7 +51,8 @@ const mockGoogleAnalyticsFetch = async (propertyId: string): Promise<string[][]>
 export const fetchDataFromConnector = async (config: ConnectorConfig): Promise<ConnectorResult> => {
   // Check if we are in simulation mode (usually determined by env var or UI toggle)
   // For this demo, we assume simulation if no API Key is present in params (or always true for safety)
-  const isSimulation = config.params.simulate !== false;
+  const simulateParam = (config.params as Record<string, unknown>).simulate;
+  const isSimulation = simulateParam !== false;
 
   try {
     if (config.type === 'google-sheets') {
@@ -77,16 +79,14 @@ export const fetchDataFromConnector = async (config: ConnectorConfig): Promise<C
       const propertyId = String(config.params.propertyId || '');
 
       if (!isSimulation) {
-        // REAL IMPLEMENTATION STUB:
-        // 1. Ensure gapi client is loaded
-        // 2. const response = await gapi.client.analyticsdata.properties.runReport({
-        //      property: `properties/${propertyId}`,
-        //      dateRanges: [{ startDate: '30daysAgo', endDate: 'today' }],
-        //      dimensions: [{ name: 'date' }],
-        //      metrics: [{ name: 'activeUsers' }, { name: 'sessions' }]
-        //    });
-        // 3. Transform response.rows into string[][] matrix
-        throw new Error("Real API connection requires OAuth configuration. Using simulation.");
+        const connectorId = String(config.params.connectorId || '');
+        if (!connectorId) throw new Error('Missing Google Analytics connector');
+        const report = config.params.report as GoogleAnalyticsReport | undefined;
+        const result = await queryGoogleAnalytics({ connectorId, propertyId, report });
+        return {
+          title: `Analytics: Prop ${propertyId}`,
+          data: googleAnalyticsResultToMatrix(result)
+        };
       }
 
       const data = await mockGoogleAnalyticsFetch(propertyId);
