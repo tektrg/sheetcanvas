@@ -1,10 +1,14 @@
 import { HttpError } from "./errors";
 
 function decodeBase64(b64: string): Uint8Array {
-  const bin = atob(b64);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
-  return bytes;
+  try {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  } catch {
+    throw new HttpError(500, "bad_encryption_key", "ENCRYPTION_KEY_B64 must be base64 of 32 bytes");
+  }
 }
 
 function encodeBase64(bytes: Uint8Array): string {
@@ -14,6 +18,9 @@ function encodeBase64(bytes: Uint8Array): string {
 }
 
 async function importAesKey(encryptionKeyB64: string): Promise<CryptoKey> {
+  if (!encryptionKeyB64?.trim()) {
+    throw new HttpError(500, "missing_config", "ENCRYPTION_KEY_B64 is not set");
+  }
   const raw = decodeBase64(encryptionKeyB64);
   if (raw.byteLength !== 32) {
     throw new HttpError(500, "bad_encryption_key", "ENCRYPTION_KEY_B64 must be base64 of 32 bytes");
@@ -39,4 +46,3 @@ export async function decryptString(ciphertextB64: string, ivB64: string, encryp
   const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext);
   return new TextDecoder().decode(plaintext);
 }
-

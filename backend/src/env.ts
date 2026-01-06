@@ -5,5 +5,6 @@ export type Env = {
   MAX_ROWS?: string;
   ENCRYPTION_KEY_B64: string;
   API_BEARER_TOKEN?: string;
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
 };
-
