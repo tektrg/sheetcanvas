@@ -17,6 +17,7 @@ import html2canvas from 'html2canvas';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useStore } from '../store';
 import { clickhouseResultToMatrix, queryClickhouse } from '../utils/clickhouseBackend';
+import { googleAnalyticsResultToMatrix, queryGoogleAnalytics, type GoogleAnalyticsReport } from '../utils/googleAnalyticsBackend';
 import { INITIAL_COLS, INITIAL_ROWS, MAX_IMPORT_COLS, MAX_IMPORT_ROWS } from '../constants';
 
 interface SheetNodeProps {
@@ -80,6 +81,7 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
   const [showClickhouseSql, setShowClickhouseSql] = useState(false);
   const [clickhouseSqlDraft, setClickhouseSqlDraft] = useState<string>('');
   const [isClickhouseRefreshing, setIsClickhouseRefreshing] = useState(false);
+  const [isGoogleAnalyticsRefreshing, setIsGoogleAnalyticsRefreshing] = useState(false);
   
   const showFilterPanel = !!data?.showFilterPanel;
   const [preselectedFilterCol, setPreselectedFilterCol] = useState<string | null>(null);
@@ -136,9 +138,13 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
   const isConnected = !!data.connectorConfig;
   const isReadOnly = isPivot || isSparkline || isConnected;
   const isClickhouseConnected = data.connectorConfig?.type === 'clickhouse';
+  const isGoogleAnalyticsConnected = data.connectorConfig?.type === 'google-analytics';
+  const isGoogleAnalyticsSimulated =
+    isGoogleAnalyticsConnected && data.connectorConfig?.params?.simulate !== false;
 
   const lastRefreshedAt =
-    isClickhouseConnected && typeof data.connectorConfig?.params?.lastRefreshedAt === 'number'
+    (isClickhouseConnected || isGoogleAnalyticsConnected) &&
+    typeof data.connectorConfig?.params?.lastRefreshedAt === 'number'
       ? (data.connectorConfig?.params?.lastRefreshedAt as number)
       : null;
 
@@ -228,6 +234,52 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
     }
   };
 
+  const refreshGoogleAnalytics = async (opts?: { showToasts?: boolean }) => {
+    if (!isGoogleAnalyticsConnected || isGoogleAnalyticsSimulated) return;
+    const connectorId = String(data.connectorConfig?.params?.connectorId || '');
+    const propertyId = String(data.connectorConfig?.params?.propertyId || '');
+    const report = data.connectorConfig?.params?.report as GoogleAnalyticsReport | undefined;
+    if (!connectorId || !propertyId) {
+      if (onToast) onToast('Missing Google Analytics connector or property ID');
+      return;
+    }
+
+    setIsGoogleAnalyticsRefreshing(true);
+    saveSnapshot();
+    try {
+      const result = await queryGoogleAnalytics({ connectorId, propertyId, report });
+      const matrix = googleAnalyticsResultToMatrix(result);
+      const next = applyMatrixToSheet(matrix);
+      const nextConfig = {
+        ...data.connectorConfig!,
+        params: {
+          ...data.connectorConfig!.params,
+          lastRefreshedAt: Date.now(),
+          truncated: !!result.truncated,
+          lastError: ''
+        }
+      };
+
+      updateSheet(data.id, { size: next.size, cells: next.cells, connectorConfig: nextConfig });
+      if (next.truncated && onToast) onToast(`Dataset truncated to ${MAX_IMPORT_ROWS} rows / ${MAX_IMPORT_COLS} cols`);
+      if (opts?.showToasts !== false && onToast) onToast('Refreshed');
+    } catch (e: any) {
+      const msg = e?.message || 'Refresh failed';
+      updateSheet(data.id, {
+        connectorConfig: {
+          ...data.connectorConfig!,
+          params: {
+            ...data.connectorConfig!.params,
+            lastError: msg
+          }
+        }
+      });
+      if (onToast) onToast(msg);
+    } finally {
+      setIsGoogleAnalyticsRefreshing(false);
+    }
+  };
+
   // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
     const grid = gridRef.current;
@@ -286,6 +338,15 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
       if (!filtered) return null; 
       return filtered;
   }, [data.cells, data.filters, data.sort, data.size.height, contentDimensions]);
+
+  const displayRowByActualRow = useMemo(() => {
+      if (!visibleRowIndices) return null;
+      const map = new Map<number, number>();
+      visibleRowIndices.forEach((actualRow, displayRow) => {
+          map.set(actualRow, displayRow);
+      });
+      return map;
+  }, [visibleRowIndices]);
 
   const recordCounts = useMemo(() => {
     const totalCount = Math.max(0, contentDimensions.rows - 1);
@@ -431,26 +492,38 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
     if (!selectionRange) return null;
     const minCol = Math.min(selectionRange.start.col, selectionRange.end.col);
     const maxCol = Math.max(selectionRange.start.col, selectionRange.end.col);
-    const minRow = Math.min(selectionRange.start.row, selectionRange.end.row);
-    const maxRow = Math.max(selectionRange.start.row, selectionRange.end.row);
+    const selectedRows = (() => {
+        if (!visibleRowIndices || !displayRowByActualRow) {
+            const minRow = Math.min(selectionRange.start.row, selectionRange.end.row);
+            const maxRow = Math.max(selectionRange.start.row, selectionRange.end.row);
+            return Array.from({ length: maxRow - minRow + 1 }, (_, i) => minRow + i);
+        }
+
+        const startDisplay = displayRowByActualRow.get(selectionRange.start.row);
+        const endDisplay = displayRowByActualRow.get(selectionRange.end.row);
+        const minDisplay = Math.min(startDisplay ?? 0, endDisplay ?? 0);
+        const maxDisplay = Math.max(
+            startDisplay ?? (visibleRowIndices.length - 1),
+            endDisplay ?? (visibleRowIndices.length - 1)
+        );
+        return visibleRowIndices.slice(minDisplay, maxDisplay + 1);
+    })();
 
     const numericValues: number[] = [];
     let nonEmptyCount = 0;
     
-    for(let r = minRow; r <= maxRow; r++) {
-        if (visibleRowIndices && !visibleRowIndices.includes(r)) continue;
-
-        for(let c = minCol; c <= maxCol; c++) {
-             const id = getCellId(c, r);
-             const cell = data.cells[id];
-             const cellValue = cell?.value;
-             if (cellValue !== null && cellValue !== undefined && String(cellValue).trim() !== '') {
-                 nonEmptyCount++;
-                 const val = Number(cellValue);
-                 if (!isNaN(val)) {
-                     numericValues.push(val);
-                 }
-             }
+    for (const actualRow of selectedRows) {
+        for (let c = minCol; c <= maxCol; c++) {
+            const id = getCellId(c, actualRow);
+            const cell = data.cells[id];
+            const cellValue = cell?.value;
+            if (cellValue !== null && cellValue !== undefined && String(cellValue).trim() !== '') {
+                nonEmptyCount++;
+                const val = Number(cellValue);
+                if (!isNaN(val)) {
+                    numericValues.push(val);
+                }
+            }
         }
     }
     if (nonEmptyCount === 0) return null;
@@ -461,7 +534,7 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
     const min = hasNumeric ? Math.min(...numericValues) : 0;
     const max = hasNumeric ? Math.max(...numericValues) : 0;
     return { sum, avg, count, min, max };
-  }, [selectionRange, data.cells, visibleRowIndices]);
+  }, [selectionRange, data.cells, visibleRowIndices, displayRowByActualRow]);
 
   const formatStat = (val: number) => new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(val);
 
@@ -524,12 +597,15 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
     if (!pos) return;
 
     const moveSelection = (dRow: number, dCol: number) => {
-        const maxRow = Math.max(data.size.height, contentDimensions.rows) - 1;
         const maxCol = Math.max(data.size.width, contentDimensions.cols) - 1;
+        const maxRow = visibleRowIndices ? effectiveRowCount - 1 : Math.max(data.size.height, contentDimensions.rows) - 1;
 
         if (e.shiftKey && selectionRange) {
             const currentHead = selectionRange.end;
-            const nextRow = Math.max(0, Math.min(maxRow, currentHead.row + dRow));
+            const currentDisplayRow =
+                visibleRowIndices && displayRowByActualRow ? (displayRowByActualRow.get(currentHead.row) ?? 0) : currentHead.row;
+            const nextDisplayRow = Math.max(0, Math.min(maxRow, currentDisplayRow + dRow));
+            const nextRow = visibleRowIndices ? (visibleRowIndices[nextDisplayRow] ?? currentHead.row) : nextDisplayRow;
             const nextCol = Math.max(0, Math.min(maxCol, currentHead.col + dCol));
             
             setSelectionRange({ 
@@ -537,10 +613,13 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                 end: { col: nextCol, row: nextRow } 
             });
             
-            rowVirtualizer.scrollToIndex(nextRow);
+            rowVirtualizer.scrollToIndex(nextDisplayRow);
             colVirtualizer.scrollToIndex(nextCol);
         } else {
-            const nextRow = Math.max(0, Math.min(maxRow, pos.row + dRow));
+            const currentDisplayRow =
+                visibleRowIndices && displayRowByActualRow ? (displayRowByActualRow.get(pos.row) ?? 0) : pos.row;
+            const nextDisplayRow = Math.max(0, Math.min(maxRow, currentDisplayRow + dRow));
+            const nextRow = visibleRowIndices ? (visibleRowIndices[nextDisplayRow] ?? pos.row) : nextDisplayRow;
             const nextCol = Math.max(0, Math.min(maxCol, pos.col + dCol));
             
             const nextId = getCellId(nextCol, nextRow);
@@ -548,7 +627,7 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
             setActiveCell(nextId);
             setSelectionRange({ start: { col: nextCol, row: nextRow }, end: { col: nextCol, row: nextRow } });
             
-            rowVirtualizer.scrollToIndex(nextRow);
+            rowVirtualizer.scrollToIndex(nextDisplayRow);
             colVirtualizer.scrollToIndex(nextCol);
         }
     };
@@ -871,7 +950,11 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
         const nextPos = parseCellId(nextCellId);
         if (nextPos) {
             setSelectionRange({ start: nextPos, end: nextPos });
-            rowVirtualizer.scrollToIndex(nextPos.row);
+            const nextDisplayRow =
+                visibleRowIndices && displayRowByActualRow
+                    ? (displayRowByActualRow.get(nextPos.row) ?? 0)
+                    : nextPos.row;
+            rowVirtualizer.scrollToIndex(nextDisplayRow);
             colVirtualizer.scrollToIndex(nextPos.col);
         }
     }
@@ -1120,13 +1203,28 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
 
   const selBounds = useMemo(() => {
       if (!selectionRange) return { minCol: -1, maxCol: -1, minRow: -1, maxRow: -1 };
+      if (visibleRowIndices && displayRowByActualRow) {
+          const startDisplay = displayRowByActualRow.get(selectionRange.start.row);
+          const endDisplay = displayRowByActualRow.get(selectionRange.end.row);
+          const minRow = Math.min(startDisplay ?? 0, endDisplay ?? 0);
+          const maxRow = Math.max(
+              startDisplay ?? (visibleRowIndices.length - 1),
+              endDisplay ?? (visibleRowIndices.length - 1)
+          );
+          return {
+              minCol: Math.min(selectionRange.start.col, selectionRange.end.col),
+              maxCol: Math.max(selectionRange.start.col, selectionRange.end.col),
+              minRow,
+              maxRow
+          };
+      }
       return {
           minCol: Math.min(selectionRange.start.col, selectionRange.end.col),
           maxCol: Math.max(selectionRange.start.col, selectionRange.end.col),
           minRow: Math.min(selectionRange.start.row, selectionRange.end.row),
           maxRow: Math.max(selectionRange.start.row, selectionRange.end.row)
       };
-  }, [selectionRange]);
+  }, [selectionRange, visibleRowIndices, displayRowByActualRow]);
 
   return (
     <div 
@@ -1184,6 +1282,18 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                 <button onClick={handleCopyImage} className="group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors" disabled={isExporting}>
                     {isExporting ? <Loader2 size={14} className="animate-spin" /> : <ImageIcon size={14} />}
                 </button>
+                {isGoogleAnalyticsConnected && !isGoogleAnalyticsSimulated && (
+                    <button
+                        onClick={() => refreshGoogleAnalytics({ showToasts: true })}
+                        disabled={isGoogleAnalyticsRefreshing}
+                        className={`group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md transition-colors ${
+                            isGoogleAnalyticsRefreshing ? 'bg-neutral-100 dark:bg-neutral-800 cursor-not-allowed' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                        }`}
+                        title={lastRefreshedAt ? `Refresh (last: ${new Date(lastRefreshedAt).toLocaleString()})` : 'Refresh'}
+                    >
+                        {isGoogleAnalyticsRefreshing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCcw size={14} />}
+                    </button>
+                )}
                 {isClickhouseConnected && (
                     <>
                         <button
@@ -1428,7 +1538,7 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                         const rIndex = virtualRow.index;
                         const actualRowIdx = visibleRowIndices ? visibleRowIndices[rIndex] : rIndex;
                         const isActiveRow = activeCell && parseCellId(activeCell)?.row === actualRowIdx;
-                        const isSelectedRow = selectionRange && actualRowIdx >= selBounds.minRow && actualRowIdx <= selBounds.maxRow;
+                        const isSelectedRow = selectionRange && rIndex >= selBounds.minRow && rIndex <= selBounds.maxRow;
                         const isHeaderRow = actualRowIdx === 0;
                         const isGrandTotal = isPivot && String(data.cells[getCellId(0, actualRowIdx)]?.value) === 'Grand Total';
 
@@ -1494,7 +1604,7 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                                 const cellId = getCellId(cIndex, actualRowIdx);
                                 const cellData = data.cells[cellId];
                                 const isActive = activeCell === cellId;
-                                const isSelected = selectionRange && cIndex >= selBounds.minCol && cIndex <= selBounds.maxCol && actualRowIdx >= selBounds.minRow && actualRowIdx <= selBounds.maxRow;
+                                const isSelected = selectionRange && cIndex >= selBounds.minCol && cIndex <= selBounds.maxCol && rIndex >= selBounds.minRow && rIndex <= selBounds.maxRow;
                                 const isReferenced = referencedCells.has(cellId) && !isActive;
 
                                 return (

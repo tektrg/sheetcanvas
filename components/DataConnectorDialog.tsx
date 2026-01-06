@@ -4,12 +4,44 @@ import { ConnectorConfig, ConnectorType } from '../types';
 import { X, Database, FileSpreadsheet, BarChart2, Globe, Loader2, CheckCircle2, AlertCircle, KeyRound, RefreshCcw, Code2 } from 'lucide-react';
 import { fetchDataFromConnector } from '../utils/dataConnectors';
 import { ClickHousePublicConnector, clickhouseResultToMatrix, createClickhouseConnector, listClickhouseConnectors, queryClickhouse, testClickhouseConnector } from '../utils/clickhouseBackend';
+import { buildGoogleAnalyticsAuthUrl, clearGoogleAnalyticsAuth, clearGoogleAnalyticsAuthParams, loadGoogleAnalyticsAuth } from '../utils/googleAnalyticsAuth';
+import {
+  exchangeGoogleAnalyticsAuthCode,
+  listGoogleAnalyticsConnectors,
+  listGoogleAnalyticsProperties,
+  type GoogleAnalyticsProperty,
+  type GoogleAnalyticsPublicConnector,
+  type GoogleAnalyticsReport
+} from '../utils/googleAnalyticsBackend';
 
 interface DataConnectorDialogProps {
   onClose: () => void;
   onImport: (title: string, data: string[][], config: ConnectorConfig) => void;
   initialType?: ConnectorType;
 }
+
+const GA_DIMENSION_PRESETS = [
+  'date',
+  'dateHour',
+  'sessionSource',
+  'sessionMedium',
+  'sessionCampaignName',
+  'country',
+  'city',
+  'deviceCategory',
+  'pagePath'
+];
+
+const GA_METRIC_PRESETS = [
+  'activeUsers',
+  'sessions',
+  'eventCount',
+  'totalUsers',
+  'newUsers',
+  'screenPageViews',
+  'bounceRate',
+  'engagementRate'
+];
 
 export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClose, onImport, initialType }) => {
   const [selectedType, setSelectedType] = useState<ConnectorType | null>(initialType || null);
@@ -20,7 +52,26 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
   const [sheetId, setSheetId] = useState('');
   const [propertyId, setPropertyId] = useState('');
   const [url, setUrl] = useState('');
-  const [simulate, setSimulate] = useState(true);
+  const [simulate, setSimulate] = useState(() => (initialType === 'google-analytics' ? false : true));
+  const [gaConnectorId, setGaConnectorId] = useState('');
+  const [gaUseManualConnectorId, setGaUseManualConnectorId] = useState(false);
+  const [gaConnectors, setGaConnectors] = useState<GoogleAnalyticsPublicConnector[]>([]);
+  const [gaLoadingConnectors, setGaLoadingConnectors] = useState(false);
+  const [gaAuthLoading, setGaAuthLoading] = useState(false);
+  const [gaAuthError, setGaAuthError] = useState('');
+  const [gaProperties, setGaProperties] = useState<GoogleAnalyticsProperty[]>([]);
+  const [gaLoadingProperties, setGaLoadingProperties] = useState(false);
+  const [gaPropertyError, setGaPropertyError] = useState('');
+  const [gaDimensions, setGaDimensions] = useState('date');
+  const [gaMetrics, setGaMetrics] = useState('activeUsers,sessions');
+  const [gaDatePreset, setGaDatePreset] = useState<'7d' | '14d' | '28d' | '90d' | 'custom'>('28d');
+  const [gaStartDate, setGaStartDate] = useState('');
+  const [gaEndDate, setGaEndDate] = useState('');
+  const [gaOrderByField, setGaOrderByField] = useState('');
+  const [gaOrderByType, setGaOrderByType] = useState<'dimension' | 'metric'>('dimension');
+  const [gaOrderByDesc, setGaOrderByDesc] = useState(true);
+  const [gaDimensionFilter, setGaDimensionFilter] = useState('');
+  const [gaMetricFilter, setGaMetricFilter] = useState('');
 
   // ClickHouse (backend-proxy) state
   const [chConnectors, setChConnectors] = useState<ClickHousePublicConnector[]>([]);
@@ -41,10 +92,49 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
     if (!chSelectedConnectorId && connectors.length > 0) setChSelectedConnectorId(connectors[0].id);
   };
 
+  const loadGoogleAnalyticsConnectors = async () => {
+    setGaLoadingConnectors(true);
+    setGaAuthError('');
+    try {
+      const connectors = await listGoogleAnalyticsConnectors();
+      setGaConnectors(connectors);
+      if (!gaConnectorId && connectors.length > 0) {
+        setGaConnectorId(connectors[0].id);
+      }
+    } catch (e: any) {
+      setGaAuthError(e.message || 'Failed to load Google Analytics connectors');
+    } finally {
+      setGaLoadingConnectors(false);
+    }
+  };
+
+  const loadGoogleAnalyticsProperties = async (connectorId: string) => {
+    if (!connectorId) return;
+    setGaLoadingProperties(true);
+    setGaPropertyError('');
+    try {
+      const properties = await listGoogleAnalyticsProperties({ connectorId });
+      setGaProperties(properties);
+      if (properties.length > 0) {
+        const first = properties[0].propertyId;
+        const hasMatch = properties.some((prop) => prop.propertyId === propertyId);
+        if (!propertyId || !hasMatch) setPropertyId(first);
+      }
+    } catch (e: any) {
+      setGaPropertyError(e.message || 'Failed to load properties');
+      setGaProperties([]);
+    } finally {
+      setGaLoadingProperties(false);
+    }
+  };
+
   const handleSelectType = async (type: ConnectorType) => {
     setSelectedType(type);
     setStatus('idle');
     setErrorMsg('');
+    // GA flow relies on backend OAuth + connector selection; default to real mode.
+    // Other connectors default to simulated mode for the demo experience.
+    setSimulate(type === 'google-analytics' ? false : true);
     if (type === 'clickhouse') {
       try {
         await loadClickhouseConnectors();
@@ -52,6 +142,9 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
         setErrorMsg(e.message || 'Failed to load connectors');
         setStatus('error');
       }
+    }
+    if (type === 'google-analytics') {
+      await loadGoogleAnalyticsConnectors();
     }
   };
 
@@ -62,8 +155,88 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
         setStatus('error');
       });
     }
+    if (selectedType === 'google-analytics') {
+      loadGoogleAnalyticsConnectors();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (selectedType !== 'google-analytics') return;
+    if (simulate) return;
+    if (!gaConnectorId) return;
+    loadGoogleAnalyticsProperties(gaConnectorId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedType, simulate, gaConnectorId]);
+
+  useEffect(() => {
+    if (selectedType !== 'google-analytics') return;
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const state = params.get('state');
+    const error = params.get('error');
+    const errorDescription = params.get('error_description');
+    if (!code && !error) return;
+
+    const stored = loadGoogleAnalyticsAuth();
+    clearGoogleAnalyticsAuthParams();
+
+    if (error) {
+      setGaAuthError(errorDescription || error);
+      clearGoogleAnalyticsAuth();
+      return;
+    }
+
+    if (!stored || !state || stored.state !== state) {
+      setGaAuthError('OAuth state mismatch. Please retry connection.');
+      clearGoogleAnalyticsAuth();
+      return;
+    }
+
+    setGaAuthLoading(true);
+    exchangeGoogleAnalyticsAuthCode({
+      code,
+      codeVerifier: stored.codeVerifier,
+      redirectUri: stored.redirectUri
+    })
+      .then(({ connector }) => {
+        setGaAuthError('');
+        setGaConnectorId(connector.id);
+        setGaUseManualConnectorId(false);
+        setSimulate(false);
+        loadGoogleAnalyticsConnectors();
+      })
+      .catch((e: any) => {
+        setGaAuthError(e.message || 'Failed to exchange authorization code');
+      })
+      .finally(() => {
+        setGaAuthLoading(false);
+        clearGoogleAnalyticsAuth();
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedType]);
+
+  const startGoogleAnalyticsAuth = async () => {
+    const clientId = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID as string | undefined;
+    if (!clientId || !clientId.trim()) {
+      setGaAuthError('Missing VITE_GOOGLE_CLIENT_ID');
+      return;
+    }
+    // Keep redirect URI stable so Google OAuth config can whitelist a single value.
+    const redirectUri = `${window.location.origin}/`;
+    setGaAuthLoading(true);
+    setGaAuthError('');
+    try {
+      const url = await buildGoogleAnalyticsAuthUrl({
+        clientId: clientId.trim(),
+        redirectUri
+      });
+      window.location.assign(url);
+    } catch (e: any) {
+      setGaAuthError(e.message || 'Failed to start OAuth');
+      setGaAuthLoading(false);
+    }
+  };
 
   const handleConnect = async () => {
     if (!selectedType) return;
@@ -115,7 +288,71 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
     };
 
     if (selectedType === 'google-sheets') config.params.sheetId = sheetId;
-    if (selectedType === 'google-analytics') config.params.propertyId = propertyId;
+    if (selectedType === 'google-analytics') {
+        if (!propertyId.trim()) {
+            setStatus('error');
+            setErrorMsg('GA4 property ID is required');
+            return;
+        }
+        if (!simulate && !gaConnectorId.trim()) {
+            setStatus('error');
+            setErrorMsg('Select a Google Analytics connector');
+            return;
+        }
+
+        const dims = gaDimensions
+            .split(',')
+            .map((item) => item.trim())
+            .filter(Boolean);
+        const metrics = gaMetrics
+            .split(',')
+            .map((item) => item.trim())
+            .filter(Boolean);
+        const report: GoogleAnalyticsReport = {};
+        if (dims.length > 0) report.dimensions = dims.map((name) => ({ name }));
+        if (metrics.length > 0) report.metrics = metrics.map((name) => ({ name }));
+
+        if (gaDatePreset !== 'custom') {
+            const days = gaDatePreset.replace('d', '');
+            report.dateRanges = [{ startDate: `${days}daysAgo`, endDate: 'today' }];
+        } else if (gaStartDate && gaEndDate) {
+            report.dateRanges = [{ startDate: gaStartDate, endDate: gaEndDate }];
+        }
+
+        if (gaOrderByField.trim()) {
+            report.orderBys = [
+                gaOrderByType === 'metric'
+                    ? { metric: { metricName: gaOrderByField.trim() }, desc: gaOrderByDesc }
+                    : { dimension: { dimensionName: gaOrderByField.trim() }, desc: gaOrderByDesc }
+            ];
+        }
+
+        const dimensionFilter = gaDimensionFilter.trim();
+        const metricFilter = gaMetricFilter.trim();
+        if (dimensionFilter) {
+            try {
+                report.dimensionFilter = JSON.parse(dimensionFilter);
+            } catch {
+                setStatus('error');
+                setErrorMsg('Dimension filter must be valid JSON');
+                return;
+            }
+        }
+        if (metricFilter) {
+            try {
+                report.metricFilter = JSON.parse(metricFilter);
+            } catch {
+                setStatus('error');
+                setErrorMsg('Metric filter must be valid JSON');
+                return;
+            }
+        }
+
+        config.params.propertyId = propertyId.trim();
+        config.params.connectorId = gaConnectorId.trim();
+        config.params.lastRefreshedAt = Date.now();
+        if (Object.keys(report).length > 0) config.params.report = report;
+    }
     if (selectedType === 'csv-url') config.params.url = url;
 
     try {
@@ -329,15 +566,255 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
         case 'google-analytics':
             return (
                 <div className="space-y-4 animate-scale-in">
+                    {!simulate && (
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                                <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">Google Analytics connector</label>
+                                <button
+                                    onClick={startGoogleAnalyticsAuth}
+                                    className="text-xs font-medium text-teal-700 dark:text-teal-300 hover:underline flex items-center gap-2"
+                                >
+                                    <KeyRound size={14} />
+                                    {gaAuthLoading ? 'Connecting...' : 'Connect Google'}
+                                </button>
+                            </div>
+                            {gaAuthError && (
+                                <div className="text-[11px] text-red-500 dark:text-red-400 flex items-center gap-2">
+                                    <AlertCircle size={12} />
+                                    {gaAuthError}
+                                </div>
+                            )}
+                            <div className="flex gap-2">
+                                <select
+                                    className="flex-1 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:ring-2 focus:ring-teal-500/50 disabled:opacity-60"
+                                    value={gaUseManualConnectorId ? '' : gaConnectorId}
+                                    onChange={e => setGaConnectorId(e.target.value)}
+                                    disabled={gaUseManualConnectorId || gaLoadingConnectors}
+                                >
+                                    <option value="" disabled>
+                                        {gaLoadingConnectors ? 'Loading connectors...' : 'Select connector'}
+                                    </option>
+                                    {gaConnectors.map(c => (
+                                        <option key={c.id} value={c.id}>
+                                            {c.name} ({c.id.slice(0, 6)}…)
+                                        </option>
+                                    ))}
+                                </select>
+                                <button
+                                    onClick={loadGoogleAnalyticsConnectors}
+                                    className="px-3 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-200 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors flex items-center gap-2"
+                                    title="Refresh list"
+                                >
+                                    <RefreshCcw size={14} />
+                                </button>
+                            </div>
+                            <div className="flex items-center gap-2 text-[10px] text-neutral-400">
+                                <input
+                                    id="ga-manual-id"
+                                    type="checkbox"
+                                    checked={gaUseManualConnectorId}
+                                    onChange={(e) => setGaUseManualConnectorId(e.target.checked)}
+                                    className="rounded text-teal-600 focus:ring-teal-500"
+                                />
+                                <label htmlFor="ga-manual-id" className="cursor-pointer select-none">
+                                    Enter connector ID manually
+                                </label>
+                            </div>
+                            {gaUseManualConnectorId && (
+                                <input
+                                    type="text"
+                                    className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:ring-2 focus:ring-teal-500/50"
+                                    placeholder="Connector UUID"
+                                    value={gaConnectorId}
+                                    onChange={e => setGaConnectorId(e.target.value)}
+                                />
+                            )}
+                        </div>
+                    )}
                     <div>
                         <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1.5 uppercase">GA4 Property ID</label>
-                        <input 
-                            type="text" 
-                            className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:ring-2 focus:ring-teal-500/50"
-                            placeholder="e.g. 342555123"
-                            value={propertyId}
-                            onChange={e => setPropertyId(e.target.value)}
-                        />
+                        {!simulate && gaProperties.length > 0 && !gaPropertyError ? (
+                            <div className="flex gap-2">
+                                <select
+                                    className="flex-1 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:ring-2 focus:ring-teal-500/50"
+                                    value={propertyId}
+                                    onChange={e => setPropertyId(e.target.value)}
+                                >
+                                    {gaProperties.map((prop) => (
+                                        <option key={prop.propertyId} value={prop.propertyId}>
+                                            {prop.displayName}{prop.accountDisplayName ? ` • ${prop.accountDisplayName}` : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                                <button
+                                    onClick={() => loadGoogleAnalyticsProperties(gaConnectorId)}
+                                    className="px-3 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-200 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors flex items-center gap-2"
+                                    title="Refresh properties"
+                                    disabled={!gaConnectorId}
+                                >
+                                    <RefreshCcw size={14} />
+                                </button>
+                            </div>
+                        ) : (
+                            <input 
+                                type="text" 
+                                className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:ring-2 focus:ring-teal-500/50"
+                                placeholder="e.g. 342555123"
+                                value={propertyId}
+                                onChange={e => setPropertyId(e.target.value)}
+                            />
+                        )}
+                        {gaLoadingProperties && (
+                            <p className="mt-1 text-[10px] text-neutral-400">Loading properties…</p>
+                        )}
+                        {gaPropertyError && (
+                            <p className="mt-1 text-[10px] text-red-500 dark:text-red-400">{gaPropertyError}</p>
+                        )}
+                    </div>
+                    <div className="grid grid-cols-1 gap-4">
+                        <div>
+                            <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1.5 uppercase">Dimensions</label>
+                            <input 
+                                type="text" 
+                                className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:ring-2 focus:ring-teal-500/50"
+                                placeholder="date,sessionSource"
+                                value={gaDimensions}
+                                onChange={e => setGaDimensions(e.target.value)}
+                            />
+                            <div className="mt-2 flex flex-wrap gap-1">
+                                {GA_DIMENSION_PRESETS.map((preset) => (
+                                    <button
+                                        key={preset}
+                                        type="button"
+                                        onClick={() => {
+                                            const existing = gaDimensions.split(',').map((item) => item.trim()).filter(Boolean);
+                                            if (!existing.includes(preset)) {
+                                                setGaDimensions([...existing, preset].join(','));
+                                            }
+                                        }}
+                                        className="px-2 py-1 text-[10px] rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                                    >
+                                        {preset}
+                                    </button>
+                                ))}
+                            </div>
+                            <p className="mt-1 text-[10px] text-neutral-400">Comma-separated GA4 dimension names.</p>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1.5 uppercase">Metrics</label>
+                            <input 
+                                type="text" 
+                                className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:ring-2 focus:ring-teal-500/50"
+                                placeholder="activeUsers,sessions"
+                                value={gaMetrics}
+                                onChange={e => setGaMetrics(e.target.value)}
+                            />
+                            <div className="mt-2 flex flex-wrap gap-1">
+                                {GA_METRIC_PRESETS.map((preset) => (
+                                    <button
+                                        key={preset}
+                                        type="button"
+                                        onClick={() => {
+                                            const existing = gaMetrics.split(',').map((item) => item.trim()).filter(Boolean);
+                                            if (!existing.includes(preset)) {
+                                                setGaMetrics([...existing, preset].join(','));
+                                            }
+                                        }}
+                                        className="px-2 py-1 text-[10px] rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                                    >
+                                        {preset}
+                                    </button>
+                                ))}
+                            </div>
+                            <p className="mt-1 text-[10px] text-neutral-400">Comma-separated GA4 metric names.</p>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1.5 uppercase">Date range</label>
+                            <select
+                                className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:ring-2 focus:ring-teal-500/50"
+                                value={gaDatePreset}
+                                onChange={e => setGaDatePreset(e.target.value as '7d' | '14d' | '28d' | '90d' | 'custom')}
+                            >
+                                <option value="7d">Last 7 days</option>
+                                <option value="14d">Last 14 days</option>
+                                <option value="28d">Last 28 days</option>
+                                <option value="90d">Last 90 days</option>
+                                <option value="custom">Custom</option>
+                            </select>
+                            {gaDatePreset === 'custom' && (
+                                <div className="grid grid-cols-2 gap-3 mt-3">
+                                    <div>
+                                        <label className="block text-[10px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase mb-1.5">Start date</label>
+                                        <input
+                                            type="date"
+                                            className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:ring-2 focus:ring-teal-500/50"
+                                            value={gaStartDate}
+                                            onChange={e => setGaStartDate(e.target.value)}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase mb-1.5">End date</label>
+                                        <input
+                                            type="date"
+                                            className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:ring-2 focus:ring-teal-500/50"
+                                            value={gaEndDate}
+                                            onChange={e => setGaEndDate(e.target.value)}
+                                        />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        <div className="grid grid-cols-1 gap-3">
+                            <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">Order by</label>
+                            <div className="grid grid-cols-3 gap-3">
+                                <input
+                                    type="text"
+                                    className="col-span-2 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:ring-2 focus:ring-teal-500/50"
+                                    placeholder="dimension or metric name"
+                                    value={gaOrderByField}
+                                    onChange={e => setGaOrderByField(e.target.value)}
+                                />
+                                <select
+                                    className="bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-2 py-2 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:ring-2 focus:ring-teal-500/50"
+                                    value={gaOrderByType}
+                                    onChange={e => setGaOrderByType(e.target.value as 'dimension' | 'metric')}
+                                >
+                                    <option value="dimension">Dimension</option>
+                                    <option value="metric">Metric</option>
+                                </select>
+                            </div>
+                            <label className="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400">
+                                <input
+                                    type="checkbox"
+                                    checked={gaOrderByDesc}
+                                    onChange={e => setGaOrderByDesc(e.target.checked)}
+                                    className="rounded text-teal-600 focus:ring-teal-500"
+                                />
+                                Descending
+                            </label>
+                        </div>
+                        <div className="grid grid-cols-1 gap-3">
+                            <div>
+                                <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1.5 uppercase">Dimension filter (JSON)</label>
+                                <textarea
+                                    rows={2}
+                                    className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-xs text-neutral-900 dark:text-neutral-100 outline-none focus:ring-2 focus:ring-teal-500/50"
+                                    placeholder='{"filter": {"fieldName": "country", "stringFilter": {"value": "United States"}}}'
+                                    value={gaDimensionFilter}
+                                    onChange={e => setGaDimensionFilter(e.target.value)}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1.5 uppercase">Metric filter (JSON)</label>
+                                <textarea
+                                    rows={2}
+                                    className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-xs text-neutral-900 dark:text-neutral-100 outline-none focus:ring-2 focus:ring-teal-500/50"
+                                    placeholder='{"filter": {"fieldName": "activeUsers", "numericFilter": {"operation": "GREATER_THAN", "value": {"int64Value": "100"}}}}'
+                                    value={gaMetricFilter}
+                                    onChange={e => setGaMetricFilter(e.target.value)}
+                                />
+                            </div>
+                        </div>
                     </div>
                 </div>
             );

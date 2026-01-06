@@ -92,6 +92,13 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('code') || params.get('error')) {
+      setDataConnectorState({ isOpen: true, initialType: 'google-analytics' });
+    }
+  }, []);
+
+  useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const handleChange = (e: MediaQueryListEvent) => setDarkMode(e.matches);
     mediaQuery.addEventListener('change', handleChange);
