@@ -581,6 +581,11 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (document.body.dataset.modalOpen === 'true') return;
+
+    const target = e.target as HTMLElement | null;
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+
     if (isEditing || isEditingTitle) return;
 
     if (!activeCell) {
@@ -1570,7 +1575,7 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                                     )}
                                 `}
                             >
-                                <span>{actualRowIdx + 1}</span>
+                                <span>{rIndex + 1}</span>
                                 <button 
                                     onMouseDown={(e) => { e.stopPropagation(); setRowMenuOpen(rowMenuOpen === actualRowIdx ? null : actualRowIdx); setHeaderMenuOpen(null); }}
                                     className={`absolute right-0.5 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-400 dark:text-neutral-500 transition-opacity ${isActiveRow || isSelectedRow ? 'opacity-100' : 'opacity-0 group-hover/row:opacity-100'}`}
