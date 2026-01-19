@@ -35,6 +35,7 @@ wrangler secret put ENCRYPTION_KEY_B64
 ```
 
 `ENCRYPTION_KEY_B64` must be a base64-encoded 32-byte key (AES-256).
+You can also provide a comma-separated list of keys to support key rotation (the first key is used for encryption; all keys are tried for decryption).
 
 Optional auth (recommended in production):
 
@@ -69,6 +70,8 @@ wrangler dev src/index.ts --config wrangler.toml --local --port 8787
 ```
 
 If you already have a local D1 database from an older schema, the worker will auto-add newly introduced columns on startup; you can also re-run the schema step above to create the table from scratch.
+
+If you change `ENCRYPTION_KEY_B64`, existing connectors created with the old key will no longer decrypt. Either keep the old key in the comma-separated list (key rotation), or delete and recreate the affected connectors.
 
 If you change the frontend dev server port, update `ALLOWED_ORIGINS` in `backend/wrangler.toml` (or override it via `.dev.vars`).
 
