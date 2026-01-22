@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Canvas } from './components/Canvas';
 import { SheetNode } from './components/SheetNode';
 import { ChartNode } from './components/ChartNode';
@@ -17,6 +17,7 @@ import { getSheetHeaders } from './utils/chartHelpers';
 import { inferColumnType, getFilteredRows, getValidDataCount, suggestGranularityByCount } from './utils/dataAnalysis';
 import { Upload, Moon, Sun, Table, StickyNote, Undo2, Redo2, Grid3X3, BarChart3, TrendingUp, Palette, AlignLeft, Trash2, ArrowDownAZ, ArrowUpAZ, Filter, MousePointer2, Hand, Hash, Percent, Image as ImageIcon, Database, FileSpreadsheet, BarChart2, Globe, Calendar, Minimize2, Maximize2, DollarSign, ArrowLeft, ArrowRight, Eraser, Type } from 'lucide-react';
 import { useStore, AppState } from './store';
+import { useChartPalette } from './hooks/useChartPalette';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
@@ -57,10 +58,8 @@ const App: React.FC = () => {
   const [isCommandBarOpen, setIsCommandBarOpen] = useState(false);
   const [dataConnectorState, setDataConnectorState] = useState<{ isOpen: boolean; initialType?: ConnectorType }>({ isOpen: false });
 
-  // Chart Colors State (Local for now, or move to store if needed globally)
-  const [defaultChartColor, setDefaultChartColor] = useState(CHART_COLORS[0]);
-  const [customColors, setCustomColors] = useState<string[]>([]);
-  const chartPalette = useMemo(() => [...CHART_COLORS, ...customColors], [customColors]);
+  // Chart Colors State with localStorage persistence
+  const { palette: chartPalette, addColor: addChartColor } = useChartPalette();
 
   // Track ID of note that should start in edit mode
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
@@ -375,7 +374,7 @@ const App: React.FC = () => {
             labelColumn: groupColId,
             dataColumns: [valueColId],
             
-            color: defaultChartColor,
+            color: chartPalette[0],
             highlightIndex: -1,
             animation: true,
             showLabels: true
@@ -390,7 +389,7 @@ const App: React.FC = () => {
         width: newChart.size.width,
         height: newChart.size.height
     });
-  }, [defaultChartColor, addChart, ensureVisible]);
+  }, [chartPalette, addChart, ensureVisible]);
 
   const handleInitPivot = useCallback((sheetId: string, defaultColIndex?: number) => {
       const sourceSheet = (useStore.getState() as AppState).sheets[sheetId];
@@ -483,14 +482,8 @@ const App: React.FC = () => {
   };
 
   const handleAddColor = useCallback((newColor: string) => {
-      setDefaultChartColor(newColor);
-      setCustomColors(prevColors => {
-            if (!CHART_COLORS.includes(newColor) && !prevColors.includes(newColor)) {
-                return [...prevColors, newColor];
-            }
-            return prevColors;
-      });
-  }, []);
+      addChartColor(newColor);
+  }, [addChartColor]);
 
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
     if (toolMode === ToolMode.SELECT) {
