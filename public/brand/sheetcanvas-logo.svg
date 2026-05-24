@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">SheetCanvas logo</title>
+  <desc id="desc">A minimal two-by-two sheet grid with one empty cell and three green cells.</desc>
+  <g fill="none" stroke-linejoin="round">
+    <rect x="162" y="302" width="326" height="188" rx="38" stroke="#202326" stroke-width="30"/>
+    <rect x="536" y="302" width="326" height="188" rx="38" fill="#0A9488"/>
+    <rect x="162" y="534" width="326" height="188" rx="38" fill="#0A9488"/>
+    <rect x="536" y="534" width="326" height="188" rx="38" fill="#0A9488"/>
+  </g>
+</svg>
