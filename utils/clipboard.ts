@@ -72,11 +72,11 @@ const parseMarkdownTable = (text: string): string[][] | null => {
   return null;
 };
 
-export const parseClipboardData = (text: string): { data: string[][]; truncated: boolean } => {
+export const parseClipboardData = (text: string, options?: { skipMarkdown?: boolean }): { data: string[][]; truncated: boolean } => {
   if (!text) return { data: [], truncated: false };
 
-  // 1. Try Markdown Table parsing
-  let matrix = parseMarkdownTable(text);
+  // 1. Try Markdown Table parsing (skipped for file imports — cell values may contain | as a list separator)
+  let matrix = options?.skipMarkdown ? null : parseMarkdownTable(text);
   
   if (!matrix) {
     // 2. Fallback to CSV/TSV parsing

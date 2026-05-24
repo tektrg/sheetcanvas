@@ -8,7 +8,7 @@ export const parseFile = async (file: File): Promise<{ data: string[][]; truncat
   try {
       if (name.endsWith('.csv')) {
         const text = await file.text();
-        return parseClipboardData(text);
+        return parseClipboardData(text, { skipMarkdown: true });
       }
 
       if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
