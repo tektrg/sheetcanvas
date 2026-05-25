@@ -1,45 +1,46 @@
 Goal (incl. success criteria):
-- Commit and deploy SheetCanvas logo/title updates and theindie.app website SheetCanvas branding updates.
+- Review current code changes and adjust the onboarding guide so it has a real slide-up intro animation, the dismiss action says "watch later", and pricing information lives in a dedicated section instead of being mixed into workflow copy.
 
 Constraints/Assumptions:
 - Follow AGENTS.md repository guidelines.
 - Use tmux for terminal commands and log inspection.
-- Do not commit generated pid files or unrelated user changes.
-- Current environment allows filesystem/network access without approval prompts.
+- Coding work must use the coding-engineering-basics skill.
+- The app is free for now.
 
 Key decisions:
-- Commit SheetCanvas logo/title files only in the SheetCanvas repo.
-- Commit theindie.app homepage SheetCanvas card/icon files only, preserving unrelated FastTab pricing edits.
+- Onboarding optimizes for understanding the object/canvas mental model.
+- The guide is both first-run onboarding and a persistent Learn drawer.
+- Keep the seeded welcome note.
+- Use in-app HyperFrames placeholders/storyboard prompts now; actual rendered videos later.
+- Positioning copy: local processing is free; AI and cloud sync are planned later with pricing.
 
 State:
 - Done:
-  - Created SheetCanvas logo SVG/PNG in `public/brand/`.
-  - Updated SheetCanvas `index.html` title/favicon.
-  - Validated SheetCanvas build after refreshing missing Rollup optional dependency.
-  - Updated theindie.app SheetCanvas icon and homepage accent.
-  - Validated theindie.app with `npm run check`, `npm run build`, local route/asset checks.
-  - Committed SheetCanvas changes as `3bebc8c feat: add SheetCanvas logo`.
-  - Committed theindie.app changes as `8e79dd1 feat: add SheetCanvas to homepage`.
-  - Direct Cloudflare Pages deploy completed for SheetCanvas: `https://5763de50.sheetcanvas.pages.dev`.
-  - Direct Cloudflare Pages deploy completed for theindie.app: `https://c65c35b2.theindieapp-website-git.pages.dev`.
-  - Verified `https://theindie.app/` includes the SheetCanvas card/icon/accent.
+  - Read project instructions, coding-engineering-basics skill, HyperFrames skill, package metadata, App.tsx entry/render area, CommandBar, types, and current continuity ledger.
+  - Identified existing onboarding as a welcome note seeded in `store.ts`.
+  - Identified core app capabilities already present: CSV/XLSX import/drop, global command search, sheet sort/filter, chart creation, pivots/sparklines, notes, connectors, export/copy image, dark mode.
+  - Added `components/OnboardingGuide.tsx` with eight workflow steps and HyperFrames storyboard placeholders.
+  - Wired first-run dismissal via localStorage and persistent Learn access from the toolbar More menu.
+  - Hid the toolbar while the guide is open to avoid hover artifacts beneath the bottom sheet.
+  - Verified production build and browser smoke flow against `http://localhost:3000/`.
+  - Added an explicit requestAnimationFrame-driven first-open slide-up intro animation.
+  - Changed the dismiss control text to "watch later".
+  - Moved free/local and future paid AI/cloud sync messaging into a dedicated Pricing section.
+  - Verified `npm run build` exits 0 and Playwright smoke check confirms dialog, watch-later copy, and Pricing section.
+  - Refined pricing layout so Pricing is a dedicated ninth onboarding step/section, not a repeated panel inside every workflow step.
+  - Verified `npm run build` exits 0 and Playwright smoke check confirms the first workflow step does not show the pricing body, Pricing appears in nav, and clicking it opens the dedicated Pricing step.
 - Now:
-  - Final status checks after deployment.
+  - Handoff.
 - Next:
-  - Report push/deploy results and remaining repository state to the user.
+  - Later: replace placeholders with rendered HyperFrames video assets.
 
 Open questions (UNCONFIRMED if needed):
-- UNCONFIRMED: `sheetcanvas.com` DNS/custom-domain setup; `curl https://sheetcanvas.com/` did not resolve from this environment and Cloudflare Pages listed only `sheetcanvas.pages.dev`.
-- GitHub push failed for both repos with `Repository not found`; direct Cloudflare deploys succeeded.
+- UNCONFIRMED: Exact future pricing model for AI and cloud sync.
 
 Working set (files/ids/commands):
 - CONTINUITY.md
-- index.html
-- public/brand/sheetcanvas-logo.svg
-- public/brand/sheetcanvas-logo.png
+- App.tsx
+- components/Toolbar.tsx
+- components/OnboardingGuide.tsx
 - `npm run build`
-- `npx wrangler pages deploy dist --project-name sheetcanvas --branch main`
-- theindie.app: src/pages/index.astro
-- theindie.app: public/app-icons/sheetcanvas.svg
-- theindie.app: `npm run check`, `npm run build`
-- theindie.app: `npx wrangler pages deploy dist --project-name theindieapp-website-git --branch main --commit-dirty=true`
+- Playwright smoke screenshot: `/tmp/sheetcanvas-onboarding-pricing-step.png`
