@@ -8,6 +8,7 @@ import { Toolbar } from './components/Toolbar';
 import { Toast } from './components/Toast';
 import { GlobalCommandBar } from './components/GlobalCommandBar';
 import { DataConnectorDialog } from './components/DataConnectorDialog';
+import { OnboardingGuide } from './components/OnboardingGuide';
 import { SheetData, ChartData, NoteData, CanvasTransform, Position, CellData, ChartConfig, PivotConfig, ToolMode, SparklineConfig, Command, SelectionContext, CellFormat, ConnectorConfig, ConnectorType, TimeGranularity, ChartType } from './types';
 import { INITIAL_COLS, INITIAL_ROWS, CELL_WIDTH, CELL_HEIGHT, HEADER_COL_WIDTH, HEADER_ROW_HEIGHT, DEFAULT_CHART_SIZE, CHART_COLORS, MAX_IMPORT_ROWS, MAX_IMPORT_COLS } from './constants';
 import { parseClipboardData } from './utils/clipboard';
@@ -20,6 +21,7 @@ import { useStore, AppState } from './store';
 import { useChartPalette } from './hooks/useChartPalette';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
+const ONBOARDING_DISMISSED_KEY = 'sheetcanvas:onboarding-dismissed';
 
 const App: React.FC = () => {
   const [darkMode, setDarkMode] = useState(() => 
@@ -56,6 +58,9 @@ const App: React.FC = () => {
   const saveSnapshot = useStore((state: AppState) => state.saveSnapshot);
   
   const [isCommandBarOpen, setIsCommandBarOpen] = useState(false);
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(() =>
+    typeof window !== 'undefined' && window.localStorage.getItem(ONBOARDING_DISMISSED_KEY) !== 'true'
+  );
   const [dataConnectorState, setDataConnectorState] = useState<{ isOpen: boolean; initialType?: ConnectorType }>({ isOpen: false });
 
   // Chart Colors State with localStorage persistence
@@ -106,6 +111,11 @@ const App: React.FC = () => {
 
   const showToast = (message: string) => {
       setToast({ message, visible: true });
+  };
+
+  const closeOnboarding = () => {
+      window.localStorage.setItem(ONBOARDING_DISMISSED_KEY, 'true');
+      setIsOnboardingOpen(false);
   };
 
   const deleteSelectedItems = useCallback(() => {
@@ -1024,12 +1034,17 @@ const App: React.FC = () => {
         />
         
         {dataConnectorState.isOpen && (
-            <DataConnectorDialog 
+            <DataConnectorDialog
                 onClose={() => setDataConnectorState({ isOpen: false })}
                 onImport={handleDataConnectImport}
                 initialType={dataConnectorState.initialType}
             />
         )}
+
+        <OnboardingGuide
+            isOpen={isOnboardingOpen}
+            onClose={closeOnboarding}
+        />
 
         <Canvas 
             darkMode={darkMode} 
@@ -1080,7 +1095,8 @@ const App: React.FC = () => {
             darkMode={darkMode}
             toggleDarkMode={() => setDarkMode(!darkMode)}
             onOpenCommandBar={() => setIsCommandBarOpen(true)}
-            hidden={isCommandBarOpen}
+            onOpenLearn={() => setIsOnboardingOpen(true)}
+            hidden={isCommandBarOpen || isOnboardingOpen}
         />
       </div>
     </div>

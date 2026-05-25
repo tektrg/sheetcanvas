@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Grid3X3, Moon, Sun, Loader2, StickyNote, Undo2, Redo2, Upload, MousePointer2, Hand, MoreHorizontal, Keyboard, Info, Search, Database } from 'lucide-react';
+import { BookOpen, Grid3X3, Moon, Sun, StickyNote, Undo2, Redo2, Upload, MousePointer2, Hand, MoreHorizontal, Keyboard, Info, Search, Database } from 'lucide-react';
 import { ToolMode } from '../types';
 import { useStore } from '../store';
 
@@ -12,6 +12,7 @@ interface ToolbarProps {
   darkMode: boolean;
   toggleDarkMode: () => void;
   onOpenCommandBar: () => void;
+  onOpenLearn: () => void;
   hidden?: boolean;
 }
 
@@ -50,8 +51,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onImport,
   onConnectData,
   darkMode, 
-  toggleDarkMode, 
+  toggleDarkMode,
   onOpenCommandBar,
+  onOpenLearn,
   hidden
 }) => {
   const toolMode = useStore(state => state.toolMode);
@@ -153,6 +155,23 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                             {darkMode ? 'Dark' : 'Light'}
                          </button>
                     </div>
+
+                    <div className="h-px bg-neutral-100 dark:bg-neutral-800" />
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onOpenLearn();
+                        setIsMoreOpen(false);
+                      }}
+                      className="flex w-full items-center justify-between rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-left text-neutral-700 transition-colors hover:bg-neutral-100 dark:border-neutral-800 dark:bg-neutral-800/60 dark:text-neutral-200 dark:hover:bg-neutral-800"
+                    >
+                      <span className="flex items-center gap-2">
+                        <BookOpen size={15} />
+                        <span className="text-sm font-medium">Learn SheetCanvas</span>
+                      </span>
+                      <span className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">Guide</span>
+                    </button>
 
                     <div className="h-px bg-neutral-100 dark:bg-neutral-800" />
 
