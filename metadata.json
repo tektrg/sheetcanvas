@@ -1,5 +1,5 @@
 {
-  "name": "Sheetable",
-  "description": "A flexible infinite canvas containing movable spreadsheet tables with support for basic formulas (SUM, AVG, math operators).",
+  "name": "SheetCanvas",
+  "description": "A local-first spreadsheet canvas for working with tables, charts, pivots, and notes on one visual surface.",
   "requestFramePermissions": []
 }

@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">SheetCanvas social preview</title>
+  <desc id="desc">SheetCanvas, a local-first spreadsheet canvas for tables, charts, pivots, and notes.</desc>
+  <rect width="1200" height="630" fill="#f7faf9"/>
+  <rect x="72" y="72" width="1056" height="486" rx="24" fill="#ffffff" stroke="#d8e2df" stroke-width="2"/>
+  <g transform="translate(112 116)">
+    <rect x="0" y="0" width="332" height="224" rx="16" fill="#effaf8" stroke="#99d8cf"/>
+    <rect x="28" y="32" width="276" height="34" rx="8" fill="#0f766e"/>
+    <rect x="28" y="86" width="76" height="24" rx="6" fill="#b6e5df"/>
+    <rect x="124" y="86" width="76" height="24" rx="6" fill="#b6e5df"/>
+    <rect x="220" y="86" width="84" height="24" rx="6" fill="#b6e5df"/>
+    <rect x="28" y="130" width="276" height="14" rx="7" fill="#cbd5e1"/>
+    <rect x="28" y="166" width="210" height="14" rx="7" fill="#cbd5e1"/>
+  </g>
+  <g transform="translate(472 116)">
+    <rect x="0" y="0" width="260" height="224" rx="16" fill="#fff7ed" stroke="#fed7aa"/>
+    <rect x="34" y="126" width="34" height="58" rx="8" fill="#fb923c"/>
+    <rect x="90" y="84" width="34" height="100" rx="8" fill="#f97316"/>
+    <rect x="146" y="48" width="34" height="136" rx="8" fill="#ea580c"/>
+    <rect x="202" y="106" width="34" height="78" rx="8" fill="#fdba74"/>
+  </g>
+  <g transform="translate(764 116)">
+    <rect x="0" y="0" width="300" height="224" rx="16" fill="#f8fafc" stroke="#cbd5e1"/>
+    <circle cx="104" cy="112" r="66" fill="none" stroke="#0f766e" stroke-width="28"/>
+    <path d="M104 46a66 66 0 0 1 63 86" fill="none" stroke="#f97316" stroke-width="28" stroke-linecap="round"/>
+    <rect x="194" y="72" width="64" height="14" rx="7" fill="#94a3b8"/>
+    <rect x="194" y="112" width="82" height="14" rx="7" fill="#94a3b8"/>
+    <rect x="194" y="152" width="52" height="14" rx="7" fill="#94a3b8"/>
+  </g>
+  <text x="112" y="426" fill="#0f172a" font-family="Inter, Arial, sans-serif" font-size="68" font-weight="700">SheetCanvas</text>
+  <text x="112" y="488" fill="#334155" font-family="Inter, Arial, sans-serif" font-size="34">Local-first spreadsheet canvas for analysis</text>
+  <text x="112" y="532" fill="#64748b" font-family="Inter, Arial, sans-serif" font-size="24">Tables, charts, pivots, and notes on one visual surface</text>
+</svg>

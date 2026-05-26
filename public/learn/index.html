@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Learn SheetCanvas - Spreadsheet canvas for local analysis</title>
+    <meta name="description" content="Learn how SheetCanvas uses a spreadsheet canvas for local files, tables, charts, pivots, sparklines, and notes without turning the app home into a marketing page.">
+    <link rel="canonical" href="https://sheetcanvas.com/learn/">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="SheetCanvas">
+    <meta property="og:title" content="Learn SheetCanvas - Spreadsheet canvas for local analysis">
+    <meta property="og:description" content="A concise guide to SheetCanvas: local spreadsheet objects, charts, pivots, notes, command search, and the live app at /." >
+    <meta property="og:url" content="https://sheetcanvas.com/learn/">
+    <meta property="og:image" content="https://sheetcanvas.com/brand/sheetcanvas-og.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="SheetCanvas spreadsheet canvas preview">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Learn SheetCanvas - Spreadsheet canvas for local analysis">
+    <meta name="twitter:description" content="Understand the SheetCanvas object model before opening the live spreadsheet canvas.">
+    <meta name="twitter:image" content="https://sheetcanvas.com/brand/sheetcanvas-og.png">
+    <meta name="theme-color" content="#0f766e">
+    <link rel="icon" type="image/svg+xml" href="/brand/sheetcanvas-logo.svg">
+    <link rel="apple-touch-icon" href="/brand/sheetcanvas-logo.png">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "name": "theindie.app",
+            "url": "https://theindie.app/",
+            "email": "yourfriend@theindie.app",
+            "description": "theindie.app is a founder-led indie studio building small, focused software products.",
+            "sameAs": [
+              "https://fasttab.theindie.app",
+              "https://strider.theindie.app",
+              "https://pineapplelog.theindie.app",
+              "https://gptbreeze.io",
+              "https://speechtodo.com",
+              "https://sheetcanvas.com"
+            ]
+          },
+          {
+            "@type": "WebPage",
+            "name": "Learn SheetCanvas",
+            "url": "https://sheetcanvas.com/learn/",
+            "description": "A concise product guide for SheetCanvas, a local-first spreadsheet canvas for analysis.",
+            "dateModified": "2026-05-26",
+            "isPartOf": {
+              "@type": "WebSite",
+              "name": "SheetCanvas",
+              "url": "https://sheetcanvas.com/"
+            },
+            "about": {
+              "@type": "SoftwareApplication",
+              "name": "SheetCanvas",
+              "applicationCategory": "BusinessApplication",
+              "operatingSystem": "Web",
+              "url": "https://sheetcanvas.com/",
+              "publisher": {
+                "@type": "Organization",
+                "name": "theindie.app",
+                "url": "https://theindie.app/"
+              }
+            },
+            "breadcrumb": {
+              "@type": "BreadcrumbList",
+              "itemListElement": [
+                {
+                  "@type": "ListItem",
+                  "position": 1,
+                  "name": "SheetCanvas",
+                  "item": "https://sheetcanvas.com/"
+                },
+                {
+                  "@type": "ListItem",
+                  "position": 2,
+                  "name": "Learn",
+                  "item": "https://sheetcanvas.com/learn/"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    </script>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #121717;
+        --muted: #52605f;
+        --line: #d8e1df;
+        --paper: #fbfbf8;
+        --panel: #ffffff;
+        --teal: #0f766e;
+        --teal-dark: #0b4f4a;
+        --warm: #f3efe6;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font: 16px/1.6 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      a {
+        color: inherit;
+      }
+
+      .skip-link {
+        position: absolute;
+        left: 16px;
+        top: 12px;
+        transform: translateY(-140%);
+        background: var(--ink);
+        color: #fff;
+        padding: 8px 12px;
+        border-radius: 6px;
+        transition: transform 0.15s;
+      }
+
+      .skip-link:focus {
+        transform: translateY(0);
+      }
+
+      .site-header,
+      main,
+      .site-footer {
+        width: min(1120px, calc(100% - 40px));
+        margin: 0 auto;
+      }
+
+      .site-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        padding: 22px 0;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        text-decoration: none;
+        font-weight: 700;
+      }
+
+      .brand-mark {
+        display: grid;
+        width: 24px;
+        height: 24px;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 3px;
+      }
+
+      .brand-mark span {
+        border: 1px solid var(--teal);
+        border-radius: 4px;
+      }
+
+      .brand-mark span:last-child {
+        background: var(--teal);
+      }
+
+      .nav {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 14px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .nav a {
+        text-decoration: none;
+      }
+
+      .nav a:hover {
+        color: var(--ink);
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+        gap: 48px;
+        align-items: center;
+        padding: 72px 0 64px;
+        border-top: 1px solid var(--line);
+      }
+
+      .eyebrow {
+        margin: 0 0 16px;
+        color: var(--teal-dark);
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        max-width: 760px;
+        margin-bottom: 20px;
+        font-size: clamp(42px, 7vw, 76px);
+        line-height: 0.95;
+        letter-spacing: 0;
+      }
+
+      .hero-copy {
+        max-width: 650px;
+        color: var(--muted);
+        font-size: 19px;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 30px;
+      }
+
+      .button {
+        display: inline-flex;
+        min-height: 44px;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 10px 16px;
+        text-decoration: none;
+        font-weight: 700;
+      }
+
+      .button-primary {
+        border-color: var(--teal);
+        background: var(--teal);
+        color: #fff;
+      }
+
+      .button-secondary {
+        background: #fff;
+      }
+
+      .reviewed {
+        margin: 18px 0 0;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .canvas-preview {
+        position: relative;
+        min-height: 430px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+        background:
+          linear-gradient(var(--line) 1px, transparent 1px),
+          linear-gradient(90deg, var(--line) 1px, transparent 1px),
+          #f7faf8;
+        background-size: 40px 40px;
+        box-shadow: 0 24px 70px -44px rgba(18, 23, 23, 0.5);
+      }
+
+      .object {
+        position: absolute;
+        border: 1px solid rgba(15, 118, 110, 0.18);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.92);
+        box-shadow: 0 14px 36px -28px rgba(18, 23, 23, 0.56);
+      }
+
+      .object-table {
+        left: 28px;
+        top: 42px;
+        width: 260px;
+        padding: 14px;
+      }
+
+      .object-chart {
+        right: 26px;
+        top: 108px;
+        width: 240px;
+        padding: 16px;
+      }
+
+      .object-note {
+        left: 128px;
+        bottom: 42px;
+        width: 230px;
+        background: #fff7d6;
+        padding: 16px;
+        transform: rotate(-2deg);
+      }
+
+      .object-label {
+        margin-bottom: 10px;
+        color: var(--teal-dark);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .table-row {
+        display: grid;
+        grid-template-columns: 1fr 0.8fr 0.8fr;
+        gap: 8px;
+        border-top: 1px solid #e8eeec;
+        padding: 7px 0;
+        font-size: 13px;
+      }
+
+      .table-row:first-of-type {
+        color: var(--muted);
+        font-weight: 700;
+      }
+
+      .bars {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 10px;
+        align-items: end;
+        height: 140px;
+      }
+
+      .bars span {
+        display: block;
+        border-radius: 5px 5px 0 0;
+        background: var(--teal);
+      }
+
+      .section {
+        padding: 56px 0;
+        border-top: 1px solid var(--line);
+      }
+
+      .section-head {
+        max-width: 760px;
+        margin-bottom: 28px;
+      }
+
+      h2 {
+        margin-bottom: 12px;
+        font-size: clamp(30px, 4vw, 48px);
+        line-height: 1.05;
+        letter-spacing: 0;
+      }
+
+      .lede {
+        color: var(--muted);
+        font-size: 18px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+      }
+
+      .card {
+        min-height: 220px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        padding: 22px;
+      }
+
+      .card h3 {
+        margin-bottom: 10px;
+        font-size: 21px;
+        line-height: 1.2;
+      }
+
+      .card p,
+      .site-footer p {
+        color: var(--muted);
+      }
+
+      .list {
+        display: grid;
+        gap: 14px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .list li {
+        border-left: 3px solid var(--teal);
+        background: var(--warm);
+        padding: 14px 16px;
+      }
+
+      .band {
+        border-radius: 8px;
+        background: var(--ink);
+        color: #fff;
+        padding: 34px;
+      }
+
+      .band p {
+        color: #c8d3d1;
+      }
+
+      .site-footer {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 22px;
+        padding: 34px 0 46px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+      }
+
+      .footer-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+      }
+
+      @media (max-width: 860px) {
+        .site-header {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .nav {
+          justify-content: flex-start;
+        }
+
+        .hero,
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        .hero {
+          gap: 28px;
+          padding-top: 44px;
+        }
+
+        .canvas-preview {
+          min-height: 360px;
+        }
+
+        .object-table {
+          width: 230px;
+        }
+
+        .object-chart {
+          top: 156px;
+          width: 190px;
+        }
+      }
+
+      @media (max-width: 560px) {
+        .site-header,
+        main,
+        .site-footer {
+          width: min(100% - 28px, 1120px);
+        }
+
+        .canvas-preview {
+          min-height: 420px;
+        }
+
+        .object-table {
+          left: 14px;
+          top: 24px;
+          width: calc(100% - 28px);
+        }
+
+        .object-chart {
+          left: 72px;
+          right: auto;
+          top: 190px;
+          width: calc(100% - 92px);
+        }
+
+        .object-note {
+          left: 20px;
+          bottom: 24px;
+          width: calc(100% - 56px);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header" aria-label="Site header">
+      <a class="brand" href="/" aria-label="Open SheetCanvas app">
+        <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
+        <span>SheetCanvas</span>
+      </a>
+      <nav class="nav" aria-label="Primary navigation">
+        <a href="/">Open app</a>
+        <a href="/docs/">Docs</a>
+        <a href="#object-model">Object model</a>
+        <a href="#workflows">Workflows</a>
+        <a href="#connectors">Connectors</a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero" aria-labelledby="hero-title">
+        <div>
+          <p class="eyebrow">Product guide</p>
+          <h1 id="hero-title">A spreadsheet canvas for analysis that does not fit in one grid.</h1>
+          <p class="hero-copy">SheetCanvas keeps the app at <a href="/">/</a> so you can start working immediately. This page explains the product model: tables, charts, pivots, sparklines, and notes are movable objects on the same local-first canvas.</p>
+          <p class="reviewed">Last reviewed: May 26, 2026</p>
+          <div class="actions">
+            <a class="button button-primary" href="/">Open SheetCanvas</a>
+            <a class="button button-secondary" href="/docs/">Read the docs</a>
+          </div>
+        </div>
+
+        <div class="canvas-preview" aria-label="Illustration of SheetCanvas table, chart, and note objects">
+          <div class="object object-table">
+            <p class="object-label">Table object</p>
+            <div class="table-row"><span>region</span><span>units</span><span>revenue</span></div>
+            <div class="table-row"><span>NA West</span><span>1204</span><span>$84k</span></div>
+            <div class="table-row"><span>EU North</span><span>612</span><span>$48k</span></div>
+            <div class="table-row"><span>APAC</span><span>1410</span><span>$103k</span></div>
+          </div>
+          <div class="object object-chart">
+            <p class="object-label">Chart object</p>
+            <div class="bars" aria-hidden="true">
+              <span style="height: 45%"></span>
+              <span style="height: 62%"></span>
+              <span style="height: 38%"></span>
+              <span style="height: 78%"></span>
+              <span style="height: 92%"></span>
+            </div>
+          </div>
+          <div class="object object-note">
+            <p class="object-label">Canvas note</p>
+            <p>Keep the caveat beside the chart instead of burying it in a separate document.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="object-model" class="section" aria-labelledby="object-title">
+        <div class="section-head">
+          <p class="eyebrow">Object model</p>
+          <h2 id="object-title">Tables, visuals, and interpretation stay together.</h2>
+          <p class="lede">A SheetCanvas workspace is a surface of spreadsheet objects, not a single expanding tab. That makes it easier to arrange source data, analysis, and notes around the question you are answering.</p>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <h3>Drop in local files</h3>
+            <p>Import CSV, XLSX, or XLS files as placed table objects. The table keeps its position on the canvas while you sort, filter, inspect, and build from it.</p>
+          </article>
+          <article class="card">
+            <h3>Create charts and summaries</h3>
+            <p>Turn selected data into bar, line, area, pie, scatter, treemap, pivot, or sparkline objects. Move the result next to the source table instead of losing context.</p>
+          </article>
+          <article class="card">
+            <h3>Write notes near evidence</h3>
+            <p>Add canvas notes for caveats, decisions, and next steps. The note can live beside the table or chart it explains.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="workflows" class="section" aria-labelledby="workflow-title">
+        <div class="section-head">
+          <p class="eyebrow">When it helps</p>
+          <h2 id="workflow-title">Use SheetCanvas when spreadsheet work becomes spatial.</h2>
+          <p class="lede">The product is strongest when you need to compare multiple views of the same data, preserve context, or build a quick analysis workspace without setting up a BI tool.</p>
+        </div>
+        <ul class="list">
+          <li><strong>CSV or XLSX analysis:</strong> place imported tables, create visual checks, and keep notes beside the output.</li>
+          <li><strong>Dashboard exploration:</strong> arrange charts, pivots, and sparklines around the source tables while you decide what matters.</li>
+          <li><strong>Local-first spreadsheet work:</strong> use the canvas without making account setup the first step.</li>
+        </ul>
+      </section>
+
+      <section id="connectors" class="section" aria-labelledby="connector-title">
+        <div class="section-head">
+          <p class="eyebrow">Connected data</p>
+          <h2 id="connector-title">Local files first, connectors where they are already part of the app.</h2>
+          <p class="lede">SheetCanvas currently includes connector work for Google Analytics and ClickHouse alongside local file imports. This page avoids claiming future integrations as shipped capabilities.</p>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <h3>Google Analytics</h3>
+            <p>Use the in-app connector flow for GA4 reporting data when you want analytics tables inside the same canvas as your notes and visual checks. See <a href="/docs/#connectors">connector setup</a>.</p>
+          </article>
+          <article class="card">
+            <h3>ClickHouse</h3>
+            <p>Bring ClickHouse query results into the spreadsheet object model for analysis without separating database output from canvas context. Read the <a href="/connectors/clickhouse/">ClickHouse connector guide</a>.</p>
+          </article>
+          <article class="card">
+            <h3>Local files</h3>
+            <p>CSV, XLSX, and XLS imports remain the fastest path: drop a file and start arranging the table, charts, pivots, and notes around it.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="next-title">
+        <div class="band">
+          <p class="eyebrow">Fastest path to value</p>
+          <h2 id="next-title">The app is still the homepage.</h2>
+          <p>SheetCanvas intentionally keeps the live product at the root URL. Use this guide for context, then open the canvas and work with the product directly.</p>
+          <div class="actions">
+            <a class="button button-primary" href="/">Open SheetCanvas</a>
+            <a class="button button-secondary" href="/docs/">Read the docs</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>SheetCanvas is built by <a href="https://theindie.app/">theindie.app</a>, a founder-led indie studio.</p>
+      <nav class="footer-links" aria-label="Footer links">
+        <a href="/">Open app</a>
+        <a href="/learn/">Learn</a>
+        <a href="/docs/">Docs</a>
+        <a href="/connectors/clickhouse/">ClickHouse connector</a>
+        <a href="https://fasttab.theindie.app">FastTab</a>
+        <a href="https://strider.theindie.app">Strider</a>
+        <a href="https://pineapplelog.theindie.app">Pineapple Log</a>
+        <a href="https://gptbreeze.io">GPT Breeze</a>
+        <a href="https://speechtodo.com">SpeechToDo</a>
+      </nav>
+    </footer>
+  </body>
+</html>
