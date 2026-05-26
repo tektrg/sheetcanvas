@@ -31,6 +31,7 @@ Key decisions:
 - For the next SEO iteration, add `/learn/` as a static support page instead of changing the root app, because it is the smallest crawlable page that satisfies the SOP's support-surface model.
 - Add `/docs/` as a static support hub before deeper connector/use-case pages, because it reuses current product-specific connector knowledge and improves internal linking without changing `/`.
 - Add `/connectors/clickhouse/` as the first dedicated connector support page, because ClickHouse is a shipped connector path with enough product-specific setup detail to support bottom-funnel search without changing `/`.
+- Add `/connectors/google-analytics/` as the second dedicated connector support page, because GA4 is a shipped connector path with OAuth/backend setup details and product-specific search demand, and it can improve bottom-funnel discovery without changing `/`.
 
 State:
 - Done:
@@ -103,13 +104,29 @@ State:
   - Attempted Vercel CLI production deploy; blocked by invalid local Vercel token.
   - Attempted claimable Vercel deploy script; endpoint now returns CLI migration instructions instead of a preview/claim URL.
   - Attempted `git push origin main`; blocked because the current credential/remote cannot access `https://github.com/tektrg/flexsheet.git`.
+  - Attempted to pull current Search Console evidence with `/Users/trungluong/clawd/bin/gsc-report --list-sites`; blocked by sandbox DNS/network failure resolving `oauth2.googleapis.com`.
+  - Added `public/connectors/google-analytics/index.html` as a crawlable GA4 connector page with product-specific metadata, canonical, OG/Twitter tags, `WebPage`/`BreadcrumbList` JSON-LD, reviewed date, setup checklist, report-field guidance, refresh behavior, and troubleshooting.
+  - Linked `/connectors/google-analytics/` from `/docs/` nav/content/footer and `/learn/` content/footer so the new connector page is not orphaned.
+  - Updated `public/sitemap.xml` to include `https://sheetcanvas.com/connectors/google-analytics/`.
+  - Verified `npm run build`; it passes with the existing html2canvas dynamic/static import warning and existing large chunk warning.
+  - Verified `public/connectors/google-analytics/index.html` and `dist/connectors/google-analytics/index.html` contain the expected title, canonical, reviewed date, OAuth/refreshable-sheet copy, and parseable JSON-LD.
+  - Verified `dist/sitemap.xml` includes `/connectors/google-analytics/`, and built `/docs/` plus `/learn/` contain inbound links to the GA4 connector page.
+  - Checked active SheetCanvas tmux Vite logs (`sheetcanvas_bottom_sheet_dev`); no runtime errors found, only HMR/page reload entries for edited static pages.
+  - Ran two sequential QA/product review passes with different subagents; both found no requirement gaps.
+  - Cleaned up stale task-specific tmux session `sheetcanvas_seo_qa2`; kept active or ambiguous sessions including `sheetcanvas_bottom_sheet_dev`, other dev servers, and watchers.
+  - User clarified deployment uses Wrangler, not Vercel/GitHub push.
+  - Confirmed Wrangler Pages project `sheetcanvas` serves `sheetcanvas.pages.dev`, `sheetcanvas.com`, and `www.sheetcanvas.com`.
+  - Verified `npm run seo:audit`; it builds successfully and the SEO audit passes with only existing Vite html2canvas/chunk-size warnings.
+  - Committed GA4 connector page as `5d10ecb feat(seo): add google analytics connector page`.
+  - Committed SEO audit script as `231774f chore(seo): add metadata audit script`.
 - Now:
-  - Deployment is blocked on valid Vercel or GitHub credentials.
+  - Deploying built `dist/` to Cloudflare Pages via `npx wrangler pages deploy dist --project-name sheetcanvas`.
 - Next:
-  - Provide valid Vercel token/login or accessible Git remote, then rerun deploy/push.
+  - Next SEO task: add a maintained metadata/schema audit script before adding more pages, or add `/use-cases/spreadsheet-canvas/` if content expansion is preferred.
+  - After deploy, smoke-check the production URL and logs/status.
 
 Open questions (UNCONFIRMED if needed):
-- Valid deployment path is currently UNCONFIRMED because both local Vercel auth and GitHub remote access failed.
+- None.
 
 Working set (files/ids/commands):
 - `docs/seo-sop.md`
@@ -129,9 +146,10 @@ Working set (files/ids/commands):
 - `public/learn/index.html`
 - `public/docs/index.html`
 - `public/connectors/clickhouse/index.html`
+- `public/connectors/google-analytics/index.html`
 - `public/brand/sheetcanvas-og.svg`
 - `public/brand/sheetcanvas-og.png`
 - `scripts/tmux-run-capture.mjs`
 - `AGENTS.md`
 - Dev server: `http://127.0.0.1:5173/` in tmux session `sheetcanvas_bottom_sheet_dev`
-- Current command task: commit current changes in logical chunks and deploy.
+- Current command task: continue SEO support surfaces and deploy when credentials are available.
