@@ -32,6 +32,7 @@ Key decisions:
 - Add `/docs/` as a static support hub before deeper connector/use-case pages, because it reuses current product-specific connector knowledge and improves internal linking without changing `/`.
 - Add `/connectors/clickhouse/` as the first dedicated connector support page, because ClickHouse is a shipped connector path with enough product-specific setup detail to support bottom-funnel search without changing `/`.
 - Add `/connectors/google-analytics/` as the second dedicated connector support page, because GA4 is a shipped connector path with OAuth/backend setup details and product-specific search demand, and it can improve bottom-funnel discovery without changing `/`.
+- Add `npm run seo:audit` before expanding more SEO pages, because the current static support surface now needs a repeatable quality gate for metadata, schema, sitemap, robots, reviewed dates, and the root app-shell constraint.
 
 State:
 - Done:
@@ -122,10 +123,14 @@ State:
   - Committed Wrangler deployment path note as `ce62115 docs: record wrangler deploy path`.
   - Deployed `dist/` to Cloudflare Pages project `sheetcanvas` with Wrangler; deployment `40f3e5cf-5925-4eb3-a7ac-90c46d126bb4`, preview URL `https://40f3e5cf.sheetcanvas.pages.dev`.
   - Smoke-checked `https://40f3e5cf.sheetcanvas.pages.dev/`, `/connectors/google-analytics/`, `https://sheetcanvas.com/`, `https://sheetcanvas.com/connectors/google-analytics/`, and `https://sheetcanvas.com/sitemap.xml`; all returned HTTP 200 with expected content.
+  - Tightened `scripts/seo-audit.mjs` so `npm run seo:audit` builds first, then validates source and built HTML for titles, descriptions, canonicals, `og:url`, `og:type`, OG/Twitter images/copy, `twitter:card`, parseable JSON-LD, root `SoftwareApplication`, support-page `WebPage`/`BreadcrumbList`, visible reviewed dates, WebPage `dateModified`, sitemap coverage, sitemap index, robots sitemap reference, unique titles, and the root Vite app mount/module entry.
+  - Verified `npm run seo:audit`; it passes after building. Existing Vite warnings remain the html2canvas dynamic/static import warning and large bundle warning.
+  - Checked active SheetCanvas tmux Vite logs (`sheetcanvas_bottom_sheet_dev`); no runtime errors found, only HMR/page reload entries.
+  - Ran sequential QA/product review with subagents. Initial reviews found stricter gate gaps for built validation, sitemap/robots failure behavior, social metadata, `dateModified`, and root app-shell preservation; all were fixed. Final sequential QA pass found no requirement gaps.
 - Now:
-  - Committing the deployment ledger update and redeploying once so the Pages source commit matches final HEAD.
+  - SEO audit tooling is tightened and verified locally; the working tree also includes prior SEO/deployment ledger changes that predate this run.
 - Next:
-  - Next SEO task: add `/use-cases/spreadsheet-canvas/` if content expansion is preferred.
+  - Next SEO task: add `/use-cases/spreadsheet-canvas/` using the audit gate, or wire `npm run seo:audit` into the Wrangler pre-deploy flow.
 
 Open questions (UNCONFIRMED if needed):
 - None.
@@ -152,6 +157,7 @@ Working set (files/ids/commands):
 - `public/brand/sheetcanvas-og.svg`
 - `public/brand/sheetcanvas-og.png`
 - `scripts/tmux-run-capture.mjs`
+- `scripts/seo-audit.mjs`
 - `AGENTS.md`
 - Dev server: `http://127.0.0.1:5173/` in tmux session `sheetcanvas_bottom_sheet_dev`
-- Current command task: continue SEO support surfaces and deploy when credentials are available.
+- Current command task: run `npm run seo:audit` before SEO page expansion and deploy via Wrangler when ready.
