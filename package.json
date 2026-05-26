@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:local": "node scripts/dev-local.mjs",
+    "tmux:capture": "node scripts/tmux-run-capture.mjs",
     "build": "vite build",
     "preview": "vite preview"
   },
