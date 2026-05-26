@@ -97,6 +97,18 @@ function findSchemaObjectsByType(schema, schemaType) {
   return matches;
 }
 
+function auditRootAppShell(html, pageLabel) {
+  if (!/<div\b[^>]*\bid=["']root["'][^>]*>/i.test(html)) {
+    reportError(pageLabel, 'root page must keep the Vite app mount element.');
+  }
+
+  const hasSourceEntry = /<script\b(?=[^>]*\btype=["']module["'])(?=[^>]*\bsrc=["']\/index\.tsx["'])[^>]*>/i.test(html);
+  const hasBuiltEntry = /<script\b(?=[^>]*\btype=["']module["'])(?=[^>]*\bsrc=["']\/assets\/index-[^"']+\.js["'])[^>]*>/i.test(html);
+  if (!hasSourceEntry && !hasBuiltEntry) {
+    reportError(pageLabel, 'root page must keep the Vite app module entry.');
+  }
+}
+
 function discoverHtmlFiles(rootPath) {
   const files = [];
 
@@ -232,7 +244,9 @@ function auditPage(page) {
     reportError(pageLabel, 'root page must include SoftwareApplication JSON-LD.');
   }
 
-  if (page.urlPath !== '/') {
+  if (page.urlPath === '/') {
+    auditRootAppShell(html, pageLabel);
+  } else {
     for (const requiredType of REQUIRED_SUPPORT_SCHEMA_TYPES) {
       if (!schemaTypes.includes(requiredType)) {
         reportError(pageLabel, `support page must include ${requiredType} JSON-LD.`);
