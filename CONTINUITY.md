@@ -119,11 +119,13 @@ State:
   - Verified `npm run seo:audit`; it builds successfully and the SEO audit passes with only existing Vite html2canvas/chunk-size warnings.
   - Committed GA4 connector page as `5d10ecb feat(seo): add google analytics connector page`.
   - Committed SEO audit script as `231774f chore(seo): add metadata audit script`.
+  - Committed Wrangler deployment path note as `ce62115 docs: record wrangler deploy path`.
+  - Deployed `dist/` to Cloudflare Pages project `sheetcanvas` with Wrangler; deployment `40f3e5cf-5925-4eb3-a7ac-90c46d126bb4`, preview URL `https://40f3e5cf.sheetcanvas.pages.dev`.
+  - Smoke-checked `https://40f3e5cf.sheetcanvas.pages.dev/`, `/connectors/google-analytics/`, `https://sheetcanvas.com/`, `https://sheetcanvas.com/connectors/google-analytics/`, and `https://sheetcanvas.com/sitemap.xml`; all returned HTTP 200 with expected content.
 - Now:
-  - Deploying built `dist/` to Cloudflare Pages via `npx wrangler pages deploy dist --project-name sheetcanvas`.
+  - Committing the deployment ledger update and redeploying once so the Pages source commit matches final HEAD.
 - Next:
-  - Next SEO task: add a maintained metadata/schema audit script before adding more pages, or add `/use-cases/spreadsheet-canvas/` if content expansion is preferred.
-  - After deploy, smoke-check the production URL and logs/status.
+  - Next SEO task: add `/use-cases/spreadsheet-canvas/` if content expansion is preferred.
 
 Open questions (UNCONFIRMED if needed):
 - None.
