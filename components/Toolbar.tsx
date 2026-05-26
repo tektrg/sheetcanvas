@@ -24,10 +24,11 @@ const ToolbarButton: React.FC<{
   active?: boolean;
   buttonRef?: React.RefObject<HTMLButtonElement>;
 }> = ({ onClick, icon: Icon, tooltip, disabled, active, buttonRef }) => (
-  <button 
+  <button
     ref={buttonRef}
     onClick={onClick}
     disabled={disabled}
+    aria-label={tooltip}
     className={`group relative p-2.5 rounded-full transition-all flex items-center justify-center
       ${disabled 
         ? 'text-neutral-300 dark:text-neutral-600 cursor-not-allowed' 

@@ -1,38 +1,15 @@
 // ════════════════════════════════════════════════════════════
-// SheetCanvas tour — parallax + progress + dark-theme toggle
+// SheetCanvas tour — parallax + progress
 // ════════════════════════════════════════════════════════════
 (function(){
   // ── theme ─────────────────────────────────────────────────
   const root = document.documentElement;
-  const themeBtn = document.querySelector('.theme-toggle');
-  const STORAGE_KEY = 'sheetcanvas-theme';
   function applyTheme(t){
     if (t === 'dark') root.setAttribute('data-theme', 'dark');
     else root.removeAttribute('data-theme');
-    if (themeBtn){
-      themeBtn.setAttribute('aria-pressed', t === 'dark' ? 'true' : 'false');
-      themeBtn.setAttribute('aria-label', t === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
-    }
   }
-  const stored = (() => { try { return localStorage.getItem(STORAGE_KEY); } catch(_){ return null; } })();
-  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-  applyTheme(stored || (prefersDark ? 'dark' : 'light'));
-  if (themeBtn){
-    themeBtn.addEventListener('click', () => {
-      const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-      applyTheme(next);
-      try { localStorage.setItem(STORAGE_KEY, next); } catch(_){}
-    });
-  }
-  // follow system if user has not explicitly chosen
-  if (window.matchMedia){
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    mq.addEventListener?.('change', e => {
-      let saved = null;
-      try { saved = localStorage.getItem(STORAGE_KEY); } catch(_){}
-      if (!saved) applyTheme(e.matches ? 'dark' : 'light');
-    });
-  }
+  const themeParam = new URLSearchParams(window.location.search).get('theme');
+  applyTheme(themeParam === 'dark' ? 'dark' : 'light');
 
   // ── parallax ──────────────────────────────────────────────
   const els = Array.from(document.querySelectorAll('[data-parallax]'));
@@ -80,7 +57,9 @@
     requestAnimationFrame(() => {
       const sy = window.scrollY;
       const vh = window.innerHeight;
-      const centerY = sy + vh / 2;
+      const visibleBottomInset = parseFloat(root.dataset.visibleBottomInset || '0') || 0;
+      const visibleCenterOffset = Math.max(0, (vh - visibleBottomInset) / 2);
+      const centerY = sy + visibleCenterOffset;
 
       // parallax
       metrics.forEach(m => {

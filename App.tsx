@@ -21,7 +21,7 @@ import { useStore, AppState } from './store';
 import { useChartPalette } from './hooks/useChartPalette';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
-const ONBOARDING_DISMISSED_KEY = 'sheetcanvas:onboarding-dismissed';
+const ONBOARDING_DISMISSED_KEY = 'sheetcanvas:onboarding-dismissed:v4';
 
 const App: React.FC = () => {
   const [darkMode, setDarkMode] = useState(() => 
@@ -1044,6 +1044,7 @@ const App: React.FC = () => {
         <OnboardingGuide
             isOpen={isOnboardingOpen}
             onClose={closeOnboarding}
+            darkMode={darkMode}
         />
 
         <Canvas 

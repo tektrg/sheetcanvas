@@ -1,0 +1,104 @@
+.bottom-sheet-welcome,
+.bottom-sheet-welcome * {
+  box-sizing: border-box;
+}
+
+.bottom-sheet-welcome {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+.bottom-sheet-welcome__scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(14, 15, 15, 0.22);
+  backdrop-filter: blur(2px);
+}
+
+.bottom-sheet-welcome__sheet {
+  position: relative;
+  width: min(1280px, calc(100vw - 36px));
+  height: min(860px, calc(100vh - 12px));
+  margin-bottom: -112px;
+  overflow: hidden;
+  border: 1px solid rgba(14, 15, 15, 0.1);
+  border-radius: 18px;
+  background: #f4f1ea;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.6) inset,
+    0 30px 60px -20px rgba(14, 15, 15, 0.32),
+    0 12px 24px -12px rgba(14, 15, 15, 0.18);
+  animation: bottomSheetWelcomeIn 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.bottom-sheet-welcome[data-theme="dark"] .bottom-sheet-welcome__sheet {
+  border-color: rgba(3, 7, 7, 0.7);
+}
+
+.bottom-sheet-welcome__frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #f4f1ea;
+  scrollbar-width: none;
+}
+
+.bottom-sheet-welcome__frame::-webkit-scrollbar {
+  display: none;
+}
+
+.bottom-sheet-welcome__close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  z-index: 2;
+  height: 32px;
+  border: 1px solid rgba(14, 15, 15, 0.14);
+  border-radius: 999px;
+  background: color-mix(in oklab, #f4f1ea 80%, transparent);
+  padding: 0 13px;
+  color: #2a2b2b;
+  font: 600 12px/1 "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  backdrop-filter: blur(12px);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, transform 0.15s;
+}
+
+.bottom-sheet-welcome__close:hover {
+  background: #fff;
+  color: #0e0f0f;
+  transform: translateY(-1px);
+}
+
+@keyframes bottomSheetWelcomeIn {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 720px) {
+  .bottom-sheet-welcome__sheet {
+    width: calc(100vw - 20px);
+    height: calc(100vh - 8px);
+    margin-bottom: -80px;
+    border-radius: 14px;
+  }
+
+  .bottom-sheet-welcome__close {
+    top: 10px;
+    right: 10px;
+  }
+}
