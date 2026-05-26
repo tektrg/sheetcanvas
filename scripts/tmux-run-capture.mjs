@@ -1,16 +1,17 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, unlinkSync } from 'node:fs';
+import { chmodSync, existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 const DEFAULT_CAPTURE_LINES = 5000;
 const DEFAULT_RETAIN_SECONDS = 60;
+const DEFAULT_TIMEOUT_SECONDS = 3600;
 
 function printUsage() {
   console.error(`Usage:
-  node scripts/tmux-run-capture.mjs <name> [--keep] [--lines <n>] [--retain-seconds <n>] -- <command...>
+  node scripts/tmux-run-capture.mjs <name> [--keep] [--lines <n>] [--retain-seconds <n>] [--timeout-seconds <n>] -- <command...>
 
 Examples:
   npm run tmux:capture -- build -- npm run build
@@ -51,6 +52,7 @@ function parseArgs(argv) {
     captureLines: DEFAULT_CAPTURE_LINES,
     keep: false,
     retainSeconds: DEFAULT_RETAIN_SECONDS,
+    timeoutSeconds: DEFAULT_TIMEOUT_SECONDS,
   };
 
   for (let index = 0; index < optionArgs.length; index += 1) {
@@ -67,6 +69,11 @@ function parseArgs(argv) {
     if (option === '--retain-seconds') {
       index += 1;
       options.retainSeconds = parsePositiveInteger(optionArgs[index], '--retain-seconds');
+      continue;
+    }
+    if (option === '--timeout-seconds') {
+      index += 1;
+      options.timeoutSeconds = parsePositiveInteger(optionArgs[index], '--timeout-seconds');
       continue;
     }
     throw new Error(`Unknown option: ${option}`);
@@ -90,6 +97,16 @@ function fail(message, exitCode = 1) {
   process.exit(exitCode);
 }
 
+function removeFileIfPresent(filePath) {
+  try {
+    if (existsSync(filePath)) {
+      unlinkSync(filePath);
+    }
+  } catch {
+    // Best effort cleanup only.
+  }
+}
+
 let parsed;
 try {
   parsed = parseArgs(process.argv.slice(2));
@@ -100,19 +117,26 @@ try {
 const { commandArgs, rawName, options } = parsed;
 const sessionName = sessionNameFor(rawName);
 const statusFilePath = join(tmpdir(), `${sessionName}.status`);
+const scriptFilePath = join(tmpdir(), `${sessionName}.sh`);
 const command = commandArgs.map(shellQuote).join(' ');
-const tmuxCommand = [
-  command,
-  'status=$?',
-  'echo',
-  'echo "__EXIT_STATUS__=$status"',
-  `printf '%s' "$status" > ${shellQuote(statusFilePath)}`,
-  `sleep ${options.retainSeconds}`,
-  'exit $status',
-].join('; ');
 
-const createResult = runTmux(['new-session', '-d', '-s', sessionName, tmuxCommand]);
+writeFileSync(
+  scriptFilePath,
+  `#!/usr/bin/env sh
+${command}
+status=$?
+echo
+echo "__EXIT_STATUS__=$status"
+printf '%s' "$status" > ${shellQuote(statusFilePath)}
+sleep ${options.retainSeconds}
+exit "$status"
+`,
+);
+chmodSync(scriptFilePath, 0o700);
+
+const createResult = runTmux(['new-session', '-d', '-s', sessionName, `sh ${shellQuote(scriptFilePath)}`]);
 if (createResult.status !== 0) {
+  removeFileIfPresent(scriptFilePath);
   fail(createResult.stderr || createResult.stdout || 'Failed to create tmux session.');
 }
 
@@ -120,10 +144,13 @@ const waitStartedAtMs = Date.now();
 while (!existsSync(statusFilePath)) {
   const sessionCheck = runTmux(['has-session', '-t', sessionName]);
   if (sessionCheck.status !== 0) {
+    removeFileIfPresent(scriptFilePath);
     fail(`tmux session ${sessionName} exited before writing its status file.`);
   }
-  if (Date.now() - waitStartedAtMs > options.retainSeconds * 1000) {
+  if (Date.now() - waitStartedAtMs > options.timeoutSeconds * 1000) {
     runTmux(['kill-session', '-t', sessionName]);
+    removeFileIfPresent(scriptFilePath);
+    removeFileIfPresent(statusFilePath);
     fail(`Timed out waiting for tmux session ${sessionName} to finish.`);
   }
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
@@ -136,10 +163,11 @@ process.stdout.write(capturedOutput);
 let exitStatus = readExitStatus(capturedOutput);
 try {
   exitStatus = Number.parseInt(readFileSync(statusFilePath, 'utf8'), 10);
-  unlinkSync(statusFilePath);
 } catch {
   // Fall back to the printed marker in the captured pane.
 }
+removeFileIfPresent(statusFilePath);
+removeFileIfPresent(scriptFilePath);
 
 if (!options.keep) {
   const killResult = runTmux(['kill-session', '-t', sessionName]);
