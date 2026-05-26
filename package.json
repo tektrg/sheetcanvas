@@ -8,6 +8,7 @@
     "dev:local": "node scripts/dev-local.mjs",
     "tmux:capture": "node scripts/tmux-run-capture.mjs",
     "build": "vite build",
+    "seo:audit": "npm run build && node scripts/seo-audit.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
