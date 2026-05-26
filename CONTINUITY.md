@@ -1,6 +1,7 @@
 Goal (incl. success criteria):
 - Define and iterate the SheetCanvas SEO operating model while keeping `/` as the app and fastest path to value.
 - Success means there is a concrete SOP for SEO infrastructure, URL strategy, page contracts, measurement, and first implementation steps.
+- Current handoff success means current code changes are committed in logical Conventional Commit chunks and deployed, with verification and relevant logs checked.
 
 Constraints/Assumptions:
 - Follow AGENTS.md repository guidelines.
@@ -27,6 +28,9 @@ Key decisions:
 - Frontend app starts should use `npm run dev -- --host 127.0.0.1 --port 5173 --strictPort`; if 5173 is occupied, stop the stale SheetCanvas server instead of auto-selecting another port.
 - For the first SEO iteration, prioritize completing the root app crawl/preview baseline before adding support pages, because `/` remains the live app and primary product entry.
 - Use a 1200x630 PNG as the canonical social preview image, with an SVG source kept beside it for maintainable edits.
+- For the next SEO iteration, add `/learn/` as a static support page instead of changing the root app, because it is the smallest crawlable page that satisfies the SOP's support-surface model.
+- Add `/docs/` as a static support hub before deeper connector/use-case pages, because it reuses current product-specific connector knowledge and improves internal linking without changing `/`.
+- Add `/connectors/clickhouse/` as the first dedicated connector support page, because ClickHouse is a shipped connector path with enough product-specific setup detail to support bottom-funnel search without changing `/`.
 
 State:
 - Done:
@@ -63,10 +67,36 @@ State:
   - Attempted local preview smoke test on `127.0.0.1:4173`; sandbox blocked server binding with `listen EPERM`.
   - Attempted tmux log/session inspection and cleanup, but tmux socket creation/connect is blocked in this sandbox with `Operation not permitted`.
   - Checked available `vite.log` and `backend/wrangler.log`; no current runtime errors in those logs, only startup/health output. Old archived Wrangler errors exist from prior dates and were not caused by this run.
+  - Added `public/learn/index.html` as the first crawlable product-specific support page.
+  - Kept `/` as the live app; added only a `noscript` fallback link from root to `/learn/` so the support page is not orphaned without changing the app UI.
+  - Updated `public/sitemap.xml` to include `https://sheetcanvas.com/learn/`.
+  - Verified `npm run build`; it passes with the existing html2canvas dynamic/static import warning and existing large chunk warning.
+  - Verified `dist/learn/index.html` is emitted and contains the expected title, canonical, Open Graph image, internal app CTAs, `WebPage` schema, and `BreadcrumbList` schema.
+  - Parsed JSON-LD from both `public/learn/index.html` and `dist/learn/index.html`.
+  - Verified sitemap contents include both `/` and `/learn/`, and `dist/index.html` contains the no-JS `/learn/` fallback link.
+  - Attempted local HTTP smoke test on `127.0.0.1:5173`; port 5173 appears occupied by a Node listener, but `curl` cannot connect and `ps` is denied by the sandbox. Kept the ambiguous listener instead of killing it.
+  - Added `public/docs/index.html` as a crawlable static docs hub for local files, canvas objects, ClickHouse, and Google Analytics connected sheets.
+  - Kept `/` as the live app; added only a no-JS docs link in `index.html` and contextual `/docs/` links from `/learn/`.
+  - Updated `public/sitemap.xml` to include `https://sheetcanvas.com/docs/`.
+  - Added visible `Last reviewed: May 26, 2026` markers and `dateModified` schema to both `/docs/` and `/learn/` because both pages discuss product capabilities.
+  - Verified `npm run build`; it passes with the existing html2canvas dynamic/static import warning and existing large chunk warning.
+  - Verified `dist/docs/index.html` is emitted and both `/docs/` and `/learn/` have title, description, canonical, JSON-LD, reviewed dates, and sitemap entries.
+  - Ran two QA/product review passes with subagents; the first found the missing `/docs/` reviewed date and the second found the existing `/learn/` reviewed-date gap. Both were fixed.
+  - Checked active SheetCanvas tmux Vite logs (`sheetcanvas_bottom_sheet_dev`, `sheetcanvas_onboarding_fix_dev`, `flexsheet-dev`); no runtime errors found, only HMR/page reload entries.
+  - Added `public/connectors/clickhouse/index.html` as the first crawlable connector page with ClickHouse-specific metadata, canonical, OG/Twitter tags, `WebPage`/`BreadcrumbList` JSON-LD, reviewed date, setup checklist, read-only query guardrails, refresh behavior, and troubleshooting.
+  - Linked `/connectors/clickhouse/` from `/docs/` nav/content/footer and `/learn/` content/footer so the new connector page is not orphaned.
+  - Updated `public/sitemap.xml` to include `https://sheetcanvas.com/connectors/clickhouse/`.
+  - Verified `npm run build`; it passes with the existing html2canvas dynamic/static import warning and existing large chunk warning.
+  - Verified `public/connectors/clickhouse/index.html` and `dist/connectors/clickhouse/index.html` contain the expected title, meta description, canonical, reviewed date, and parseable JSON-LD.
+  - Verified `public/sitemap.xml` and `dist/sitemap.xml` include `/`, `/learn/`, `/docs/`, and `/connectors/clickhouse/`; verified built `/docs/` and `/learn/` contain inbound links to the connector page.
+  - Checked active SheetCanvas tmux Vite logs (`sheetcanvas_bottom_sheet_dev`); no runtime errors found, only HMR/page reload entries.
+  - Ran two sequential QA/product review passes with different subagents; both found no requirement gaps.
+  - Committed onboarding/welcome integration as `09673c1 feat(onboarding): embed welcome bottom sheet`.
+  - Committed SEO/static support pages as `4a1276a feat(seo): add crawlable support pages`.
 - Now:
-  - Root app SEO crawl/preview baseline is complete; HTTP preview was blocked by sandbox permissions.
+  - Committing repository housekeeping, then deploying the app.
 - Next:
-  - Add `/learn/` as the first crawlable support page using product-specific existing landing-page content, while keeping `/` as the app.
+  - Verify build/logs, deploy, and report commit/deployment details.
 
 Open questions (UNCONFIRMED if needed):
 - None.
@@ -86,7 +116,11 @@ Working set (files/ids/commands):
 - `public/robots.txt`
 - `public/sitemap-index.xml`
 - `public/sitemap.xml`
+- `public/learn/index.html`
+- `public/docs/index.html`
+- `public/connectors/clickhouse/index.html`
 - `public/brand/sheetcanvas-og.svg`
 - `public/brand/sheetcanvas-og.png`
 - `AGENTS.md`
 - Dev server: `http://127.0.0.1:5173/` in tmux session `sheetcanvas_bottom_sheet_dev`
+- Current command task: commit current changes in logical chunks and deploy.

@@ -7,7 +7,7 @@ Backend services live under `backend/` as a Cloudflare Workers project (Wrangler
 
 ## Build, Test, and Development Commands
 - `npm install` – install React, Zustand, and charting dependencies pinned in `package.json`.
-- `npm run dev` – start the Vite dev server (HMR, local storage-backed state) on port 5173.
+- `npm run dev -- --host 127.0.0.1 --port 5173 --strictPort` – start the Vite dev server (HMR, local storage-backed state) on the dedicated SheetCanvas port 5173. Use this exact port when starting the app; if 5173 is occupied, stop the stale SheetCanvas server instead of letting Vite choose another port.
 - `npm run build` – compile the TypeScript/React bundle and worker scripts into `dist/` with optimized chunks.
 - `npm run preview` – serve the built bundle for smoke testing exact production behavior.
 

@@ -1,6 +1,7 @@
 # Logs
 logs
 *.log
+*.pid
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -10,7 +11,12 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+test-results/
 *.local
+
+# Local design-tool artifacts
+public/landing-page-design/.thumbnail
+public/landing-page-design/uploads/
 
 # Cloudflare Wrangler
 .wrangler/
