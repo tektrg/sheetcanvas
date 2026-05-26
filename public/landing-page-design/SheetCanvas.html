@@ -1,0 +1,890 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>SheetCanvas — a quick guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tour.css" />
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "name": "theindie.app",
+      "url": "https://theindie.app/",
+      "email": "yourfriend@theindie.app",
+      "description": "theindie.app is a founder-led indie studio building small, focused software products.",
+      "sameAs": [
+        "https://fasttab.theindie.app",
+        "https://strider.theindie.app",
+        "https://pineapplelog.theindie.app",
+        "https://gptbreeze.io",
+        "https://speechtodo.com",
+        "https://sheetcanvas.com"
+      ]
+    },
+    {
+      "@type": "SoftwareApplication",
+      "name": "SheetCanvas",
+      "applicationCategory": "BusinessApplication",
+      "operatingSystem": "Web",
+      "url": "https://sheetcanvas.com",
+      "publisher": {
+        "@type": "Organization",
+        "name": "theindie.app",
+        "url": "https://theindie.app/"
+      }
+    }
+  ]
+}
+</script>
+</head>
+<body>
+
+<!-- ─────────────── nav ─────────────── -->
+<header class="nav">
+  <div class="nav__inner">
+    <a class="brand" href="#top">
+      <span class="brand__mark" aria-hidden="true">
+        <span></span><span></span><span></span><span class="fill"></span>
+      </span>
+      <span class="brand__word">SheetCanvas</span>
+      <span class="brand__tag mono">v0.9</span>
+    </a>
+    <nav class="nav__links">
+      <a href="#step-01">Why</a>
+      <a href="#step-02">Import</a>
+      <a href="#step-03">Command</a>
+      <a href="#step-05">Visuals</a>
+      <a href="#step-08">Connect</a>
+      <a href="#step-09">Pricing</a>
+    </nav>
+    <div class="nav__cta">
+      <button class="theme-toggle" type="button" aria-label="Toggle dark mode" aria-pressed="false">
+        <span class="theme-toggle__track" aria-hidden="true">
+          <svg class="theme-toggle__ic theme-toggle__ic--sun" viewBox="0 0 16 16">
+            <circle cx="8" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1.3"/>
+            <g stroke="currentColor" stroke-width="1.3" stroke-linecap="round">
+              <line x1="8" y1="1.5" x2="8" y2="3"/>
+              <line x1="8" y1="13" x2="8" y2="14.5"/>
+              <line x1="1.5" y1="8" x2="3" y2="8"/>
+              <line x1="13" y1="8" x2="14.5" y2="8"/>
+              <line x1="3.3" y1="3.3" x2="4.4" y2="4.4"/>
+              <line x1="11.6" y1="11.6" x2="12.7" y2="12.7"/>
+              <line x1="3.3" y1="12.7" x2="4.4" y2="11.6"/>
+              <line x1="11.6" y1="4.4" x2="12.7" y2="3.3"/>
+            </g>
+          </svg>
+          <svg class="theme-toggle__ic theme-toggle__ic--moon" viewBox="0 0 16 16">
+            <path d="M12.5 9.6 A 5.4 5.4 0 1 1 6.4 3.5 A 4.2 4.2 0 0 0 12.5 9.6 Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+          </svg>
+        </span>
+      </button>
+      <a class="btn btn--ghost" href="#step-01">Start reading</a>
+      <a class="btn btn--solid" href="#download">Get the app <span aria-hidden="true">↓</span></a>
+    </div>
+  </div>
+</header>
+
+<!-- ─────────────── side progress ─────────────── -->
+<aside class="progress-rail" aria-hidden="true">
+  <div class="progress-rail__inner">
+    <span class="progress-rail__num mono"><b id="prog-now">00</b>/09</span>
+    <ol class="progress-rail__list">
+      <li data-step="0"><span></span><em>intro</em></li>
+      <li data-step="1"><span></span><em>why</em></li>
+      <li data-step="2"><span></span><em>import</em></li>
+      <li data-step="3"><span></span><em>command</em></li>
+      <li data-step="4"><span></span><em>sort &amp; filter</em></li>
+      <li data-step="5"><span></span><em>charts</em></li>
+      <li data-step="6"><span></span><em>pivots</em></li>
+      <li data-step="7"><span></span><em>notes</em></li>
+      <li data-step="8"><span></span><em>connect</em></li>
+      <li data-step="9"><span></span><em>pricing</em></li>
+    </ol>
+  </div>
+</aside>
+
+<main id="top">
+
+<!-- ═══════════════ 00 · HERO ═══════════════ -->
+<section class="hero step" data-step-i="0" data-screen-label="00 Intro">
+  <div class="bg-grid" data-parallax data-speed="-0.15"></div>
+  <div class="bg-glow" data-parallax data-speed="-0.05"></div>
+
+  <div class="step__gutter mono">
+    <span>A1</span><span>A2</span><span>A3</span><span>A4</span><span>A5</span>
+  </div>
+
+  <div class="hero__inner">
+    <div class="hero__text">
+      <h1 class="hero__title" data-parallax data-speed="0.06">
+        Tables, charts, pivots, notes.<br/>
+        <em>Side by side,</em><br/>
+        on one open canvas.
+      </h1>
+
+      <p class="hero__sub">
+        Built for people who think faster than they can switch tabs. Every table, chart and note stays in view, right where you place it. Keyboard‑first. Three minutes to learn.
+      </p>
+
+      <div class="hero__cta">
+        <a class="btn btn--solid btn--lg" href="#download">Launch SheetCanvas<span aria-hidden="true"> →</span></a>
+        <a class="btn btn--ghost btn--lg" href="#step-01">Jump to section 01</a>
+      </div>
+
+      <div class="hero__meta-row">
+        <span class="mono">works&nbsp;offline</span>
+        <span class="hero__sep"></span>
+        <span class="mono">no&nbsp;account</span>
+      </div>
+    </div>
+
+    <div class="hero__canvas" aria-hidden="true">
+      <div class="canvas-frame" data-parallax data-speed="0.16" data-tilt="1.2">
+        <div class="canvas-frame__chrome">
+          <span class="dotr"></span><span class="doty"></span><span class="dotg"></span>
+          <span class="canvas-frame__title mono">q3-readout.canvas</span>
+          <span class="canvas-frame__zoom mono">100%</span>
+        </div>
+        <div class="canvas-frame__surface">
+          <svg class="canvas-frame__grid" viewBox="0 0 800 460" preserveAspectRatio="none">
+            <defs><pattern id="g" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke="currentColor" stroke-opacity=".07" stroke-width="1"/></pattern></defs>
+            <rect width="100%" height="100%" fill="url(#g)"/>
+          </svg>
+
+          <div class="obj obj--table" data-parallax data-speed="0.08">
+            <div class="obj__hd"><span class="obj__chip">TABLE</span><span class="obj__name">orders.csv</span><span class="obj__rows mono">2 384 rows</span></div>
+            <div class="obj__tbl mono">
+              <div class="row row--head"><span>region</span><span>units</span><span>revenue</span><span class="num">Δ</span></div>
+              <div class="row"><span>NA West</span><span>1 204</span><span>$84 280</span><span class="num pos">+12.4%</span></div>
+              <div class="row"><span>NA East</span><span>988</span><span>$72 410</span><span class="num pos">+6.1%</span></div>
+              <div class="row"><span>EU North</span><span>612</span><span>$48 902</span><span class="num neg">−2.0%</span></div>
+              <div class="row sel"><span>EU South</span><span>884</span><span>$66 118</span><span class="num pos">+9.7%</span></div>
+              <div class="row"><span>APAC</span><span>1 410</span><span>$103 220</span><span class="num pos">+18.3%</span></div>
+            </div>
+          </div>
+
+          <div class="obj obj--chart" data-parallax data-speed="0.22">
+            <div class="obj__hd"><span class="obj__chip obj__chip--teal">CHART</span><span class="obj__name">revenue by region</span></div>
+            <svg viewBox="0 0 240 120" class="bars">
+              <rect x="8"   y="48" width="28" height="64" rx="2"/>
+              <rect x="48"  y="62" width="28" height="50" rx="2"/>
+              <rect x="88"  y="80" width="28" height="32" rx="2"/>
+              <rect x="128" y="58" width="28" height="54" rx="2"/>
+              <rect x="168" y="22" width="28" height="90" rx="2" class="bars__hl"/>
+              <line x1="0" y1="112" x2="240" y2="112" stroke="currentColor" stroke-opacity=".18" />
+            </svg>
+            <div class="obj__ft mono"><span>NA·W</span><span>NA·E</span><span>EU·N</span><span>EU·S</span><span>APAC</span></div>
+          </div>
+
+          <div class="obj obj--note" data-parallax data-speed="0.30" data-tilt="-3">
+            <p>APAC lifted Q3 — verify the FX adjustment with finance before the readout.</p>
+            <span class="obj__sig">— mira</span>
+          </div>
+
+          <div class="obj obj--spark" data-parallax data-speed="0.26">
+            <span class="obj__chip">SPARK</span>
+            <span class="obj__name">7‑day pulse</span>
+            <svg viewBox="0 0 120 36" preserveAspectRatio="none">
+              <polyline points="0,24 12,20 24,26 36,14 48,18 60,8 72,12 84,4 96,10 108,2 120,8" fill="none" stroke="currentColor" stroke-width="1.8"/>
+            </svg>
+            <span class="num pos mono">+18%</span>
+          </div>
+
+          <div class="obj obj--cmd" data-parallax data-speed="0.14">
+            <span class="kbd kbd--dark">⌘K</span>
+            <span class="obj__cmd mono">create chart from selection_</span>
+            <span class="obj__hint mono">↵</span>
+          </div>
+
+          <div class="selbox" data-parallax data-speed="0.20"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <a class="hero__scroll" href="#step-01" aria-label="Start the tour">
+    <span class="hero__scroll-line"></span>
+    <span class="mono">scroll · 01 of 09</span>
+  </a>
+</section>
+
+<!-- ═══════════════ 01 · WHY ═══════════════ -->
+<section id="step-01" class="step step--light" data-step-i="1" data-screen-label="01 Why">
+  <div class="bg-grid bg-grid--faint" data-parallax data-speed="-0.06"></div>
+
+  <div class="step__inner">
+    <div class="step__text">
+      <header class="step__hd">
+        <span class="step__num mono">01 / 09</span>
+        <span class="step__section">Start here</span>
+      </header>
+      <h2 class="step__title">First, the basic idea:<br/><em>it's a canvas, not a grid.</em></h2>
+      <p class="step__capability">An open surface instead of a tabbed grid. Place tables, charts, pivots and notes anywhere — and work between them.</p>
+
+      <div class="step__grid">
+        <div class="info-card">
+          <p class="info-card__label"><svg class="ic" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="6" cy="6" r="1.6" fill="currentColor"/></svg>Mental model</p>
+          <p class="info-card__body">The canvas is a desk. Each table, chart and note is its own object. Move them freely — nothing's locked to a tab.</p>
+        </div>
+        <div class="info-card">
+          <p class="info-card__label"><svg class="ic" viewBox="0 0 12 12"><path d="M2 6h7M6 3l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Interaction</p>
+          <p class="info-card__body">Use it when a spreadsheet feels cramped — too many tabs, too much scrolling, or you need related things in view at once.</p>
+        </div>
+      </div>
+
+      <div class="step__tags">
+        <span class="tag tag--teal">speed</span>
+        <span class="tag">offline</span>
+        <span class="tag">keyboard</span>
+        <span class="tag">connectors</span>
+        <span class="tag">visualizations</span>
+      </div>
+    </div>
+
+    <div class="step__visual">
+      <div class="visual-frame visual-frame--why" data-parallax data-speed="0.12" data-tilt="-1">
+        <div class="visual-frame__label mono">comparison · grid vs canvas</div>
+        <div class="why-grid">
+          <div class="why-pane why-pane--bad" data-parallax data-speed="0.04">
+            <div class="why-pane__chrome">
+              <span class="dotr"></span><span class="doty"></span><span class="dotg"></span>
+              <span class="mono">legacy grid</span>
+            </div>
+            <div class="why-pane__body">
+              <div class="why-rows">
+                <span/><span/><span/><span/><span/><span/><span/><span/>
+              </div>
+              <div class="why-spinner"></div>
+              <div class="why-bar"><span style="width: 78%"></span></div>
+              <div class="why-stats mono"><span>loading…</span><span class="neg">480 ms</span></div>
+            </div>
+          </div>
+          <div class="why-divider" data-parallax data-speed="0.20"><span class="mono">vs</span></div>
+          <div class="why-pane why-pane--good" data-parallax data-speed="0.08">
+            <div class="why-pane__chrome">
+              <span class="dotr"></span><span class="doty"></span><span class="dotg"></span>
+              <span class="mono">SheetCanvas</span>
+            </div>
+            <div class="why-pane__body">
+              <div class="why-canvas">
+                <div class="why-canvas__tile why-canvas__tile--tbl"><div></div><div></div><div></div><div></div></div>
+                <div class="why-canvas__tile why-canvas__tile--ch">
+                  <svg viewBox="0 0 60 30"><rect x="2" y="14" width="6" height="14"/><rect x="12" y="8" width="6" height="20"/><rect x="22" y="18" width="6" height="10"/><rect x="32" y="4" width="6" height="24" class="hl"/><rect x="42" y="12" width="6" height="16"/></svg>
+                </div>
+                <div class="why-canvas__tile why-canvas__tile--sp">
+                  <svg viewBox="0 0 60 20"><polyline points="2,14 12,11 22,12 32,6 42,8 52,2 60,4" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>
+                </div>
+                <div class="why-canvas__tile why-canvas__tile--nt"></div>
+              </div>
+              <div class="why-bar"><span style="width: 18%; background: var(--teal)"></span></div>
+              <div class="why-stats mono"><span>ready</span><span class="pos">12 ms</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 02 · IMPORT ═══════════════ -->
+<section id="step-02" class="step step--warm step--mirror" data-step-i="2" data-screen-label="02 Import">
+  <div class="bg-warm" data-parallax data-speed="-0.08"></div>
+
+  <div class="step__inner">
+    <div class="step__visual">
+      <div class="visual-frame visual-frame--drop" data-parallax data-speed="0.10">
+        <div class="visual-frame__label mono">drop · file → table</div>
+        <div class="drop-stage">
+          <div class="floating-file floating-file--1" data-parallax data-speed="0.30" data-tilt="-6">
+            <span class="floating-file__ext mono">CSV</span>
+            <span class="floating-file__name">orders_q3.csv</span>
+            <span class="floating-file__meta mono">2 384 rows · 18 KB</span>
+          </div>
+          <div class="floating-file floating-file--2" data-parallax data-speed="0.42" data-tilt="4">
+            <span class="floating-file__ext mono">XLSX</span>
+            <span class="floating-file__name">forecast.xlsx</span>
+            <span class="floating-file__meta mono">4 sheets · 240 KB</span>
+          </div>
+          <div class="floating-file floating-file--3" data-parallax data-speed="0.22" data-tilt="-2">
+            <span class="floating-file__ext mono">XLS</span>
+            <span class="floating-file__name">2024-actuals.xls</span>
+            <span class="floating-file__meta mono">legacy</span>
+          </div>
+
+          <svg class="drop-stage__guide" viewBox="0 0 240 100" fill="none">
+            <path d="M30,12 C 80,12 100,86 200,80" stroke="var(--teal)" stroke-width="1" stroke-dasharray="3 4" opacity=".5"/>
+          </svg>
+
+          <div class="drop-target">
+            <div class="drop-target__ring"></div>
+            <div class="drop-target__ring drop-target__ring--2"></div>
+            <div class="drop-target__center">
+              <span class="drop-target__plus">+</span>
+              <span class="drop-target__label mono">drop to place a table</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="step__text">
+      <header class="step__hd">
+        <span class="step__num mono">02 / 09</span>
+        <span class="step__section">Object‑first workflow</span>
+      </header>
+      <h2 class="step__title">To get started,<br/><em>drag a file onto the window.</em></h2>
+      <p class="step__capability">CSV, XLSX and XLS work out of the box. The file lands as a table wherever you drop it. Edit it like a normal spreadsheet.</p>
+
+      <div class="step__grid">
+        <div class="info-card">
+          <p class="info-card__label"><svg class="ic" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="6" cy="6" r="1.6" fill="currentColor"/></svg>Mental model</p>
+          <p class="info-card__body">The file becomes a movable table. Keep charts and notes alongside it.</p>
+        </div>
+        <div class="info-card">
+          <p class="info-card__label"><svg class="ic" viewBox="0 0 12 12"><path d="M2 6h7M6 3l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Interaction</p>
+          <p class="info-card__body">Drag from Finder. Drop where you want the table.</p>
+          <div class="info-card__shortcut">
+            <span class="kbd">⌘</span><span class="kbd">O</span>
+            <span class="info-card__shortcut-text">or pick a file from disk</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="step__tags">
+        <span class="tag tag--teal">.csv</span>
+        <span class="tag tag--teal">.xlsx</span>
+        <span class="tag tag--teal">.xls</span>
+        <span class="tag">drag‑drop</span>
+        <span class="tag">multi‑file</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 03 · COMMAND ═══════════════ -->
+<section id="step-03" class="step step--dark" data-step-i="3" data-screen-label="03 Command">
+  <div class="bg-grid bg-grid--dark" data-parallax data-speed="-0.10"></div>
+
+  <div class="step__inner">
+    <div class="step__text">
+      <header class="step__hd step__hd--light">
+        <span class="step__num mono">03 / 09</span>
+        <span class="step__section">Object‑first workflow</span>
+      </header>
+      <h2 class="step__title step__title--light">The fastest way around<br/><em>is the command bar.</em></h2>
+      <p class="step__capability step__capability--light">Press ⌘K anywhere. Type an action, chart or table name. Pick from the list. Faster than the mouse once the canvas fills up.</p>
+
+      <div class="step__grid">
+        <div class="info-card info-card--dark">
+          <p class="info-card__label"><svg class="ic" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="6" cy="6" r="1.6" fill="currentColor"/></svg>Mental model</p>
+          <p class="info-card__body">If you can describe it, you can type it. The bar searches actions and objects together.</p>
+        </div>
+        <div class="info-card info-card--dark">
+          <p class="info-card__label"><svg class="ic" viewBox="0 0 12 12"><path d="M2 6h7M6 3l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Interaction</p>
+          <p class="info-card__body">⌘K, type a few letters, ↑↓ to pick, ↵ to run.</p>
+          <div class="info-card__shortcut">
+            <span class="kbd kbd--dark">⌘</span><span class="kbd kbd--dark">K</span>
+            <span class="info-card__shortcut-text">works from any view</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="step__tags">
+        <span class="tag tag--teal">fuzzy match</span>
+        <span class="tag tag--ghost-light">verb · noun</span>
+        <span class="tag tag--ghost-light">↑↓ navigate</span>
+        <span class="tag tag--ghost-light">⌘↵ run &amp; pin</span>
+      </div>
+    </div>
+
+    <div class="step__visual">
+      <div class="visual-frame visual-frame--cmd" data-parallax data-speed="0.12">
+        <div class="visual-frame__label visual-frame__label--light mono">command bar · ⌘K</div>
+        <div class="cmd-demo">
+          <div class="cmd-bar">
+            <span class="cmd-bar__icon">⌕</span>
+            <span class="cmd-bar__input mono">create chart<span class="cmd-bar__caret"></span></span>
+            <span class="cmd-bar__esc mono">esc</span>
+          </div>
+          <ul class="cmd-results">
+            <li class="active"><span class="cmd-verb">create</span> chart <small>from selected columns</small><span class="cmd-ret">↵</span></li>
+            <li><span class="cmd-verb">create</span> pivot summary <small>from active table</small></li>
+            <li><span class="cmd-verb">go to</span> chart · revenue by region</li>
+            <li><span class="cmd-verb">filter</span> orders.csv <small>where revenue &gt; 50000</small></li>
+            <li><span class="cmd-verb">format</span> column · revenue <small>currency · USD</small></li>
+            <li><span class="cmd-verb">add</span> note <small>near active object</small></li>
+          </ul>
+          <div class="cmd-demo__foot mono">
+            <span>6 matches</span>
+            <span>↑↓ nav · ↵ run · ⌘↵ pin</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 04 · SORT & FILTER ═══════════════ -->
+<section id="step-04" class="step step--light step--mirror" data-step-i="4" data-screen-label="04 Sort">
+  <div class="bg-grid bg-grid--faint" data-parallax data-speed="-0.06"></div>
+
+  <div class="step__inner">
+    <div class="step__visual">
+      <div class="visual-frame" data-parallax data-speed="0.10">
+        <div class="visual-frame__label mono">table · filter on</div>
+        <div class="sort-demo">
+          <div class="sort-table">
+            <div class="sort-row sort-row--hd mono"><span>region</span><span>units <em>↓</em></span><span>revenue</span><span class="num">Δ</span></div>
+            <div class="sort-row"><span>APAC</span><span class="mono">1 410</span><span class="mono">$103 220</span><span class="num pos mono">+18.3%</span></div>
+            <div class="sort-row"><span>NA West</span><span class="mono">1 204</span><span class="mono">$84 280</span><span class="num pos mono">+12.4%</span></div>
+            <div class="sort-row"><span>NA East</span><span class="mono">988</span><span class="mono">$72 410</span><span class="num pos mono">+6.1%</span></div>
+            <div class="sort-row sort-row--hide"><span>EU South</span><span class="mono">884</span><span class="mono">$66 118</span><span class="num pos mono">+9.7%</span></div>
+            <div class="sort-row sort-row--hide"><span>EU North</span><span class="mono">612</span><span class="mono">$48 902</span><span class="num neg mono">−2.0%</span></div>
+          </div>
+          <div class="sort-overlay">
+            <div class="sort-overlay__chip mono" data-parallax data-speed="0.18">units &gt; 900</div>
+            <div class="sort-overlay__chip sort-overlay__chip--alt mono" data-parallax data-speed="0.24">sort desc</div>
+            <div class="sort-overlay__count mono">3 of 5 rows · 2 hidden</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="step__text">
+      <header class="step__hd">
+        <span class="step__num mono">04 / 09</span>
+        <span class="step__section">Object‑first workflow</span>
+      </header>
+      <h2 class="step__title">Sorting and filtering<br/><em>works on each table.</em></h2>
+      <p class="step__capability">Click a column header to sort or filter. Tables update in place — nearby charts and notes stay aligned with what you see.</p>
+
+      <div class="step__grid">
+        <div class="info-card">
+          <p class="info-card__label"><svg class="ic" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="6" cy="6" r="1.6" fill="currentColor"/></svg>Mental model</p>
+          <p class="info-card__body">Filters change what you see, not what's there. Turn one off and the rows return.</p>
+        </div>
+        <div class="info-card">
+          <p class="info-card__label"><svg class="ic" viewBox="0 0 12 12"><path d="M2 6h7M6 3l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Interaction</p>
+          <p class="info-card__body">Click the arrow on a column header, or press F with a column selected. Also in the command bar.</p>
+          <div class="info-card__shortcut">
+            <span class="kbd">F</span>
+            <span class="info-card__shortcut-text">filter the selected column</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="step__tags">
+        <span class="tag tag--teal">column menu</span>
+        <span class="tag">multi‑sort</span>
+        <span class="tag">numeric · text · date</span>
+        <span class="tag">live preview</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 05 · CHARTS ═══════════════ -->
+<section id="step-05" class="step step--light" data-step-i="5" data-screen-label="05 Charts">
+  <div class="bg-grid bg-grid--faint" data-parallax data-speed="-0.05"></div>
+
+  <div class="step__inner">
+    <div class="step__text">
+      <header class="step__hd">
+        <span class="step__num mono">05 / 09</span>
+        <span class="step__section">Object‑first workflow</span>
+      </header>
+      <h2 class="step__title">To make a chart,<br/><em>select a range and press ⌘E.</em></h2>
+      <p class="step__capability">A chart object lands on the canvas, linked to the cells you picked. Six types — bar, line, area, pie, scatter, treemap. Switch type anytime from the chart menu.</p>
+
+      <div class="step__grid">
+        <div class="info-card">
+          <p class="info-card__label"><svg class="ic" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="6" cy="6" r="1.6" fill="currentColor"/></svg>Mental model</p>
+          <p class="info-card__body">Charts point at their source range. Data changes, chart updates. Keep it near the table.</p>
+        </div>
+        <div class="info-card">
+          <p class="info-card__label"><svg class="ic" viewBox="0 0 12 12"><path d="M2 6h7M6 3l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Interaction</p>
+          <p class="info-card__body">Highlight cells, press ⌘E. Or use the chart button in the table toolbar.</p>
+          <div class="info-card__shortcut">
+            <span class="kbd">⌘</span><span class="kbd">E</span>
+            <span class="info-card__shortcut-text">new chart from selection</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="step__tags">
+        <span class="tag tag--teal">bar</span>
+        <span class="tag tag--teal">line</span>
+        <span class="tag tag--teal">area</span>
+        <span class="tag tag--teal">pie</span>
+        <span class="tag tag--teal">scatter</span>
+        <span class="tag tag--teal">treemap</span>
+      </div>
+    </div>
+
+    <div class="step__visual">
+      <div class="visual-frame" data-parallax data-speed="0.10">
+        <div class="visual-frame__label mono">chart types · 6</div>
+        <div class="charts-grid">
+          <div class="chart-tile" data-parallax data-speed="0.04">
+            <span class="chart-tile__lbl mono">bar</span>
+            <svg viewBox="0 0 100 50"><rect x="6" y="22" width="12" height="26"/><rect x="24" y="14" width="12" height="34"/><rect x="42" y="28" width="12" height="20"/><rect x="60" y="6" width="12" height="42" class="hl"/><rect x="78" y="18" width="12" height="30"/></svg>
+          </div>
+          <div class="chart-tile" data-parallax data-speed="0.08">
+            <span class="chart-tile__lbl mono">line</span>
+            <svg viewBox="0 0 100 50"><polyline fill="none" stroke="currentColor" stroke-width="1.8" points="2,42 18,34 34,36 50,18 66,22 82,8 98,12"/></svg>
+          </div>
+          <div class="chart-tile" data-parallax data-speed="0.06">
+            <span class="chart-tile__lbl mono">area</span>
+            <svg viewBox="0 0 100 50"><path d="M2,44 L18,34 L34,36 L50,18 L66,22 L82,6 L98,10 L98,48 L2,48 Z" opacity=".22" fill="currentColor"/><polyline fill="none" stroke="currentColor" stroke-width="1.6" points="2,44 18,34 34,36 50,18 66,22 82,6 98,10"/></svg>
+          </div>
+          <div class="chart-tile" data-parallax data-speed="0.12">
+            <span class="chart-tile__lbl mono">pie</span>
+            <svg viewBox="0 0 100 50"><circle cx="50" cy="26" r="20" fill="none" stroke="currentColor" stroke-width="6" opacity=".22"/><path d="M50,6 A20,20 0 0,1 70,30" fill="none" stroke="currentColor" stroke-width="6"/></svg>
+          </div>
+          <div class="chart-tile" data-parallax data-speed="0.10">
+            <span class="chart-tile__lbl mono">scatter</span>
+            <svg viewBox="0 0 100 50"><circle cx="14" cy="38" r="2.5"/><circle cx="28" cy="30" r="2.5"/><circle cx="40" cy="40" r="2.5"/><circle cx="54" cy="20" r="2.5"/><circle cx="68" cy="28" r="2.5"/><circle cx="82" cy="14" r="2.5" class="hl"/><circle cx="92" cy="22" r="2.5"/></svg>
+          </div>
+          <div class="chart-tile" data-parallax data-speed="0.14">
+            <span class="chart-tile__lbl mono">treemap</span>
+            <svg viewBox="0 0 100 50"><rect x="2" y="4" width="50" height="28"/><rect x="54" y="4" width="40" height="18" opacity=".7"/><rect x="54" y="24" width="24" height="14" opacity=".5"/><rect x="80" y="24" width="14" height="14" opacity=".35"/><rect x="2" y="34" width="30" height="14" opacity=".6"/><rect x="34" y="34" width="20" height="14" opacity=".4"/><rect x="56" y="40" width="38" height="8" opacity=".25"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 06 · PIVOTS ═══════════════ -->
+<section id="step-06" class="step step--light step--mirror" data-step-i="6" data-screen-label="06 Pivot">
+  <div class="bg-grid bg-grid--faint" data-parallax data-speed="-0.05"></div>
+
+  <div class="step__inner">
+    <div class="step__visual">
+      <div class="visual-frame" data-parallax data-speed="0.10">
+        <div class="visual-frame__label mono">pivot · spark trends</div>
+        <div class="pivot-demo mono">
+          <div class="pivot-row pivot-row--hd"><span>region</span><span>Q1</span><span>Q2</span><span>Q3</span><span>trend</span></div>
+          <div class="pivot-row"><span>NA</span><span>$142k</span><span>$168k</span><span>$192k</span><svg viewBox="0 0 40 14"><polyline points="0,11 8,9 16,7 24,6 32,4 40,2" fill="none" stroke="currentColor" stroke-width="1.4"/></svg></div>
+          <div class="pivot-row"><span>EU</span><span>$98k</span><span>$112k</span><span>$115k</span><svg viewBox="0 0 40 14"><polyline points="0,10 8,8 16,9 24,7 32,6 40,5" fill="none" stroke="currentColor" stroke-width="1.4"/></svg></div>
+          <div class="pivot-row pivot-row--hl"><span>APAC</span><span>$76k</span><span>$94k</span><span>$132k</span><svg viewBox="0 0 40 14"><polyline points="0,12 8,11 16,9 24,7 32,4 40,1" fill="none" stroke="currentColor" stroke-width="1.4"/></svg></div>
+          <div class="pivot-row"><span>LATAM</span><span>$28k</span><span>$31k</span><span>$36k</span><svg viewBox="0 0 40 14"><polyline points="0,10 8,9 16,9 24,7 32,6 40,5" fill="none" stroke="currentColor" stroke-width="1.4"/></svg></div>
+          <div class="pivot-row pivot-row--ft"><span>total</span><span>$344k</span><span>$405k</span><span>$475k</span><svg viewBox="0 0 40 14"><polyline points="0,11 8,9 16,7 24,5 32,3 40,1" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="step__text">
+      <header class="step__hd">
+        <span class="step__num mono">06 / 09</span>
+        <span class="step__section">Object‑first workflow</span>
+      </header>
+      <h2 class="step__title">Pivots and sparklines<br/><em>summarise without hiding.</em></h2>
+      <p class="step__capability">Need a quick rollup? Make a pivot (⌘⇧P) or inline sparkline (⌘⇧S). Both sit next to the source table — the numbers stay traceable.</p>
+
+      <div class="step__grid">
+        <div class="info-card">
+          <p class="info-card__label"><svg class="ic" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="6" cy="6" r="1.6" fill="currentColor"/></svg>Mental model</p>
+          <p class="info-card__body">A pivot is a small read‑only table built from your data. Original rows stay put for double‑checking.</p>
+        </div>
+        <div class="info-card">
+          <p class="info-card__label"><svg class="ic" viewBox="0 0 12 12"><path d="M2 6h7M6 3l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Interaction</p>
+          <p class="info-card__body">Select a table, choose pivot or sparkline. A dialog asks what to group and what to summarise.</p>
+          <div class="info-card__shortcut">
+            <span class="kbd">⌘</span><span class="kbd">⇧</span><span class="kbd">P</span>
+            <span class="info-card__shortcut-text">pivot · ⌘⇧S for sparkline</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="step__tags">
+        <span class="tag tag--teal">group by</span>
+        <span class="tag">sum · avg · count</span>
+        <span class="tag">inline spark</span>
+        <span class="tag">auto refresh</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 07 · NOTES ═══════════════ -->
+<section id="step-07" class="step step--warm" data-step-i="7" data-screen-label="07 Notes">
+  <div class="bg-warm" data-parallax data-speed="-0.08"></div>
+
+  <div class="step__inner">
+    <div class="step__text">
+      <header class="step__hd">
+        <span class="step__num mono">07 / 09</span>
+        <span class="step__section">Object‑first workflow</span>
+      </header>
+      <h2 class="step__title">For comments,<br/><em>drop a note on the canvas.</em></h2>
+      <p class="step__capability">Press N to drop a note at the cursor. Write what you noticed, a question, a follow‑up. Leave it next to the chart or table it's about.</p>
+
+      <div class="step__grid">
+        <div class="info-card">
+          <p class="info-card__label"><svg class="ic" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="6" cy="6" r="1.6" fill="currentColor"/></svg>Mental model</p>
+          <p class="info-card__body">Notes capture why something looks the way it does. They live on the canvas and travel with the work.</p>
+        </div>
+        <div class="info-card">
+          <p class="info-card__label"><svg class="ic" viewBox="0 0 12 12"><path d="M2 6h7M6 3l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Interaction</p>
+          <p class="info-card__body">Press N, write your note, drag it where it belongs. Markdown works.</p>
+          <div class="info-card__shortcut">
+            <span class="kbd">N</span>
+            <span class="info-card__shortcut-text">new note at the cursor</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="step__tags">
+        <span class="tag tag--teal">markdown</span>
+        <span class="tag">anchored</span>
+        <span class="tag">@mention</span>
+        <span class="tag">color tabs</span>
+      </div>
+    </div>
+
+    <div class="step__visual">
+      <div class="visual-frame visual-frame--note" data-parallax data-speed="0.08">
+        <div class="visual-frame__label mono">note · anchored to outlier</div>
+        <div class="note-demo">
+          <div class="note-chart" data-parallax data-speed="0.04">
+            <div class="obj__hd"><span class="obj__chip obj__chip--teal">CHART</span><span class="obj__name">revenue · region</span></div>
+            <svg viewBox="0 0 240 110">
+              <rect x="10" y="50" width="30" height="50" rx="2"/>
+              <rect x="50" y="38" width="30" height="62" rx="2"/>
+              <rect x="90" y="70" width="30" height="30" rx="2"/>
+              <rect x="130" y="44" width="30" height="56" rx="2"/>
+              <rect x="170" y="6" width="30" height="94" rx="2" class="bars__hl"/>
+              <line x1="0" y1="100" x2="240" y2="100" stroke="currentColor" stroke-opacity=".18"/>
+            </svg>
+            <div class="note-chart__ft mono"><span>NA·W</span><span>NA·E</span><span>EU·N</span><span>EU·S</span><span class="hl">APAC</span></div>
+          </div>
+
+          <svg class="note-arrow" viewBox="0 0 120 60" fill="none">
+            <path d="M4,8 C 60,8 70,52 116,52" stroke="currentColor" stroke-width="1.4" stroke-dasharray="4 4"/>
+            <path d="M112,48 L118,52 L112,56" stroke="currentColor" stroke-width="1.4"/>
+          </svg>
+
+          <div class="note-paper" data-parallax data-speed="0.18" data-tilt="2">
+            <p>APAC lifted Q3 — verify the FX adjustment with finance before the readout.</p>
+            <span class="note-paper__sig">— mira · oct 14</span>
+          </div>
+          <div class="note-paper note-paper--alt" data-parallax data-speed="0.24" data-tilt="-3">
+            <p>EU‑North flat. Re‑check campaign spend in column F.</p>
+            <span class="note-paper__sig">— jules · oct 15</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 08 · CONNECT ═══════════════ -->
+<section id="step-08" class="step step--dark step--mirror" data-step-i="8" data-screen-label="08 Connect">
+  <div class="bg-grid bg-grid--dark" data-parallax data-speed="-0.10"></div>
+
+  <div class="step__inner">
+    <div class="step__visual">
+      <div class="visual-frame visual-frame--connect" data-parallax data-speed="0.08">
+        <div class="visual-frame__label visual-frame__label--light mono">connectors · live</div>
+        <div class="connect-demo">
+          <svg class="connect-demo__lines" viewBox="0 0 400 280" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M40,40 C 140,40 160,140 200,140" />
+            <path d="M360,40 C 260,40 240,140 200,140" />
+            <path d="M40,240 C 140,240 160,140 200,140" />
+            <path d="M360,240 C 260,240 240,140 200,140" />
+          </svg>
+
+          <div class="connect-source connect-source--1" data-parallax data-speed="0.18">
+            <span class="connect-source__dot"></span>
+            <div>
+              <span class="connect-source__name">Google Sheets</span>
+              <span class="connect-source__meta mono">refresh on open</span>
+            </div>
+          </div>
+          <div class="connect-source connect-source--2" data-parallax data-speed="0.22">
+            <span class="connect-source__dot"></span>
+            <div>
+              <span class="connect-source__name">Google Analytics</span>
+              <span class="connect-source__meta mono">events · sessions</span>
+            </div>
+          </div>
+          <div class="connect-source connect-source--3" data-parallax data-speed="0.16">
+            <span class="connect-source__dot"></span>
+            <div>
+              <span class="connect-source__name">ClickHouse</span>
+              <span class="connect-source__meta mono">SQL · billions</span>
+            </div>
+          </div>
+          <div class="connect-source connect-source--4" data-parallax data-speed="0.20">
+            <span class="connect-source__dot"></span>
+            <div>
+              <span class="connect-source__name">CSV link</span>
+              <span class="connect-source__meta mono">URL · auto‑poll</span>
+            </div>
+          </div>
+
+          <div class="connect-hub" data-parallax data-speed="0.04">
+            <span class="connect-hub__eyebrow mono">canvas</span>
+            <span class="connect-hub__title">live sync</span>
+            <div class="connect-hub__grid">
+              <span></span><span></span><span></span><span></span>
+              <span></span><span class="on"></span><span></span><span></span>
+              <span></span><span></span><span class="on"></span><span></span>
+              <span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="step__text">
+      <header class="step__hd step__hd--light">
+        <span class="step__num mono">08 / 09</span>
+        <span class="step__section">Object‑first workflow</span>
+      </header>
+      <h2 class="step__title step__title--light">You can also pull data<br/><em>from outside the laptop.</em></h2>
+      <p class="step__capability step__capability--light">Connect to Google Sheets, Analytics, a CSV URL or ClickHouse. Connected tables behave like any other — they just refresh on demand.</p>
+
+      <div class="step__grid">
+        <div class="info-card info-card--dark">
+          <p class="info-card__label"><svg class="ic" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="6" cy="6" r="1.6" fill="currentColor"/></svg>Mental model</p>
+          <p class="info-card__body">Like a normal table, with a refresh button. Tap it for the latest numbers.</p>
+        </div>
+        <div class="info-card info-card--dark">
+          <p class="info-card__label"><svg class="ic" viewBox="0 0 12 12"><path d="M2 6h7M6 3l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Interaction</p>
+          <p class="info-card__body">Open Connect Data, pick a source, sign in, choose your sheet or query. The result lands on the canvas.</p>
+          <div class="info-card__shortcut">
+            <span class="kbd kbd--dark">⌘</span><span class="kbd kbd--dark">⇧</span><span class="kbd kbd--dark">D</span>
+            <span class="info-card__shortcut-text">open the Connect Data panel</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="step__tags">
+        <span class="tag tag--teal">google sheets</span>
+        <span class="tag tag--teal">analytics</span>
+        <span class="tag tag--teal">clickhouse</span>
+        <span class="tag tag--teal">csv url</span>
+        <span class="tag tag--ghost-light">postgres · soon</span>
+        <span class="tag tag--ghost-light">snowflake · soon</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 09 · PRICING ═══════════════ -->
+<section id="step-09" class="step step--warm step--full" data-step-i="9" data-screen-label="09 Pricing">
+  <div class="bg-warm bg-warm--alt" data-parallax data-speed="-0.06"></div>
+
+  <div class="step__hd-full">
+    <header class="step__hd">
+      <span class="step__num mono">09 / 09</span>
+      <span class="step__section">Pricing</span>
+    </header>
+    <h2 class="step__title">A note on pricing<br/><em>before you wrap up.</em></h2>
+    <p class="step__capability">Everything in this guide is free, and stays that way. Paid add‑ons for AI, cloud sync and team features come later — you don't need any of them to work with your files.</p>
+  </div>
+
+  <div class="pricing-grid">
+    <article class="price-card price-card--free" data-parallax data-speed="0.04">
+      <header>
+        <span class="price-card__chip">What you have today</span>
+        <h3>Local workspace</h3>
+        <p class="price-card__price"><span>$0</span><small>free for local use</small></p>
+      </header>
+      <ul class="price-card__list">
+        <li>Unlimited local files · CSV, XLSX, XLS</li>
+        <li>Manual tables, formulas, columns</li>
+        <li>Charts · bar · line · area · pie · scatter · treemap</li>
+        <li>Pivots, sparklines, summary objects</li>
+        <li>Canvas notes &amp; annotations</li>
+        <li>Command search &amp; keyboard shortcuts</li>
+        <li>Exports to CSV, XLSX, PNG, PDF</li>
+      </ul>
+      <a class="btn btn--solid btn--lg btn--block" href="#download">Get the app</a>
+      <span class="price-card__foot mono">macOS 13+ · Windows &amp; Linux next quarter</span>
+    </article>
+
+    <article class="price-card price-card--soon" data-parallax data-speed="0.10">
+      <header>
+        <span class="price-card__chip price-card__chip--soon">Coming later · prices TBD</span>
+        <h3>AI &amp; agents</h3>
+        <p class="price-card__price price-card__price--soon"><span>TBD</span><small>think with it, let it do the work</small></p>
+      </header>
+      <ul class="price-card__list price-card__list--soon">
+        <li><b>AI assistant</b> — a partner that thinks alongside you on the canvas</li>
+        <li><b>MCP</b> — plug in your own tools and context so the assistant works with what you already use</li>
+        <li><b>CLI</b> — drive the canvas from your terminal, script the boring bits</li>
+        <li><b>Agent mode</b> — hand off a task and let it manipulate data and visualize it for you</li>
+      </ul>
+      <a class="btn btn--ghost btn--lg btn--block" href="#waitlist">Sign up to be notified</a>
+      <span class="price-card__foot mono">we'll post prices before any of this turns on</span>
+    </article>
+  </div>
+</section>
+
+<!-- ═══════════════ CTA ═══════════════ -->
+<section id="download" class="cta" data-screen-label="10 CTA">
+  <div class="bg-grid bg-grid--dark" data-parallax data-speed="-0.08"></div>
+
+  <div class="cta__inner">
+    <p class="cta__eyebrow mono"><span class="dot dot--teal"></span> 09 of 09 · that's the whole guide</p>
+    <h2 class="cta__title">Ready to try it?<br/><em>Open a blank canvas in your browser.</em></h2>
+    <div class="cta__row">
+      <a class="btn btn--teal btn--xl" href="#">Launch SheetCanvas<span aria-hidden="true"> →</span></a>
+      <a class="btn btn--ghost-light btn--xl" href="#">Watch a 90‑second walkthrough</a>
+    </div>
+    <p class="cta__meta mono">runs in the browser · no install · no account · v0.9.4 · build 2026.05.21</p>
+  </div>
+
+  <footer class="footer">
+    <div class="footer__col">
+      <div class="brand brand--light">
+        <span class="brand__mark" aria-hidden="true"><span></span><span></span><span></span><span class="fill"></span></span>
+        <span class="brand__word">SheetCanvas</span>
+      </div>
+      <p>A small web app for working with spreadsheet files on a canvas. Runs in your browser. Built by theindie.app, a founder-led indie studio.</p>
+    </div>
+    <div class="footer__col">
+      <p class="footer__h mono">The guide</p>
+      <a href="#step-01">The basic idea</a>
+      <a href="#step-02">Importing files</a>
+      <a href="#step-05">Making charts</a>
+      <a href="#step-08">Connecting data</a>
+      <a href="#step-09">Pricing</a>
+    </div>
+    <div class="footer__col">
+      <p class="footer__h mono">More Apps</p>
+      <a href="https://fasttab.theindie.app">FastTab</a>
+      <a href="https://strider.theindie.app">Strider</a>
+      <a href="https://pineapplelog.theindie.app">Pineapple Log</a>
+      <a href="https://gptbreeze.io">GPT Breeze</a>
+      <a href="https://speechtodo.com">SpeechToDo</a>
+    </div>
+    <div class="footer__col">
+      <p class="footer__h mono">Company</p>
+      <a href="https://theindie.app/#about">About</a>
+      <a href="https://theindie.app">theindie.app</a>
+      <a href="#">Roadmap</a>
+      <a href="mailto:yourfriend@theindie.app">Contact</a>
+      <a href="#">@sheetcanvas</a>
+    </div>
+  </footer>
+  <div class="footer__base mono">
+    <span>© 2026 SheetCanvas</span>
+    <span>v0.9.4 · 2026.05.21</span>
+  </div>
+</section>
+
+</main>
+
+<script src="tour.js"></script>
+</body>
+</html>
