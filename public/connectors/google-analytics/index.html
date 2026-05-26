@@ -3,21 +3,21 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>SheetCanvas Docs - Spreadsheet canvas setup and connectors</title>
-    <meta name="description" content="SheetCanvas docs for importing local spreadsheet files, using canvas objects, and configuring ClickHouse or Google Analytics connected sheets.">
-    <link rel="canonical" href="https://sheetcanvas.com/docs/">
+    <title>SheetCanvas Google Analytics connector - Put GA4 reports on a canvas</title>
+    <meta name="description" content="Set up the SheetCanvas Google Analytics connector for GA4 OAuth, property selection, report fields, refreshable connected sheets, and backend token storage.">
+    <link rel="canonical" href="https://sheetcanvas.com/connectors/google-analytics/">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="SheetCanvas">
-    <meta property="og:title" content="SheetCanvas Docs - Spreadsheet canvas setup and connectors">
-    <meta property="og:description" content="Product-specific SheetCanvas docs for local files, canvas objects, ClickHouse, and Google Analytics connected sheets.">
-    <meta property="og:url" content="https://sheetcanvas.com/docs/">
+    <meta property="og:title" content="SheetCanvas Google Analytics connector - Put GA4 reports on a canvas">
+    <meta property="og:description" content="Use SheetCanvas to bring GA4 report rows onto a canvas beside charts, pivots, sparklines, and notes.">
+    <meta property="og:url" content="https://sheetcanvas.com/connectors/google-analytics/">
     <meta property="og:image" content="https://sheetcanvas.com/brand/sheetcanvas-og.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta property="og:image:alt" content="SheetCanvas spreadsheet canvas preview">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="SheetCanvas Docs - Spreadsheet canvas setup and connectors">
-    <meta name="twitter:description" content="Set up SheetCanvas local imports and connected sheets for ClickHouse or Google Analytics.">
+    <meta name="twitter:title" content="SheetCanvas Google Analytics connector">
+    <meta name="twitter:description" content="Configure GA4 connected sheets in SheetCanvas with backend OAuth and refreshable report rows.">
     <meta name="twitter:image" content="https://sheetcanvas.com/brand/sheetcanvas-og.png">
     <meta name="theme-color" content="#0f766e">
     <link rel="icon" type="image/svg+xml" href="/brand/sheetcanvas-logo.svg">
@@ -44,9 +44,9 @@
           },
           {
             "@type": "WebPage",
-            "name": "SheetCanvas Docs",
-            "url": "https://sheetcanvas.com/docs/",
-            "description": "Documentation for SheetCanvas local imports, canvas objects, and connected sheets.",
+            "name": "SheetCanvas Google Analytics connector",
+            "url": "https://sheetcanvas.com/connectors/google-analytics/",
+            "description": "Documentation for the SheetCanvas Google Analytics connector, GA4 OAuth, report fields, and refreshable connected sheets.",
             "dateModified": "2026-05-26",
             "isPartOf": {
               "@type": "WebSite",
@@ -79,6 +79,12 @@
                   "position": 2,
                   "name": "Docs",
                   "item": "https://sheetcanvas.com/docs/"
+                },
+                {
+                  "@type": "ListItem",
+                  "position": 3,
+                  "name": "Google Analytics connector",
+                  "item": "https://sheetcanvas.com/connectors/google-analytics/"
                 }
               ]
             }
@@ -113,6 +119,13 @@
 
       a {
         color: inherit;
+      }
+
+      code {
+        border-radius: 5px;
+        background: var(--code);
+        padding: 0.15rem 0.35rem;
+        font-size: 0.92em;
       }
 
       .skip-link {
@@ -171,20 +184,26 @@
         background: var(--teal);
       }
 
-      .nav {
+      .nav,
+      .footer-links {
         display: flex;
         flex-wrap: wrap;
-        justify-content: flex-end;
         gap: 14px;
         color: var(--muted);
         font-size: 14px;
       }
 
-      .nav a {
+      .nav {
+        justify-content: flex-end;
+      }
+
+      .nav a,
+      .footer-links a {
         text-decoration: none;
       }
 
-      .nav a:hover {
+      .nav a:hover,
+      .footer-links a:hover {
         color: var(--ink);
       }
 
@@ -242,8 +261,13 @@
       }
 
       .hero-copy {
-        max-width: 680px;
+        max-width: 690px;
         font-size: 19px;
+      }
+
+      .reviewed {
+        color: var(--muted);
+        font-size: 14px;
       }
 
       .actions {
@@ -258,44 +282,37 @@
         min-height: 44px;
         align-items: center;
         justify-content: center;
-        border: 1px solid var(--line);
-        border-radius: 8px;
+        border: 1px solid var(--teal);
+        border-radius: 6px;
         padding: 10px 16px;
-        text-decoration: none;
         font-weight: 700;
+        text-decoration: none;
       }
 
       .button-primary {
-        border-color: var(--teal);
         background: var(--teal);
         color: #fff;
       }
 
       .button-secondary {
-        background: #fff;
+        background: transparent;
+        color: var(--teal-dark);
       }
 
-      .reviewed {
-        margin: 18px 0 0;
-        color: var(--muted);
-        font-size: 14px;
-      }
-
-      .toc {
+      .toc,
+      .band {
         border: 1px solid var(--line);
         border-radius: 8px;
         background: var(--panel);
+      }
+
+      .toc {
+        display: grid;
+        gap: 10px;
         padding: 22px;
       }
 
-      .toc strong {
-        display: block;
-        margin-bottom: 12px;
-      }
-
       .toc a {
-        display: block;
-        padding: 8px 0;
         color: var(--muted);
         text-decoration: none;
       }
@@ -305,23 +322,23 @@
       }
 
       .section {
-        padding: 54px 0;
+        padding: 60px 0;
         border-top: 1px solid var(--line);
       }
 
       .section-head {
         max-width: 760px;
-        margin-bottom: 28px;
+        margin-bottom: 24px;
       }
 
       .grid {
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 16px;
       }
 
       .card {
-        min-height: 220px;
+        min-height: 180px;
         border: 1px solid var(--line);
         border-radius: 8px;
         background: var(--panel);
@@ -332,65 +349,33 @@
         display: inline-flex;
         margin-bottom: 14px;
         border-radius: 999px;
-        background: var(--code);
+        background: var(--warm);
+        padding: 4px 9px;
         color: var(--teal-dark);
-        padding: 4px 10px;
         font-size: 12px;
-        font-weight: 800;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
+        font-weight: 700;
       }
 
       .list {
         display: grid;
         gap: 14px;
+        max-width: 860px;
         margin: 0;
-        padding: 0;
-        list-style: none;
-      }
-
-      .list li {
-        border-left: 3px solid var(--teal);
-        background: var(--warm);
-        padding: 14px 16px;
-      }
-
-      code {
-        border-radius: 5px;
-        background: var(--code);
-        padding: 2px 5px;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-        font-size: 0.92em;
+        padding-left: 1.2rem;
       }
 
       .band {
-        border-radius: 8px;
-        background: var(--ink);
-        color: #fff;
         padding: 34px;
       }
 
-      .band p {
-        color: #c8d3d1;
-      }
-
       .site-footer {
-        display: flex;
-        flex-wrap: wrap;
-        justify-content: space-between;
-        gap: 22px;
-        padding: 34px 0 46px;
+        display: grid;
+        gap: 12px;
+        padding: 36px 0 48px;
         border-top: 1px solid var(--line);
-        color: var(--muted);
       }
 
-      .footer-links {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 14px;
-      }
-
-      @media (max-width: 860px) {
+      @media (max-width: 760px) {
         .site-header {
           align-items: flex-start;
           flex-direction: column;
@@ -406,16 +391,7 @@
         }
 
         .hero {
-          gap: 28px;
           padding-top: 44px;
-        }
-      }
-
-      @media (max-width: 560px) {
-        .site-header,
-        main,
-        .site-footer {
-          width: min(100% - 28px, 1120px);
         }
       }
     </style>
@@ -430,112 +406,127 @@
       <nav class="nav" aria-label="Primary navigation">
         <a href="/">Open app</a>
         <a href="/learn/">Learn</a>
+        <a href="/docs/">Docs</a>
         <a href="/connectors/clickhouse/">ClickHouse</a>
-        <a href="/connectors/google-analytics/">Google Analytics</a>
-        <a href="#local-files">Local files</a>
-        <a href="#connectors">Connectors</a>
+        <a href="#setup">Setup</a>
       </nav>
     </header>
 
     <main id="main">
       <section class="hero" aria-labelledby="hero-title">
         <div>
-          <p class="eyebrow">Docs</p>
-          <h1 id="hero-title">Set up SheetCanvas objects and connected sheets.</h1>
-          <p class="hero-copy">These docs cover the product paths that exist in SheetCanvas now: importing local spreadsheet files, arranging canvas objects, and using connector-backed sheets for ClickHouse or Google Analytics data.</p>
+          <p class="eyebrow">Google Analytics connector</p>
+          <h1 id="hero-title">Turn GA4 reports into refreshable SheetCanvas tables.</h1>
+          <p class="hero-copy">Use the SheetCanvas Google Analytics connector when GA4 report rows need to sit beside notes, charts, pivots, and other evidence. The app uses OAuth and a backend proxy so refresh tokens are not stored in the browser.</p>
           <p class="reviewed">Last reviewed: May 26, 2026</p>
           <div class="actions">
             <a class="button button-primary" href="/">Open SheetCanvas</a>
-            <a class="button button-secondary" href="/learn/">Read the product guide</a>
+            <a class="button button-secondary" href="/docs/">Back to docs</a>
           </div>
         </div>
-        <aside class="toc" aria-label="Docs sections">
+        <aside class="toc" aria-label="Connector sections">
           <strong>On this page</strong>
-          <a href="#local-files">Local spreadsheet files</a>
-          <a href="#canvas-objects">Canvas objects</a>
-          <a href="#connectors">Connected sheets</a>
+          <a href="#fit">When to use it</a>
+          <a href="#setup">Setup checklist</a>
+          <a href="#report">Report fields</a>
+          <a href="#refresh">Refresh behavior</a>
           <a href="#troubleshooting">Troubleshooting</a>
         </aside>
       </section>
 
-      <section id="local-files" class="section" aria-labelledby="local-files-title">
+      <section id="fit" class="section" aria-labelledby="fit-title">
         <div class="section-head">
-          <p class="eyebrow">Local files</p>
-          <h2 id="local-files-title">Start with CSV, XLSX, or XLS imports.</h2>
-          <p class="lede">Local file import is the fastest path into SheetCanvas. The imported file becomes a placed table object, so analysis can happen beside the source instead of inside a single expanding grid.</p>
+          <p class="eyebrow">Workflow fit</p>
+          <h2 id="fit-title">Best for GA4 analysis that needs context.</h2>
+          <p class="lede">The connector imports GA4 Analytics Data API report rows as a SheetCanvas table object. It is useful when traffic metrics need explanation, comparison, or quick visual checks instead of another downloaded CSV.</p>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <span class="status">Good fit</span>
+            <h3>Recurring traffic checks</h3>
+            <p>Run a GA4 report for dimensions like <code>date</code>, <code>sessionSource</code>, or <code>pagePath</code>, then keep the result on the canvas.</p>
+          </article>
+          <article class="card">
+            <span class="status">Good fit</span>
+            <h3>Canvas-based review</h3>
+            <p>Place analytics rows beside notes, charts, pivots, and sparklines so interpretation stays beside the source table.</p>
+          </article>
+          <article class="card">
+            <span class="status">Not the goal</span>
+            <h3>GA administration</h3>
+            <p>SheetCanvas reads GA4 report data. It is not an Admin API console and does not manage analytics properties or users.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="setup" class="section" aria-labelledby="setup-title">
+        <div class="section-head">
+          <p class="eyebrow">Setup</p>
+          <h2 id="setup-title">Use OAuth through the backend proxy.</h2>
+          <p class="lede">The frontend starts Google OAuth with PKCE, then the backend exchanges the code and stores the refresh token encrypted. For local development, start both the Vite app and backend worker before opening the connector dialog.</p>
         </div>
         <ul class="list">
-          <li><strong>Import:</strong> open the app and add a CSV, XLSX, or XLS file to create a table object on the canvas.</li>
-          <li><strong>Inspect:</strong> sort, filter, and scan the imported table without moving the rest of the workspace.</li>
-          <li><strong>Build from it:</strong> create charts, pivots, sparklines, and notes next to the source table.</li>
+          <li><strong>Google Cloud:</strong> configure an OAuth client, authorized origin, redirect URI, and enable the Google Analytics Data API plus Admin API.</li>
+          <li><strong>Frontend:</strong> set <code>VITE_GOOGLE_CLIENT_ID</code> and, when needed, <code>VITE_BACKEND_URL</code> and <code>VITE_API_BEARER_TOKEN</code>.</li>
+          <li><strong>Backend:</strong> set <code>GOOGLE_CLIENT_ID</code>, <code>GOOGLE_CLIENT_SECRET</code>, and <code>ENCRYPTION_KEY_B64</code> for token exchange and encrypted storage.</li>
+          <li><strong>Create the sheet:</strong> choose Connect Data, Google Analytics, connect Google, select a property, choose report fields, and import the returned rows.</li>
         </ul>
       </section>
 
-      <section id="canvas-objects" class="section" aria-labelledby="canvas-objects-title">
+      <section id="report" class="section" aria-labelledby="report-title">
         <div class="section-head">
-          <p class="eyebrow">Object model</p>
-          <h2 id="canvas-objects-title">Use the canvas to keep evidence and interpretation together.</h2>
-          <p class="lede">SheetCanvas treats tables, charts, pivots, sparklines, and notes as workspace objects. This is useful when the analysis has multiple views or caveats that would be hard to track across tabs.</p>
+          <p class="eyebrow">Report shape</p>
+          <h2 id="report-title">Choose GA4 dimensions, metrics, dates, filters, and ordering.</h2>
+          <p class="lede">SheetCanvas sends a structured GA4 Data API report request through the backend and maps the response into table columns and rows.</p>
         </div>
         <div class="grid">
           <article class="card">
-            <h3>Tables</h3>
-            <p>Use table objects as the source for visual checks and summary views. Local imports and connector queries both create table-shaped data on the canvas.</p>
+            <h3>Dimensions</h3>
+            <p>Start with fields like <code>date</code>, <code>sessionSource</code>, <code>sessionMedium</code>, <code>country</code>, <code>deviceCategory</code>, or <code>pagePath</code>.</p>
           </article>
           <article class="card">
-            <h3>Charts and pivots</h3>
-            <p>Create chart and pivot objects from selected data, then place the results beside the table they explain.</p>
+            <h3>Metrics</h3>
+            <p>Use GA4 metrics such as <code>activeUsers</code>, <code>sessions</code>, <code>eventCount</code>, <code>screenPageViews</code>, or engagement metrics.</p>
           </article>
           <article class="card">
-            <h3>Notes</h3>
-            <p>Add notes for assumptions, decisions, and next steps directly beside the data view they reference.</p>
+            <h3>Controls</h3>
+            <p>Select a preset or custom date range, add optional filters as JSON, and order by a dimension or metric when the report needs sorting.</p>
           </article>
         </div>
       </section>
 
-      <section id="connectors" class="section" aria-labelledby="connectors-title">
+      <section id="refresh" class="section" aria-labelledby="refresh-title">
         <div class="section-head">
-          <p class="eyebrow">Connected sheets</p>
-          <h2 id="connectors-title">Use connectors when the source data should refresh.</h2>
-          <p class="lede">Connector-backed sheets keep credentials behind the backend proxy and store a refreshable connector configuration on the sheet.</p>
+          <p class="eyebrow">Refresh</p>
+          <h2 id="refresh-title">Connected sheets remember the connector, property, and report.</h2>
+          <p class="lede">After a successful import, SheetCanvas stores the connector ID, GA4 property ID, report config, refresh timestamp, and truncation state on the sheet.</p>
         </div>
-        <div class="grid">
-          <article class="card">
-            <span class="status">Available</span>
-            <h3>ClickHouse</h3>
-            <p>Save a ClickHouse connector, run read-only <code>SELECT</code> or <code>WITH</code> queries, and refresh the resulting connected sheet from the canvas. Read the <a href="/connectors/clickhouse/">ClickHouse connector guide</a>.</p>
-          </article>
-          <article class="card">
-            <span class="status">Available with setup</span>
-            <h3>Google Analytics</h3>
-            <p>Connect GA4 through the backend OAuth flow, choose a property and report fields, then create a connected sheet from the returned rows. Read the <a href="/connectors/google-analytics/">Google Analytics connector guide</a>.</p>
-          </article>
-          <article class="card">
-            <span class="status">Backend proxy</span>
-            <h3>Credential handling</h3>
-            <p>Connector credentials and OAuth tokens are stored by the backend, not in the browser. The frontend receives public connector metadata and query results.</p>
-          </article>
-        </div>
+        <ul class="list">
+          <li><strong>Source stays traceable:</strong> the table keeps the connector type, connector ID, property ID, and GA4 report request.</li>
+          <li><strong>Rows stay tabular:</strong> the backend returns normalized columns and rows so charts, pivots, sparklines, and notes can use the result.</li>
+          <li><strong>Errors stay visible:</strong> failed refreshes keep the prior sheet and store the latest connector error for the UI to surface.</li>
+        </ul>
       </section>
 
       <section id="troubleshooting" class="section" aria-labelledby="troubleshooting-title">
         <div class="section-head">
           <p class="eyebrow">Troubleshooting</p>
-          <h2 id="troubleshooting-title">Check the backend before debugging the canvas.</h2>
-          <p class="lede">Most connector failures come from local backend configuration, missing auth values, or a query that exceeds the connector guardrails.</p>
+          <h2 id="troubleshooting-title">Most failures point to OAuth, permissions, or backend config.</h2>
+          <p class="lede">Start with Google Cloud settings and backend secrets before changing the canvas. The connector depends on OAuth, encrypted storage, and read access to the selected GA4 property.</p>
         </div>
         <ul class="list">
-          <li><strong>Connectors do not load:</strong> check <code>VITE_BACKEND_URL</code>, backend availability, and any configured <code>VITE_API_BEARER_TOKEN</code>.</li>
-          <li><strong>ClickHouse query rejected:</strong> use a single read-only query starting with <code>SELECT</code> or <code>WITH</code>; write statements are blocked.</li>
-          <li><strong>Google Analytics auth fails:</strong> verify the OAuth redirect URL, requested GA4 readonly scope, and backend token exchange settings.</li>
+          <li><strong>Connect Google fails:</strong> verify <code>VITE_GOOGLE_CLIENT_ID</code>, authorized redirect URI, OAuth consent status, and test-user access.</li>
+          <li><strong>No refresh token:</strong> re-consent may be required when Google does not return a refresh token for the account.</li>
+          <li><strong>Properties do not load:</strong> confirm the connected Google account has GA4 property access and the Admin API is enabled.</li>
+          <li><strong>Report rejected:</strong> check GA4 field names, filter JSON, metric/dimension compatibility, and backend row limits.</li>
         </ul>
       </section>
 
       <section class="section" aria-labelledby="next-title">
         <div class="band">
           <p class="eyebrow">Fastest path to value</p>
-          <h2 id="next-title">Use the docs when setup matters, then return to the app.</h2>
-          <p>SheetCanvas keeps the live product at the root URL. The docs explain setup details without turning the app homepage into a marketing or documentation page.</p>
+          <h2 id="next-title">Use GA4 as source data, then do the review on the canvas.</h2>
+          <p>SheetCanvas keeps the live product at the root URL. This page explains the connector path so analytics review can move into the app without turning the homepage into documentation.</p>
           <div class="actions">
             <a class="button button-primary" href="/">Open SheetCanvas</a>
             <a class="button button-secondary" href="/learn/">Learn the product model</a>
