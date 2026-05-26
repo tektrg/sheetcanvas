@@ -93,13 +93,21 @@ State:
   - Ran two sequential QA/product review passes with different subagents; both found no requirement gaps.
   - Committed onboarding/welcome integration as `09673c1 feat(onboarding): embed welcome bottom sheet`.
   - Committed SEO/static support pages as `4a1276a feat(seo): add crawlable support pages`.
+  - Added `scripts/tmux-run-capture.mjs` and `npm run tmux:capture` to run one-off commands in retained tmux sessions, capture output, propagate exit status, and clean up automatically.
+  - Committed repository workflow notes as `25454a4 chore: update repo workflow notes`.
+  - Committed tmux helper as `1b69985 chore: add tmux capture helper`.
+  - Verified `npm run build`; it passes with existing html2canvas import and large chunk warnings.
+  - Checked active SheetCanvas Vite logs in tmux session `sheetcanvas_bottom_sheet_dev`; no runtime errors found.
+  - Attempted Vercel CLI production deploy; blocked by invalid local Vercel token.
+  - Attempted claimable Vercel deploy script; endpoint now returns CLI migration instructions instead of a preview/claim URL.
+  - Attempted `git push origin main`; blocked because the current credential/remote cannot access `https://github.com/tektrg/flexsheet.git`.
 - Now:
-  - Committing repository housekeeping, then deploying the app.
+  - Deployment is blocked on valid Vercel or GitHub credentials.
 - Next:
-  - Verify build/logs, deploy, and report commit/deployment details.
+  - Provide valid Vercel token/login or accessible Git remote, then rerun deploy/push.
 
 Open questions (UNCONFIRMED if needed):
-- None.
+- Valid deployment path is currently UNCONFIRMED because both local Vercel auth and GitHub remote access failed.
 
 Working set (files/ids/commands):
 - `docs/seo-sop.md`
@@ -121,6 +129,7 @@ Working set (files/ids/commands):
 - `public/connectors/clickhouse/index.html`
 - `public/brand/sheetcanvas-og.svg`
 - `public/brand/sheetcanvas-og.png`
+- `scripts/tmux-run-capture.mjs`
 - `AGENTS.md`
 - Dev server: `http://127.0.0.1:5173/` in tmux session `sheetcanvas_bottom_sheet_dev`
 - Current command task: commit current changes in logical chunks and deploy.
