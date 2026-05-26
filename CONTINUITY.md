@@ -96,6 +96,8 @@ State:
   - Added `scripts/tmux-run-capture.mjs` and `npm run tmux:capture` to run one-off commands in retained tmux sessions, capture output, propagate exit status, and clean up automatically.
   - Committed repository workflow notes as `25454a4 chore: update repo workflow notes`.
   - Committed tmux helper as `1b69985 chore: add tmux capture helper`.
+  - Committed deployment blocker notes as `0e9422c docs: record deployment blocker`.
+  - Committed tmux helper hardening as `0bca862 chore: harden tmux capture helper`.
   - Verified `npm run build`; it passes with existing html2canvas import and large chunk warnings.
   - Checked active SheetCanvas Vite logs in tmux session `sheetcanvas_bottom_sheet_dev`; no runtime errors found.
   - Attempted Vercel CLI production deploy; blocked by invalid local Vercel token.
