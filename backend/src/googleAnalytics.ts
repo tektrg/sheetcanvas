@@ -17,6 +17,14 @@ type OAuthErrorResponse = {
   error_description?: string;
 };
 
+const CLIENT_OAUTH_ERRORS = new Set([
+  "invalid_request",
+  "invalid_client",
+  "invalid_scope",
+  "unauthorized_client",
+  "unsupported_grant_type"
+]);
+
 export type GoogleAnalyticsReport = {
   dateRanges?: Array<{ startDate: string; endDate: string }>;
   dimensions?: Array<{ name: string }>;
@@ -61,10 +69,23 @@ async function fetchToken(params: Record<string, string>) {
       json?.error_description ||
       json?.error ||
       `Token exchange failed (${res.status})`;
-    const status = json?.error === "invalid_grant" ? 401 : 400;
+    const status = getTokenErrorStatus(res.status, json?.error);
     throw new HttpError(status, "oauth_error", msg);
   }
   return json;
+}
+
+function getTokenErrorStatus(upstreamStatus: number, oauthError: string | undefined) {
+  if (oauthError === "invalid_grant") {
+    return 401;
+  }
+  if (oauthError && CLIENT_OAUTH_ERRORS.has(oauthError)) {
+    return 400;
+  }
+  if (upstreamStatus >= 400 && upstreamStatus < 500) {
+    return 400;
+  }
+  return 502;
 }
 
 export async function exchangeGoogleAnalyticsCode(args: {
