@@ -80,6 +80,17 @@ export async function queryGoogleAnalytics(args: {
 
 export function googleAnalyticsResultToMatrix(result: GoogleAnalyticsQueryResponse): string[][] {
   const headers = result.columns.map((c) => c.name);
-  const rows = result.rows.map((row) => row.map((value) => (value ?? '').toString()));
+  const dateCols = new Set(
+    result.columns.map((c, i) => (c.name === 'date' ? i : -1)).filter((i) => i >= 0)
+  );
+  const rows = result.rows.map((row) =>
+    row.map((value, i) => {
+      const str = (value ?? '').toString();
+      if (dateCols.has(i) && /^\d{8}$/.test(str)) {
+        return `${str.slice(0, 4)}-${str.slice(4, 6)}-${str.slice(6, 8)}`;
+      }
+      return str;
+    })
+  );
   return [headers, ...rows];
 }
