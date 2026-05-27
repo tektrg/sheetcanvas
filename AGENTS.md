@@ -10,11 +10,27 @@ Backend services live under `backend/` as a Cloudflare Workers project (Wrangler
 - `npm run dev -- --host 127.0.0.1 --port 5173 --strictPort` – start the Vite dev server (HMR, local storage-backed state) on the dedicated SheetCanvas port 5173. Use this exact port when starting the app; if 5173 is occupied, stop the stale SheetCanvas server instead of letting Vite choose another port.
 - `npm run build` – compile the TypeScript/React bundle and worker scripts into `dist/` with optimized chunks.
 - `npm run preview` – serve the built bundle for smoke testing exact production behavior.
+- `npm run seo:audit` – build the app and run the maintained SEO metadata/schema audit against source and `dist/`.
 
 Backend (Cloudflare Worker) commands (run from `backend/`):
 - `npm install` – install backend dependencies (Hono, Zod, Wrangler).
 - `wrangler d1 execute DB --local --file ./schema.sql` – initialize local D1 schema.
 - `wrangler dev src/index.ts --config wrangler.toml --local --port 8787` – run backend locally on port 8787.
+
+## Deployment
+Deploy the frontend with Wrangler Pages, not Vercel. Build first, then deploy the root `dist/` directory to the existing Cloudflare Pages project:
+
+- `npm run seo:audit` – required pre-deploy check; this runs `npm run build` and validates crawlable SEO pages, sitemap entries, JSON-LD, and the root Vite app shell.
+- `npx wrangler pages project list` – confirm the project is `sheetcanvas`, serving `sheetcanvas.pages.dev`, `sheetcanvas.com`, and `www.sheetcanvas.com`.
+- `npx wrangler pages deploy dist --project-name sheetcanvas --branch main` – deploy the built frontend to production.
+- `npx wrangler pages deployment list --project-name sheetcanvas` – confirm the latest production deployment source commit and preview URL.
+
+After deployment, smoke check at minimum:
+- `https://sheetcanvas.com/`
+- `https://sheetcanvas.com/sitemap.xml`
+- any newly added static SEO route, such as `https://sheetcanvas.com/connectors/google-analytics/`
+
+Known-good reference from the May 27, 2026 deploy: project `sheetcanvas`, source commit `021c60c`, deployment `c1980e27-a5fe-44e0-8757-ca5ba3604029`, preview `https://c1980e27.sheetcanvas.pages.dev`.
 
 ## Coding Style & Naming Conventions
 Author features in TypeScript with functional React components. Use two-space indentation, `PascalCase` for components/hooks, `camelCase` for functions and Zustand selectors, and `SCREAMING_SNAKE_CASE` for exported constants. Keep shared types in `types.ts` and prefer discriminated unions over `any`. Run code-formatting through your editor’s Prettier (aligned with the existing style), and colocate component-specific styles or helpers beside each component rather than in `src/` root.

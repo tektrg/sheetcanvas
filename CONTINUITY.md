@@ -33,6 +33,13 @@ Key decisions:
 - Add `/connectors/clickhouse/` as the first dedicated connector support page, because ClickHouse is a shipped connector path with enough product-specific setup detail to support bottom-funnel search without changing `/`.
 - Add `/connectors/google-analytics/` as the second dedicated connector support page, because GA4 is a shipped connector path with OAuth/backend setup details and product-specific search demand, and it can improve bottom-funnel discovery without changing `/`.
 - Add `npm run seo:audit` before expanding more SEO pages, because the current static support surface now needs a repeatable quality gate for metadata, schema, sitemap, robots, reviewed dates, and the root app-shell constraint.
+- Gate Cloudflare Pages deploys through `npm run seo:audit` in `npm run deploy:pages`, because deploy-time protection is higher leverage than adding another support page before the audit is part of the publishing path.
+- Add `/use-cases/spreadsheet-canvas/` as the first use-case support page, because it targets the core product workflow from the SOP without changing `/` from the live app.
+- Add `/use-cases/csv-to-dashboard/` as the next use-case support page, because it covers the SOP's CSV/dashboard exploration pillar while keeping `/` as the live app and fastest path to value.
+- Add `/use-cases/local-spreadsheet-app/` as the next use-case support page, because it covers local CSV/XLSX file analysis intent from the SOP without changing `/` from the live app.
+- Add `/privacy/` and `/terms/` before more content expansion, because the SOP lists them as support surfaces and the root app should have low-friction trust/legal links without becoming a marketing page.
+- Add `/blog/google-analytics-dashboard-canvas/` as the next product tutorial while Search Console has no query evidence, because it extends the shipped GA4 connector support page into a practical workflow without changing `/` from the live app.
+- Automate `public/rss.xml` generation before adding more blog posts, because the SOP now has crawlable product tutorials and manual RSS maintenance is a drift risk for publishing.
 
 State:
 - Done:
@@ -127,10 +134,209 @@ State:
   - Verified `npm run seo:audit`; it passes after building. Existing Vite warnings remain the html2canvas dynamic/static import warning and large bundle warning.
   - Checked active SheetCanvas tmux Vite logs (`sheetcanvas_bottom_sheet_dev`); no runtime errors found, only HMR/page reload entries.
   - Ran sequential QA/product review with subagents. Initial reviews found stricter gate gaps for built validation, sitemap/robots failure behavior, social metadata, `dateModified`, and root app-shell preservation; all were fixed. Final sequential QA pass found no requirement gaps.
+  - Added `deploy:pages` to `package.json`; it runs `npm run seo:audit` before `wrangler pages deploy dist --project-name sheetcanvas`.
+  - Added root `wrangler` dev dependency and updated `package-lock.json` so the deploy command uses a repo-declared tool instead of an ambient/global Wrangler install.
+  - Chose the deploy gate over a new use-case page because the SOP publishing workflow now has enough crawlable pages to protect, and `/` remains the live app.
+  - Verified `npm run seo:audit`; it builds successfully and the SEO audit passes with the existing html2canvas dynamic/static import warning and large bundle warning.
+  - Verified `npm run deploy:pages -- --help`; it runs the SEO audit first, then resolves the repo-declared Wrangler Pages deploy help without publishing.
+  - QA pass 1 and QA pass 2 both found the initial ambient-Wrangler dependency gap; adding the root dev dependency fixed the reproducibility issue.
+  - Verified rendered `dist/` SEO artifacts after the build: root/support titles, canonicals, JSON-LD markers, sitemap entries, sitemap index, and robots sitemap reference are present.
+  - Checked active SheetCanvas tmux Vite logs (`sheetcanvas_bottom_sheet_dev`); no runtime errors found, only existing startup/HMR/page reload entries.
+  - Added `public/use-cases/spreadsheet-canvas/index.html` as a crawlable static use-case page with product-specific metadata, canonical, OG/Twitter tags, `WebPage`/`BreadcrumbList` JSON-LD, reviewed date, canvas workflow copy, and app/docs/connector CTAs.
+  - Linked `/use-cases/spreadsheet-canvas/` from `/learn/`, `/docs/`, `/connectors/clickhouse/`, and `/connectors/google-analytics/` so the page is not orphaned.
+  - Updated `public/sitemap.xml` to include `https://sheetcanvas.com/use-cases/spreadsheet-canvas/`.
+  - Verified `npm run seo:audit`; it builds successfully and the SEO audit passes with the existing html2canvas dynamic/static import warning and large bundle warning.
+  - Verified source and built use-case page artifacts contain the expected title, canonical, `WebPage` and `BreadcrumbList` schema, visible `Last reviewed: May 27, 2026`, sitemap entry, and built inbound links from existing support pages.
+  - Checked active SheetCanvas tmux Vite logs (`sheetcanvas_bottom_sheet_dev`); no runtime errors found, only existing startup/HMR/page reload entries.
+  - Ran two sequential QA/product review passes with different subagents. Pass 1 found no requirement gaps. Pass 2 found this continuity handoff was stale and noted pre-existing unrelated deploy-gate package diffs; the handoff was updated and the unrelated package diffs were preserved.
+  - Added `public/use-cases/csv-to-dashboard/index.html` as a crawlable static use-case page with product-specific metadata, canonical, OG/Twitter tags, `WebPage`/`BreadcrumbList` JSON-LD, reviewed date, CSV/XLSX import workflow copy, dashboard exploration steps, and honest BI-boundary copy.
+  - Linked `/use-cases/csv-to-dashboard/` from `/learn/`, `/docs/`, `/connectors/clickhouse/`, `/connectors/google-analytics/`, and `/use-cases/spreadsheet-canvas/` so the page is not orphaned.
+  - Updated `public/sitemap.xml` to include `https://sheetcanvas.com/use-cases/csv-to-dashboard/`.
+  - Initial `npm run seo:audit` failed because Rollup's optional native package was missing from local `node_modules`; plain `npm install` also failed on the existing React 19 / `@tanstack/react-virtual` peer conflict.
+  - Ran `npm install --legacy-peer-deps` to restore missing optional dependencies, then verified `npm run seo:audit`; it builds successfully and the SEO audit passes with the existing html2canvas dynamic/static import warning and large bundle warning.
+  - Verified source and built CSV use-case page artifacts contain the expected title, canonical, `WebPage` and `BreadcrumbList` schema, visible `Last reviewed: May 27, 2026`, sitemap entry, and built inbound links from existing support pages.
+  - Restarted `sheetcanvas_bottom_sheet_dev` at `http://127.0.0.1:5173/` after accidentally interrupting the prior tmux dev server during log inspection; fresh Vite startup logs show no runtime errors.
+  - Ran a QA/product review subagent for the CSV page, link graph, and sitemap updates; it found no requirement gaps and noted the new `public/use-cases/` content must be included when committing.
+  - Added `public/use-cases/local-spreadsheet-app/index.html` as a crawlable static use-case page with product-specific metadata, canonical, OG/Twitter tags, `WebPage`/`BreadcrumbList` JSON-LD, reviewed date, local CSV/XLSX workflow copy, honest current-boundary copy, and app/docs/use-case CTAs.
+  - Linked `/use-cases/local-spreadsheet-app/` from `/learn/`, `/docs/`, `/connectors/clickhouse/`, `/connectors/google-analytics/`, `/use-cases/spreadsheet-canvas/`, and `/use-cases/csv-to-dashboard/` so the page is not orphaned.
+  - Updated `public/sitemap.xml` to include `https://sheetcanvas.com/use-cases/local-spreadsheet-app/`.
+  - Verified `npm run seo:audit`; it builds successfully and the SEO audit passes with the existing html2canvas dynamic/static import warning and large bundle warning.
+  - Verified source and built local spreadsheet app page artifacts contain the expected title, canonical, `WebPage` and `BreadcrumbList` schema markers, visible `Last reviewed: May 27, 2026`, sitemap entry, and built inbound links from existing support pages.
+  - Checked active SheetCanvas tmux Vite logs (`sheetcanvas_bottom_sheet_dev`); no runtime errors found, only startup/HMR/page reload entries.
+  - Added `public/use-cases/data-analysis-canvas/index.html` as the next crawlable static use-case page with product-specific metadata, canonical, OG/Twitter tags, `WebPage`/`BreadcrumbList` JSON-LD, reviewed date, data-analysis workflow copy, and honest analytics-system boundary copy.
+  - Chose `/use-cases/data-analysis-canvas/` because it completes the remaining SOP use-case route before alternatives while keeping `/` as the live app and fastest path to value.
+  - Linked `/use-cases/data-analysis-canvas/` from `/learn/`, `/docs/`, `/connectors/clickhouse/`, `/connectors/google-analytics/`, `/use-cases/spreadsheet-canvas/`, `/use-cases/csv-to-dashboard/`, and `/use-cases/local-spreadsheet-app/` so the page is not orphaned.
+  - Updated `public/sitemap.xml` to include `https://sheetcanvas.com/use-cases/data-analysis-canvas/`.
+  - Verified `npm run seo:audit`; it builds successfully and the SEO audit passes with the existing html2canvas dynamic/static import warning and large bundle warning.
+  - Verified source and built data-analysis page artifacts contain the expected title, canonical, `WebPage` and `BreadcrumbList` schema markers, visible `Last reviewed: May 27, 2026`, sitemap entry, robots sitemap-index reference, and built inbound links from existing support pages.
+  - Checked active SheetCanvas tmux Vite logs (`sheetcanvas_bottom_sheet_dev`); no runtime errors found, only startup/HMR/page reload entries.
+  - Ran two sequential QA/product review passes with different subagents. Both found no requirement-relevant gaps for the data-analysis page, link graph, sitemap/robots consistency, or root app constraint.
+  - Cleaned up stale task-specific tmux session `qa_sheetcanvas_seo_review`; kept active or ambiguous sessions including `sheetcanvas_bottom_sheet_dev`, other dev servers, app servers, and watchers.
+  - Added `public/alternatives/excel/index.html` as the first fair alternatives page with product-specific metadata, canonical, OG/Twitter tags, `WebPage`/`BreadcrumbList` JSON-LD, reviewed date, a comparison table, and explicit copy saying Excel remains better for advanced formulas, macros, workbook modeling, Microsoft 365 workflows, and exact compatibility needs.
+  - Chose `/alternatives/excel/` because the initial root/docs/connector/use-case surfaces are now in place, and the SOP's next bottom-funnel opportunity is a fair comparison page that can capture workbook-alternative intent without changing `/` from the live app.
+  - Linked `/alternatives/excel/` from `/learn/`, `/docs/`, and all current use-case pages; the Excel page links back to `/`, `/docs/`, and relevant use cases.
+  - Updated `public/sitemap.xml` to include `https://sheetcanvas.com/alternatives/excel/`.
+  - Verified `npm run seo:audit`; it builds successfully and the SEO audit passes with the existing html2canvas dynamic/static import warning and large bundle warning.
+  - Verified source and built Excel page artifacts contain the expected title, canonical, `WebPage` and `BreadcrumbList` schema markers, visible `Last reviewed: May 27, 2026`, sitemap entry, robots sitemap-index reference, and built inbound links from docs/learn/use-case pages.
+  - Checked active SheetCanvas tmux Vite logs (`sheetcanvas_bottom_sheet_dev`); no runtime errors found, only startup/HMR/page reload entries.
+  - QA/product review pass 1 with a subagent found no requirement gaps for the Excel page, link graph, sitemap coverage, fair positioning, or root app constraint.
+  - QA/product review pass 2 with a different subagent found no requirement gaps; it independently verified root `/` is unchanged, the page is product-specific and fair, inbound/outbound links are present, sitemap coverage is present, `npm run seo:audit` passed, and active Vite logs had no runtime errors.
+  - Chose SEO audit link-contract hardening over adding `/alternatives/google-sheets/`, because the current support surface is growing and the SOP requires every SEO page to have real app CTAs, related support links, and no orphan pages.
+  - Updated `scripts/seo-audit.mjs` so support-page audits parse only anchor links, require each support page to link back to `/`, require at least one link to another discovered support page, and flag support pages with no inbound internal links.
+  - Fixed QA-identified false-positive risk where asset `href`s such as icons or manifests could satisfy the related-link check by mistake; related links now count only discovered support-page route paths.
+  - Verified `npm run seo:audit`; it builds successfully and the SEO audit passes with the existing html2canvas dynamic/static import warning and large bundle warning.
+  - Verified rendered `dist/robots.txt`, `dist/sitemap-index.xml`, and `dist/sitemap.xml` still contain the expected sitemap references and support-page URLs.
+  - Checked active SheetCanvas tmux Vite logs (`sheetcanvas_bottom_sheet_dev`); no runtime errors found, only existing startup/HMR/page reload entries.
+  - Ran two final sequential QA/product review passes with different subagents after the link-audit fix; both found no requirement gaps.
+  - Added `public/alternatives/google-sheets/index.html` as the next fair alternatives page with product-specific metadata, canonical, OG/Twitter tags, `WebPage`/`BreadcrumbList` JSON-LD, visible `Last reviewed: May 27, 2026`, comparison copy, and explicit boundaries that Google Sheets remains better for collaboration, sharing, formulas, Apps Script, add-ons, and Google Workspace workflows.
+  - Chose `/alternatives/google-sheets/` because the SOP lists it as the next bottom-funnel alternatives surface after Excel, and it captures spreadsheet-comparison intent without changing `/` from the live app.
+  - Linked `/alternatives/google-sheets/` from `/learn/`, `/docs/`, `/alternatives/excel/`, and all current use-case pages so the page is not orphaned and the SEO audit link contract remains satisfied.
+  - Updated `public/sitemap.xml` to include `https://sheetcanvas.com/alternatives/google-sheets/`.
+  - Verified `npm run seo:audit`; it builds successfully and the SEO audit passes with the existing html2canvas dynamic/static import warning and large bundle warning.
+  - Verified source and built Google Sheets page artifacts contain the expected title, canonical, parseable `WebPage` and `BreadcrumbList` schema, visible reviewed date, sitemap entry, and robots sitemap-index reference.
+  - Checked active SheetCanvas tmux Vite logs (`sheetcanvas_bottom_sheet_dev`); no runtime errors found, only startup/HMR/page reload entries.
+  - Ran two sequential QA/product review passes with different subagents. Both found no requirement-relevant gaps for the Google Sheets page, link graph, sitemap coverage, fair positioning, schema/metadata, or root app constraint.
+  - Added `public/alternatives/airtable/index.html` as the next fair alternatives page with product-specific metadata, canonical, OG/Twitter tags, `WebPage`/`BreadcrumbList` JSON-LD, visible `Last reviewed: May 27, 2026`, comparison copy, and explicit boundaries that Airtable remains better for collaborative databases, forms, interfaces, automations, permissions, and team workflow apps.
+  - Chose `/alternatives/airtable/` because the SOP lists it after Excel and Google Sheets, and it captures adjacent spreadsheet/database-alternative intent without changing `/` from the live app.
+  - Linked `/alternatives/airtable/` from `/learn/`, `/docs/`, all current use-case pages, `/alternatives/excel/`, and `/alternatives/google-sheets/` so the page is not orphaned and the SEO audit link contract remains satisfied.
+  - Updated `public/sitemap.xml` to include `https://sheetcanvas.com/alternatives/airtable/`.
+  - Verified `npm run seo:audit`; it builds successfully and the SEO audit passes with the existing html2canvas dynamic/static import warning and large bundle warning.
+  - Verified rendered `dist/alternatives/airtable/index.html` contains the expected title, meta description, canonical, `og:url`, Twitter title, parseable JSON-LD with `WebPage` and `BreadcrumbList`, visible reviewed date, and Airtable footer link.
+  - Verified `dist/sitemap.xml`, `dist/sitemap-index.xml`, and `dist/robots.txt` contain the expected Airtable URL and sitemap references.
+  - Checked active SheetCanvas tmux Vite logs (`sheetcanvas_bottom_sheet_dev`); no runtime errors found, only startup/HMR/page reload entries.
+  - Ran two sequential QA/product review passes with different subagents. Both found no requirement-relevant gaps for the Airtable page, fair positioning, link graph, sitemap/schema/metadata, or root app constraint.
+  - Cleaned up stale task-specific tmux sessions from this run: `sc_airtable_stale_scan_20260527`, `sc_file_lengths_20260527`, `sc_rendered_airtable_check_20260527`, `sc_seo_audit_airtable_20260527`, and `sc_tmux_logs_cleanup_scan_20260527`. Kept active or ambiguous sessions including `sheetcanvas_bottom_sheet_dev`, other dev servers, watchers, and unrelated app sessions.
+  - Added `public/privacy/index.html` and `public/terms/index.html` as product-specific crawlable trust/legal support pages with metadata, canonical URLs, OG/Twitter tags, `WebPage`/`BreadcrumbList` JSON-LD, visible `Last reviewed: May 27, 2026`, and careful copy around local files, site analytics, shipped connectors, backups, and product boundaries.
+  - Chose `/privacy/` and `/terms/` because they close the SOP's legal/support surface gap while keeping `/` as the live app and avoiding another broader content page before deploy/search evidence.
+  - Added low-friction no-JS root links from `index.html` to `/privacy/` and `/terms/`, plus visible footer links from `/learn/` and `/docs/`; updated `public/sitemap.xml` with both routes.
+  - Verified `npm run seo:audit`; it builds successfully and the SEO audit passes with the existing html2canvas dynamic/static import warning and large bundle warning.
+  - Verified rendered `dist/privacy/index.html` and `dist/terms/index.html` contain expected titles, canonicals, reviewed dates, parseable schema types including `WebPage` and `BreadcrumbList`; verified `dist/sitemap.xml`, `dist/sitemap-index.xml`, and `dist/robots.txt` contain expected sitemap references.
+  - Checked available `vite.log` and `backend/wrangler.log`; no current runtime errors found, only startup/health output. Direct tmux socket access from the main sandbox remained blocked with `Operation not permitted`; QA pass 2 reported it could inspect and clean up one completed review shell.
+  - Ran two sequential QA/product review passes with different subagents. Both found no requirement-relevant gaps for the privacy/terms pages, product/legal copy, metadata/schema, sitemap coverage, link graph, or root app constraint.
+  - Chose sitemap automation/audit hardening over adding another content page because the support surface now has 14 crawlable routes and the SOP requires durable sitemap coverage before publishing.
+  - Added `scripts/generate-sitemap.mjs` to discover `/` plus crawlable `public/**/index.html` support pages, exclude `public/landing-page-design/`, preserve current route order, and update `public/sitemap.xml` only when content changes.
+  - Added `scripts/seo-route-config.mjs` as the shared source of truth for site origin, excluded public directories, route ordering, and sitemap metadata.
+  - Updated `npm run seo:audit` to run `npm run seo:sitemap` before `npm run build`, so `dist/sitemap.xml` is generated from the current source page set.
+  - Hardened `scripts/seo-audit.mjs` so sitemap checks now reject unexpected sitemap URLs, duplicate entries, non-SheetCanvas locs, and route `changefreq`/`priority` drift using the shared route metadata.
+  - Verified `npm run seo:audit`; it regenerates/checks the 14-route sitemap, builds successfully, and passes with the existing html2canvas dynamic/static import warning and large bundle warning.
+  - Negative-tested the audit by temporarily adding a `landing-page-design` URL to `public/sitemap.xml`; `node scripts/seo-audit.mjs` failed with `unexpected sitemap entry`, then the temporary bad entry was removed and `npm run seo:audit` passed again.
+  - Checked available `vite.log` and `backend/wrangler.log`; no current runtime errors found, only startup/health output. Main sandbox tmux access still fails with `Operation not permitted`, so stale-session cleanup could not be performed directly; QA subagents reported cleaning their own review-only tmux sessions and keeping active/ambiguous dev sessions.
+  - QA pass 1 found no requirement-relevant gaps. QA pass 2 found the sitemap audit unexpected-route/metadata-drift gap; it was fixed and verified.
+  - Chose the `/app` canonical alias from the SOP URL strategy over another SEO support page, because the current support surface is already broad and `/app` should not become a duplicate or 404 app entry if used by docs/campaigns.
+  - Added `public/_redirects` with Cloudflare Pages 301 rules from `/app` and `/app/` to `/`, keeping `/` as the canonical live app.
+  - Extended `scripts/seo-audit.mjs` so both source and built output must include the `/app` and `/app/` redirect rules.
+  - Verified `npm run seo:audit`; it regenerates/checks the 14-route sitemap, builds successfully, copies `dist/_redirects`, and passes with the existing html2canvas dynamic/static import warning and large bundle warning.
+  - Verified `public/_redirects` and `dist/_redirects` contain the exact redirect rules; verified active SheetCanvas tmux Vite logs (`sheetcanvas_bottom_sheet_dev`) show no runtime errors, only startup/HMR/page reload entries.
+  - Attempted to pull Search Console evidence for `sc-domain:sheetcanvas.com`, but the global OAuth refresh token is expired/revoked (`invalid_grant`), so no current GSC performance evidence was available for this run.
+  - Ran two sequential QA/product review passes with different subagents. Both found no requirement-relevant gaps; QA pass 2 also negative-tested missing source and built redirect files/rules and confirmed the audit fails correctly.
+  - Persisted the deployment workflow in `AGENTS.md`: SheetCanvas deploys with Wrangler Pages, not Vercel; run `npm run seo:audit`, then `npx wrangler pages deploy dist --project-name sheetcanvas --branch main`, then smoke-check production routes.
+  - Memory skill lookup found no available `memory` skill in project `.agents`, `/Users/trungluong/.agents/skills`, or `/Users/trungluong/.codex/skills`; deployment memory was written to `AGENTS.md` and this continuity ledger instead.
+  - Chose deploy-script hardening over adding another SEO page because the SOP support surface is already broad and the next leverage point is making the production publish path reliably ship the audited `dist/` output to the canonical `main` Pages branch.
+  - Updated `package.json` so `npm run deploy:pages` runs `npm run seo:audit && wrangler pages deploy dist --project-name sheetcanvas --branch main`.
+  - Extended `scripts/seo-audit.mjs` with an exact `deploy:pages` command contract so branch/project/dist drift fails before deploy.
+  - Verified `npm run seo:audit`; it regenerates/checks the 14-route sitemap, builds successfully, and passes with the existing html2canvas dynamic/static import warning and large bundle warning.
+  - Negative-tested the deploy audit by temporarily changing `--branch main` to `--branch main-preview`; `node scripts/seo-audit.mjs` failed with the expected `deploy:pages should be ... --branch main` error, then the script was restored and `npm run seo:audit` passed.
+  - Verified rendered `dist/_redirects`, `dist/sitemap.xml`, and `dist/robots.txt` still contain the expected `/app` redirects, 14 sitemap routes, and sitemap-index reference.
+  - Checked available `vite.log` and `backend/wrangler.log`; no current runtime errors found, only startup/health output. Main sandbox tmux socket access failed with `Operation not permitted`, so local stale-session cleanup could not be performed directly; QA pass 2 reported cleaning stale review tmux sessions and keeping `sheetcanvas_bottom_sheet_dev`.
+  - Ran two sequential QA/product review passes with different subagents. Pass 1 found a low-risk substring false-positive in the deploy audit; it was fixed with exact equality. Pass 2 found no requirement-relevant gaps.
+  - Attempted to pull current Search Console evidence for `sc-domain:sheetcanvas.com`, but this sandbox cannot resolve `oauth2.googleapis.com`, so no fresh GSC query/page evidence was available.
+  - Chose a project-local Search Console reporting command over another support page, because the SOP support surface is already broad and measurement is now the highest-leverage gap before more content expansion.
+  - Added `scripts/search-console-report.mjs`, which delegates to `/Users/trungluong/clawd/bin/gsc-report`, defaults to `sc-domain:sheetcanvas.com`, and writes reports to `reports/seo/search-console/` unless `--stdout-only` or `--output-dir` is supplied.
+  - Added `npm run seo:gsc` and ignored the default GSC report output folder in `.gitignore`.
+  - Extended `scripts/seo-audit.mjs` so the audit enforces the `seo:gsc` package script and the wrapper's delegate path, default property, default output directory, and stdout/custom output guards.
+  - Negative-tested the GSC wrapper audit by temporarily changing the default property; `node scripts/seo-audit.mjs` failed with `must default to the SheetCanvas domain property`, then the script was restored.
+  - Verified `npm run seo:audit`; it regenerates/checks the 14-route sitemap, builds successfully, and passes with the existing html2canvas dynamic/static import warning and large bundle warning.
+  - Verified `npm run seo:gsc -- --stdout-only` reaches the GSC wrapper but fails on sandbox DNS resolution for `oauth2.googleapis.com`, which is an environment/network limitation rather than a script wiring issue.
+  - Checked available `vite.log` and `backend/wrangler.log`; no current runtime errors found, only startup/health output. Main sandbox tmux socket access still fails with `Operation not permitted`, so local stale-session cleanup could not be performed directly; QA subagents reported cleaning their own review tmux sessions and keeping active/ambiguous sessions.
+  - Ran two sequential QA/product review passes with different subagents. Pass 1 found no requirement-relevant gaps. Pass 2 found the missing wrapper-default audit coverage; it was fixed and verified.
+  - Current deploy request: live homepage metadata already points at `https://sheetcanvas.com/brand/sheetcanvas-og.png`, but live image bytes were still the old 60 KB PNG while local `public/brand/sheetcanvas-og.png` is 1.35 MB; deploying current working tree to publish the new asset.
+  - Deployed with `npm run deploy:pages`; `npm run seo:audit` passed, Wrangler uploaded 16 files, and Cloudflare Pages published production deployment `09fb76e5-4deb-4930-b2b5-d39eb109a6d8` on branch `main` with preview `https://09fb76e5.sheetcanvas.pages.dev`.
+  - Verified production `https://sheetcanvas.com/brand/sheetcanvas-og.png` now matches local `public/brand/sheetcanvas-og.png` SHA `2298218a24b8c89dd39a4d5f84aba62d3a7b50b250f3cdcabfcaceb4fe9e9950` and serves `content-length: 1352335`.
+  - Smoke checked `https://sheetcanvas.com/`, `https://sheetcanvas.com/sitemap.xml`, and `https://sheetcanvas.com/connectors/google-analytics/`; all returned HTTP 200. Active SheetCanvas dev logs showed no runtime errors. Cleaned deploy one-off tmux sessions and kept active/ambiguous dev/watch sessions.
+  - Chose `/blog/` plus `/rss.xml` over another comparison page because the SOP already has the first docs/use-case/connector/alternatives/legal support surface in place, and the next durable gap is a publishing entry point for product-specific tutorials.
+  - Added `public/blog/index.html` as a crawlable product-specific blog hub with metadata, canonical, RSS alternate link, OG/Twitter tags, `WebPage`/`BreadcrumbList` JSON-LD, visible `Last reviewed: May 27, 2026`, app CTA, and links to existing SheetCanvas guides.
+  - Added `public/rss.xml` as the initial SheetCanvas blog feed pointing at `/blog/`, with a seed item for the tutorial hub.
+  - Linked `/blog/` and `/rss.xml` from the Learn and Docs footers so the blog hub is not orphaned without changing `/` from the live app.
+  - Updated `scripts/seo-route-config.mjs` so `/blog/` appears in sitemap route order with weekly change frequency and priority `0.55`.
+  - Extended `scripts/seo-audit.mjs` so source and built output must include a valid-enough RSS feed with the SheetCanvas blog title, `/blog/` link, self `atom:link`, and hub GUID.
+  - Verified `npm run seo:audit`; it regenerated a 15-route sitemap, built successfully, and passed the SEO audit with only the existing html2canvas dynamic/static import warning and large bundle warning.
+  - Verified rendered/source blog artifacts contain the expected title, canonical, RSS alternate link, `WebPage` and `BreadcrumbList` schema, visible reviewed date, sitemap entry, and source/dist RSS feed entries.
+  - Checked available `vite.log` and `backend/wrangler.log`; no current runtime errors found, only startup/health output.
+  - Ran two sequential QA/product review passes with different subagents. Both found no requirement-relevant gaps for the blog/RSS surface, sitemap coverage, RSS audit coverage, link graph, root app constraint, or product-specific positioning.
+  - Tmux note: early commands used tmux successfully, but the default socket intermittently returned `Operation not permitted` for capture/send operations during validation. The final `npm run seo:audit` and rendered artifact inspections were run directly to avoid handing off unverified work; QA subagents were still able to run their own checks and clean their review sessions.
+  - Chose the first full blog tutorial article over another support hub because the previous run created `/blog/` and `/rss.xml`, and the SOP's next durable gap was practical product-specific tutorial content that points back to the app.
+  - Added `public/blog/csv-dashboard-from-local-files/index.html` as a crawlable tutorial with product-specific metadata, canonical, RSS alternate link, OG/Twitter tags, `BlogPosting` plus `WebPage`/`BreadcrumbList` JSON-LD, visible `Last reviewed: May 27, 2026`, app CTA, and links to docs, the CSV dashboard use case, related data-analysis/use-case pages, connectors, and the Excel comparison.
+  - Updated `public/blog/index.html` so the blog hub now links to the tutorial instead of presenting only durable guide placeholders.
+  - Linked the tutorial from `public/use-cases/csv-to-dashboard/index.html` so the new article has inbound support-page coverage from its nearest use-case page.
+  - Updated `public/rss.xml` with the tutorial item and extended `scripts/seo-audit.mjs` so source/dist RSS feeds must include the article link and GUID.
+  - Updated `scripts/seo-route-config.mjs`; `public/sitemap.xml` now contains 16 routes including `https://sheetcanvas.com/blog/csv-dashboard-from-local-files/`.
+  - Attempted current Search Console evidence via `npm run seo:gsc -- --stdout-only`, but the tmux socket failed before the command could run; no fresh GSC data was available in this sandbox, and `.seo-cache/` was absent.
+  - Verified with `node scripts/generate-sitemap.mjs && ./node_modules/.bin/vite build && node scripts/seo-audit.mjs`; it passed with the existing html2canvas dynamic/static import warning and large bundle warning. This direct fallback was used only after repeated tmux `Operation not permitted` failures on longer build sessions.
+  - Verified rendered artifacts contain the article title, canonical, `BlogPosting`, `BreadcrumbList`, visible reviewed date, blog hub link, RSS item, and sitemap entry.
+  - Checked active SheetCanvas Vite tmux logs from `sheetcanvas_bottom_sheet_dev`; no runtime errors found, only normal page reload entries for the edited static files.
+  - Deployed current working tree with `npm run deploy:pages`; sitemap generation found 16 routes, `npm run build` and `node scripts/seo-audit.mjs` passed, Wrangler uploaded 7 files, and Cloudflare Pages published production deployment `fad22057-96e8-4fa4-8a5b-0e517785a8fb` on branch `main` with preview `https://fad22057.sheetcanvas.pages.dev`.
+  - Smoke checked production after deploy: `https://sheetcanvas.com/`, `/blog/`, `/blog/csv-dashboard-from-local-files/`, `/sitemap.xml`, and `/rss.xml` all returned expected content; sitemap includes `/blog/` and the CSV tutorial; RSS includes the tutorial item; live OG image SHA remains `2298218a24b8c89dd39a4d5f84aba62d3a7b50b250f3cdcabfcaceb4fe9e9950`.
+  - Checked active SheetCanvas Vite tmux logs after deploy; no runtime errors found, only normal Vite reload entries. Cleaned deploy/check tmux sessions from this run and kept active/ambiguous dev/watch sessions.
 - Now:
-  - SEO audit tooling is tightened and verified locally; the working tree also includes prior SEO/deployment ledger changes that predate this run.
+  - Search Console returned 0 clicks and 0 impressions for `sc-domain:sheetcanvas.com` from 2026-04-27 to 2026-05-24, so there was still no query/page evidence to prioritize from.
+  - Chose the GA4 dashboard canvas tutorial because the previous next step identified the GA4 connector workflow as the best product-specific expansion when Search Console remained empty.
+  - Added `public/blog/google-analytics-dashboard-canvas/index.html` as a crawlable tutorial with product-specific metadata, canonical, RSS alternate link, OG/Twitter tags, `BlogPosting` plus `WebPage`/`BreadcrumbList` JSON-LD, visible `Last reviewed: May 27, 2026`, app CTA, and links to docs, GA4 connector setup, CSV tutorial, and related use-case pages.
+  - Updated `public/blog/index.html` so the blog hub links to both the CSV dashboard tutorial and the new GA4 dashboard tutorial.
+  - Updated `public/rss.xml` with the GA4 tutorial item and permalink GUID.
+  - Updated `scripts/seo-route-config.mjs`; `public/sitemap.xml` now contains 17 routes including `https://sheetcanvas.com/blog/google-analytics-dashboard-canvas/`.
+  - Linked the tutorial from `public/connectors/google-analytics/index.html` so the new article has inbound support-page coverage from its nearest connector page.
+  - Verified `npm run seo:audit`; sitemap generation found 17 routes, Vite build passed, and the SEO audit passed with the existing html2canvas dynamic/static import warning and large bundle warning.
+  - Verified source and built GA4 tutorial artifacts contain the expected title, canonical, RSS alternate link, `og:type` `article`, `BlogPosting`, `BreadcrumbList`, visible reviewed date, root CTA, GA4 connector link, sitemap entry, RSS item link/GUID, and robots sitemap-index reference.
+  - Checked active SheetCanvas Vite tmux logs from `sheetcanvas_bottom_sheet_dev`; no runtime errors found, only normal reload entries for edited static files.
+  - Ran two sequential QA/product review passes with different subagents. Both found no requirement-relevant gaps for the GA4 tutorial, metadata/schema/RSS/sitemap coverage, link graph, root app constraint, or product-specific positioning.
+  - Cleanup: killed stale task-specific tmux sessions from this run after verification; kept active/ambiguous dev/watch sessions including `sheetcanvas_bottom_sheet_dev`.
+  - Current run chose deployment over adding another SEO page because the GA4 dashboard tutorial was already the next SOP-aligned product-specific expansion but production was still serving the app fallback at `/blog/google-analytics-dashboard-canvas/`.
+  - Confirmed current Search Console evidence for `sc-domain:sheetcanvas.com` still showed 0 clicks and 0 impressions for 2026-04-27 to 2026-05-24, so there was no query/page evidence to reprioritize from.
+  - Deployed with `npm run deploy:pages`; sitemap generation found 17 routes, Vite build and `node scripts/seo-audit.mjs` passed, Wrangler uploaded 5 files plus `_redirects`, and Cloudflare Pages published production deployment `6c93135f` on branch `main` with preview `https://6c93135f.sheetcanvas.pages.dev`.
+  - Smoke checked production after deploy: `https://sheetcanvas.com/`, `/blog/`, `/blog/google-analytics-dashboard-canvas/`, `/rss.xml`, and `/sitemap.xml` all returned HTTP 200 with expected SheetCanvas metadata/content; the GA4 tutorial now serves crawlable `BlogPosting` HTML, RSS includes the GA4 item, and sitemap includes the route.
+  - Checked active SheetCanvas Vite tmux logs from `sheetcanvas_bottom_sheet_dev`; no runtime errors found, only normal Vite reload entries for edited static files.
+  - Current run had no `.seo-cache/`; `npm run seo:gsc -- --stdout-only` was blocked by sandbox DNS failure resolving `oauth2.googleapis.com`, so no fresh Search Console evidence was available.
+  - Chose a ClickHouse query dashboard tutorial because Search Console evidence was unavailable and the next best SOP-aligned task was another product-specific tutorial for an existing shipped connector workflow.
+  - Added `public/blog/clickhouse-query-dashboard-canvas/index.html` as a crawlable tutorial with product-specific metadata, canonical, RSS alternate link, OG/Twitter tags, `BlogPosting` plus `WebPage`/`BreadcrumbList` JSON-LD, visible `Last reviewed: May 27, 2026`, root app CTAs, and shipped-behavior-only copy around the backend proxy, read-only `SELECT`/`WITH` queries, row limits/truncation, connected-sheet refresh metadata, charts, pivots, sparklines, and notes.
+  - Updated `public/blog/index.html` so the blog hub links to the ClickHouse tutorial alongside the CSV and GA4 tutorials.
+  - Updated `public/rss.xml` with the ClickHouse tutorial item and permalink GUID.
+  - Updated `scripts/seo-route-config.mjs`; `public/sitemap.xml` now contains 18 routes including `https://sheetcanvas.com/blog/clickhouse-query-dashboard-canvas/`.
+  - Linked the tutorial from `public/connectors/clickhouse/index.html` so the new article has inbound support-page coverage from its nearest connector page.
+  - Verified `npm run seo:audit`; sitemap generation found 18 routes or confirmed the sitemap current, Vite build passed, and the SEO audit passed with only the existing html2canvas dynamic/static import warning and large bundle warning.
+  - Verified source and built ClickHouse tutorial artifacts contain the expected title, canonical, RSS alternate link, `og:type` `article`, `BlogPosting`, `BreadcrumbList`, visible reviewed date, root CTA, ClickHouse connector link, sitemap entry, RSS item link/GUID, and robots sitemap-index reference.
+  - QA pass 1 found the first version too thin for a high-leverage blog tutorial; expanded it from about 435 to about 1,552 body words with prerequisites, SQL shape, result handling, canvas layout, review checklist, boundaries, refresh/error handling, and next-step links.
+  - QA pass 2 and final content re-check with different subagents found no requirement-relevant gaps after the expansion.
+  - Checked active SheetCanvas tmux logs: `sheetcanvas_bottom_sheet_dev` showed only normal Vite reload entries and `sheetcanvas_backend` showed Wrangler ready plus successful `/health` and `/api/connectors` requests. A stale gitignored `backend/wrangler.log` still contains an older startup error, but no active backend tmux log error was present.
+  - Cleanup: no clearly stale task-specific tmux sessions remained to kill. Kept active/ambiguous dev/watch sessions including `sheetcanvas_bottom_sheet_dev`, `sheetcanvas_backend`, `metro`, and unrelated app servers/watchers.
+  - Attempted `npm run deploy:pages`; the command ran `npm run seo:audit` successfully, then Wrangler failed before publishing because the sandbox could not resolve `dash.cloudflare.com` and could not write a Wrangler log under `/Users/trungluong/Library/Preferences/.wrangler/logs/`.
+  - Restarted the `sheetcanvas_bottom_sheet_dev` tmux dev server on strict port 5173 after local `curl` could not connect to the stale pane. The restarted pane reports Vite ready at `http://127.0.0.1:5173/`, but sandbox `curl` still cannot connect to that local server, so rendered `dist/` artifact checks are the reliable verification for this run.
+  - Current run: `npm run seo:gsc -- --stdout-only --days 28` returned 0 clicks and 0 impressions for `sc-domain:sheetcanvas.com` from 2026-04-27 to 2026-05-24, so there was no current query evidence to prioritize from.
+  - Chose RSS automation instead of another content page because the blog/tutorial surface now exists and the SOP lists `/rss.xml`; keeping feed output generated from page schema is higher leverage than hand-maintaining duplicate feed metadata.
+  - Added `scripts/generate-rss.mjs`; it discovers `public/blog/**/index.html`, reads `BlogPosting`/`WebPage` JSON-LD, and writes `public/rss.xml` with title, link, permalink GUID, pubDate, and description entries.
+  - Updated `package.json` so `npm run seo:audit` runs `npm run seo:sitemap && npm run seo:rss && npm run build && node scripts/seo-audit.mjs`; added `npm run seo:rss`.
+  - Hardened `scripts/seo-audit.mjs` so RSS checks now enforce item count plus link, GUID, title, description, and pubDate against current blog page JSON-LD for both source and built output.
+  - QA pass 1 found the initial RSS audit only checked links/GUIDs and could miss title/description/pubDate drift; tightened the audit contract and reran verification.
+  - Updated `backend/src/googleAnalytics.ts` so OAuth token failures return `400` or `401` for `invalid_grant` instead of `502`, preventing expected reconnect/auth failures from being logged as backend server errors.
+  - Verified `backend` TypeScript with `npx tsc --noEmit`; it passed.
+  - Verified `npm run seo:audit`; sitemap generation found 18 routes, RSS generation confirmed 4 items, Vite build passed, and the SEO audit passed with the existing html2canvas dynamic/static import warning and large bundle warning.
+  - Verified `public/rss.xml` and `dist/rss.xml` match and contain the expected blog links in order: ClickHouse tutorial, GA4 tutorial, CSV local files tutorial, and blog hub.
+  - Checked logs: Vite log was clean. `backend/wrangler.log` contained the current GA OAuth 502 from before the fix, so the code was fixed; attempting to restart Wrangler in this sandbox failed because tmux socket access became intermittent and direct Wrangler binding to `127.0.0.1:8787` was denied.
+  - Backend restart status: the previous backend dev server was stopped during the restart attempt, but the sandbox could not start a replacement (`Failed to bind to localhost:8787: permission denied`). Restart `backend` outside this restricted runner before relying on local connector endpoints.
+  - Current run chose sitemap freshness hardening instead of adding another SEO page, because the SOP support surface now has 18 crawlable routes and the next highest leverage improvement is helping crawlers identify changed product-specific pages reliably.
+  - Added route-matched `WebPage` JSON-LD with `dateModified: 2026-05-27` to the root `index.html` while preserving the Vite app mount and `/index.tsx` module entry, so `/` remains the live app.
+  - Updated `scripts/generate-sitemap.mjs` so sitemap `<lastmod>` is generated from each route's matching `WebPage.dateModified` instead of being hand-maintained or omitted.
+  - Hardened `scripts/seo-audit.mjs` so source and built sitemaps must preserve the configured route order and each entry's `<lastmod>` must match route-matched `WebPage.dateModified`; mismatched or missing route schema now fails the audit.
+  - Regenerated `public/sitemap.xml`; source and built sitemaps now include `<lastmod>` for all 18 routes, including `/`.
+  - Verified `npm run seo:audit`; sitemap generation, RSS generation, Vite production build, and SEO audit all passed. Existing Vite warnings remain the html2canvas dynamic/static import warning and large bundle warning.
+  - Verified rendered artifacts directly: `index.html` still contains `<div id="root"></div>` and `/index.tsx`; `public/sitemap.xml` and `dist/sitemap.xml` start with `/`, `/learn/`, `/docs/`, `/blog/` and include expected `<lastmod>` values.
+  - Checked active SheetCanvas Vite logs from `sheetcanvas_bottom_sheet_dev`; no runtime errors found, only normal Vite startup/reload entries.
+  - QA/Product review: first pass found the audit could accept an unrelated `WebPage.dateModified`; fixed generator/audit to require route-matched `WebPage.url`. Second pass found root `/` and route order were not covered; added root `WebPage` and sitemap order enforcement. Final two sequential QA passes found no requirement-relevant gaps.
+  - Self-improvement: the first tmux memory command used unset `$CODEX_HOME`, which expanded to `/automations` and failed; future automation runs should use the explicit memory path from the prompt or ensure `CODEX_HOME` is exported inside tmux.
 - Next:
-  - Next SEO task: add `/use-cases/spreadsheet-canvas/` using the audit gate, or wire `npm run seo:audit` into the Wrangler pre-deploy flow.
+  - Current user request: commit the current code changes in logical chunks, then deploy with the Cloudflare Pages flow.
+  - Before committing, verify the worktree with `npm run seo:audit`, backend TypeScript where relevant, and active tmux logs.
+  - Commit chunks should keep SEO/static content, SEO automation/audit tooling, backend GA/CORS fixes, and docs/ledger updates logically separated when feasible.
+  - Deploy with `npm run deploy:pages`; after deploy, smoke-check `/`, `/sitemap.xml`, `/rss.xml`, and one newly added support/blog route.
 
 Open questions (UNCONFIRMED if needed):
 - None.
@@ -148,16 +354,36 @@ Working set (files/ids/commands):
 - `public/landing-page-design/`
 - `public/manifest.webmanifest`
 - `public/robots.txt`
+- `public/_redirects`
 - `public/sitemap-index.xml`
 - `public/sitemap.xml`
 - `public/learn/index.html`
 - `public/docs/index.html`
+- `public/blog/index.html`
+- `public/blog/csv-dashboard-from-local-files/index.html`
+- `public/blog/google-analytics-dashboard-canvas/index.html`
+- `public/blog/clickhouse-query-dashboard-canvas/index.html`
+- `public/rss.xml`
+- `public/use-cases/spreadsheet-canvas/index.html`
+- `public/use-cases/csv-to-dashboard/index.html`
+- `public/use-cases/local-spreadsheet-app/index.html`
+- `public/use-cases/data-analysis-canvas/index.html`
+- `public/alternatives/excel/index.html`
+- `public/alternatives/google-sheets/index.html`
+- `public/alternatives/airtable/index.html`
+- `public/privacy/index.html`
+- `public/terms/index.html`
 - `public/connectors/clickhouse/index.html`
 - `public/connectors/google-analytics/index.html`
 - `public/brand/sheetcanvas-og.svg`
 - `public/brand/sheetcanvas-og.png`
 - `scripts/tmux-run-capture.mjs`
+- `scripts/generate-sitemap.mjs`
+- `scripts/search-console-report.mjs`
+- `scripts/seo-route-config.mjs`
 - `scripts/seo-audit.mjs`
+- `package.json`
+- `package-lock.json`
 - `AGENTS.md`
 - Dev server: `http://127.0.0.1:5173/` in tmux session `sheetcanvas_bottom_sheet_dev`
-- Current command task: run `npm run seo:audit` before SEO page expansion and deploy via Wrangler when ready.
+- Current command task: use `npm run deploy:pages` for Cloudflare Pages deploys so `npm run seo:audit` always runs first.
