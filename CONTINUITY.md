@@ -332,11 +332,17 @@ State:
   - Checked active SheetCanvas Vite logs from `sheetcanvas_bottom_sheet_dev`; no runtime errors found, only normal Vite startup/reload entries.
   - QA/Product review: first pass found the audit could accept an unrelated `WebPage.dateModified`; fixed generator/audit to require route-matched `WebPage.url`. Second pass found root `/` and route order were not covered; added root `WebPage` and sitemap order enforcement. Final two sequential QA passes found no requirement-relevant gaps.
   - Self-improvement: the first tmux memory command used unset `$CODEX_HOME`, which expanded to `/automations` and failed; future automation runs should use the explicit memory path from the prompt or ensure `CODEX_HOME` is exported inside tmux.
+  - Current commit/deploy run: committed the work in logical chunks: `04f6afb` backend GA auth handling, `3b16f3f` SEO/static support content, `6850093` backend OAuth/CORS hardening, `238ec67` GA date formatting, `07b7ec6` sitemap/RSS/deploy automation, and `93dc9e5` repo workflow docs.
+  - QA pass 1 found deploy leakage risk for `public/landing-page-design/**`; kept the assets because the app iframe uses them, added `public/_headers` with `X-Robots-Tag: noindex, nofollow`, and hardened `scripts/seo-audit.mjs` to require the header in source and built assets.
+  - QA pass 2 found overly broad OAuth `400` mapping and possible production CORS gaps; fixed OAuth status mapping so only known client OAuth errors map to `400`, `invalid_grant` maps to `401`, and upstream/server failures remain `502`; added production SheetCanvas origins to `backend/wrangler.toml`.
+  - Verified `npm run seo:audit`; sitemap generation confirmed 18 routes, RSS generation confirmed 3 blog-post items, Vite production build passed, and SEO audit passed with existing html2canvas dynamic/static import and large chunk warnings.
+  - Verified backend TypeScript with `cd backend && npx tsc --noEmit`; it passed.
+  - Deployed with `npm run deploy:pages`; Cloudflare Pages production deployment `c5722e68-3d00-46e3-a2a7-3b81c7da1d9d` on branch `main` published source commit `93dc9e5`, preview `https://c5722e68.sheetcanvas.pages.dev`.
+  - Smoke checked preview and production: `/`, `/sitemap.xml`, `/rss.xml`, `/blog/clickhouse-query-dashboard-canvas/`, and `/privacy/` returned HTTP 200 with expected content; `/landing-page-design/SheetCanvas.html` returned the expected noindex/nofollow header on preview and production.
+  - Started fresh active backend dev server in tmux session `sheetcanvas_backend_current_root` using root `wrangler` 4.73.0 after backend-local Wrangler failed with a workerd host/binary version mismatch; `GET /health` returned 200 and the fresh active backend log has no errors.
 - Next:
-  - Current user request: commit the current code changes in logical chunks, then deploy with the Cloudflare Pages flow.
-  - Before committing, verify the worktree with `npm run seo:audit`, backend TypeScript where relevant, and active tmux logs.
-  - Commit chunks should keep SEO/static content, SEO automation/audit tooling, backend GA/CORS fixes, and docs/ledger updates logically separated when feasible.
-  - Deploy with `npm run deploy:pages`; after deploy, smoke-check `/`, `/sitemap.xml`, `/rss.xml`, and one newly added support/blog route.
+  - Monitor Search Console after deployment; current SEO automation can use `npm run seo:gsc`.
+  - Consider adding a read-only generated-artifact check that diffs generator output in a temp directory, to avoid review commands accidentally mutating generated files.
 
 Open questions (UNCONFIRMED if needed):
 - None.
