@@ -8,26 +8,31 @@
     "dev:local": "node scripts/dev-local.mjs",
     "tmux:capture": "node scripts/tmux-run-capture.mjs",
     "build": "vite build",
-    "seo:audit": "npm run build && node scripts/seo-audit.mjs",
+    "seo:gsc": "node scripts/search-console-report.mjs",
+    "seo:rss": "node scripts/generate-rss.mjs",
+    "seo:sitemap": "node scripts/generate-sitemap.mjs",
+    "seo:audit": "npm run seo:sitemap && npm run seo:rss && npm run build && node scripts/seo-audit.mjs",
+    "deploy:pages": "npm run seo:audit && wrangler pages deploy dist --project-name sheetcanvas --branch main",
     "preview": "vite preview"
   },
   "dependencies": {
-    "react-dom": "^19.2.0",
-    "lucide-react": "^0.554.0",
-    "react": "^19.2.0",
-    "recharts": "2.15.0",
-    "html2canvas": "1.4.1",
-    "markdown-to-jsx": "^9.1.1",
-    "idb": "8.0.0",
-    "xlsx": "0.18.5",
-    "d3-format": "3.1.0",
     "@tanstack/react-virtual": "3.5.0",
+    "d3-format": "3.1.0",
+    "html2canvas": "1.4.1",
+    "idb": "8.0.0",
+    "lucide-react": "^0.554.0",
+    "markdown-to-jsx": "^9.1.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "recharts": "2.15.0",
+    "xlsx": "0.18.5",
     "zustand": "4.5.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "vite": "^6.2.0",
+    "wrangler": "^4.73.0"
   }
 }

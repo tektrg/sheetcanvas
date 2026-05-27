@@ -12,6 +12,7 @@ node_modules
 dist
 dist-ssr
 test-results/
+reports/seo/search-console/
 *.local
 
 # Local design-tool artifacts
