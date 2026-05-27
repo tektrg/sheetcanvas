@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Local spreadsheet app use case - SheetCanvas</title>
+    <meta name="description" content="Use SheetCanvas as a local spreadsheet app for CSV and XLSX analysis when files, tables, charts, pivots, sparklines, and notes need to stay visible together.">
+    <link rel="canonical" href="https://sheetcanvas.com/use-cases/local-spreadsheet-app/">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="SheetCanvas">
+    <meta property="og:title" content="Local spreadsheet app use case - SheetCanvas">
+    <meta property="og:description" content="A product-specific guide to using SheetCanvas for local CSV and XLSX analysis on a spatial canvas.">
+    <meta property="og:url" content="https://sheetcanvas.com/use-cases/local-spreadsheet-app/">
+    <meta property="og:image" content="https://sheetcanvas.com/brand/sheetcanvas-og.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="SheetCanvas spreadsheet canvas preview">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Local spreadsheet app use case - SheetCanvas">
+    <meta name="twitter:description" content="Use SheetCanvas for local CSV and XLSX analysis with visible tables, charts, pivots, sparklines, and notes.">
+    <meta name="twitter:image" content="https://sheetcanvas.com/brand/sheetcanvas-og.png">
+    <meta name="theme-color" content="#0f766e">
+    <link rel="icon" type="image/svg+xml" href="/brand/sheetcanvas-logo.svg">
+    <link rel="apple-touch-icon" href="/brand/sheetcanvas-logo.png">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "name": "theindie.app",
+            "url": "https://theindie.app/",
+            "email": "yourfriend@theindie.app",
+            "description": "theindie.app is a founder-led indie studio building small, focused software products.",
+            "sameAs": [
+              "https://fasttab.theindie.app",
+              "https://strider.theindie.app",
+              "https://pineapplelog.theindie.app",
+              "https://gptbreeze.io",
+              "https://speechtodo.com",
+              "https://sheetcanvas.com"
+            ]
+          },
+          {
+            "@type": "WebPage",
+            "name": "Local spreadsheet app use case",
+            "url": "https://sheetcanvas.com/use-cases/local-spreadsheet-app/",
+            "description": "A SheetCanvas use-case guide for analyzing local CSV and XLSX files on a spatial spreadsheet canvas.",
+            "dateModified": "2026-05-27",
+            "isPartOf": {
+              "@type": "WebSite",
+              "name": "SheetCanvas",
+              "url": "https://sheetcanvas.com/"
+            },
+            "about": {
+              "@type": "SoftwareApplication",
+              "name": "SheetCanvas",
+              "applicationCategory": "BusinessApplication",
+              "operatingSystem": "Web",
+              "url": "https://sheetcanvas.com/",
+              "publisher": {
+                "@type": "Organization",
+                "name": "theindie.app",
+                "url": "https://theindie.app/"
+              }
+            },
+            "breadcrumb": {
+              "@type": "BreadcrumbList",
+              "itemListElement": [
+                {
+                  "@type": "ListItem",
+                  "position": 1,
+                  "name": "SheetCanvas",
+                  "item": "https://sheetcanvas.com/"
+                },
+                {
+                  "@type": "ListItem",
+                  "position": 2,
+                  "name": "Local spreadsheet app",
+                  "item": "https://sheetcanvas.com/use-cases/local-spreadsheet-app/"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    </script>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #121717;
+        --muted: #53605f;
+        --line: #d8e1df;
+        --paper: #fbfbf8;
+        --panel: #ffffff;
+        --teal: #0f766e;
+        --teal-dark: #0b4f4a;
+        --warm: #f3efe6;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font: 16px/1.6 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      a {
+        color: inherit;
+      }
+
+      .skip-link {
+        position: absolute;
+        left: 16px;
+        top: 12px;
+        transform: translateY(-140%);
+        background: var(--ink);
+        color: #fff;
+        padding: 8px 12px;
+        border-radius: 6px;
+        transition: transform 0.15s;
+      }
+
+      .skip-link:focus {
+        transform: translateY(0);
+      }
+
+      .site-header,
+      main,
+      .site-footer {
+        width: min(1120px, calc(100% - 40px));
+        margin: 0 auto;
+      }
+
+      .site-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        padding: 22px 0;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        text-decoration: none;
+        font-weight: 700;
+      }
+
+      .brand-mark {
+        display: grid;
+        width: 24px;
+        height: 24px;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 3px;
+      }
+
+      .brand-mark span {
+        border: 1px solid var(--teal);
+        border-radius: 4px;
+      }
+
+      .brand-mark span:last-child {
+        background: var(--teal);
+      }
+
+      .nav,
+      .footer-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .nav {
+        justify-content: flex-end;
+      }
+
+      .nav a,
+      .footer-links a {
+        text-decoration: none;
+      }
+
+      .nav a:hover,
+      .footer-links a:hover {
+        color: var(--ink);
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.05fr) minmax(280px, 0.95fr);
+        gap: 44px;
+        align-items: start;
+        padding: 72px 0 64px;
+        border-top: 1px solid var(--line);
+      }
+
+      .eyebrow {
+        margin: 0 0 16px;
+        color: var(--teal-dark);
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        max-width: 760px;
+        margin-bottom: 20px;
+        font-size: clamp(42px, 7vw, 72px);
+        line-height: 0.98;
+        letter-spacing: 0;
+      }
+
+      h2 {
+        margin-bottom: 12px;
+        font-size: clamp(30px, 4vw, 46px);
+        line-height: 1.08;
+        letter-spacing: 0;
+      }
+
+      h3 {
+        margin-bottom: 10px;
+        font-size: 22px;
+        line-height: 1.2;
+      }
+
+      .hero-copy,
+      .lede,
+      .card p,
+      .site-footer p {
+        color: var(--muted);
+      }
+
+      .hero-copy {
+        max-width: 680px;
+        font-size: 19px;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 30px;
+      }
+
+      .button {
+        display: inline-flex;
+        min-height: 44px;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 10px 16px;
+        text-decoration: none;
+        font-weight: 700;
+      }
+
+      .button-primary {
+        border-color: var(--teal);
+        background: var(--teal);
+        color: #fff;
+      }
+
+      .button-secondary {
+        background: #fff;
+      }
+
+      .reviewed {
+        margin: 18px 0 0;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .panel {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        padding: 22px;
+      }
+
+      .panel h2 {
+        font-size: 28px;
+      }
+
+      .workflow-list,
+      .check-list {
+        display: grid;
+        gap: 12px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .workflow-list li,
+      .check-list li {
+        border-top: 1px solid var(--line);
+        padding-top: 12px;
+      }
+
+      .workflow-list li:first-child,
+      .check-list li:first-child {
+        border-top: 0;
+        padding-top: 0;
+      }
+
+      .section {
+        padding: 62px 0;
+        border-top: 1px solid var(--line);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 18px;
+        margin-top: 28px;
+      }
+
+      .card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        padding: 22px;
+      }
+
+      .callout {
+        border: 1px solid #d7c9a9;
+        border-radius: 8px;
+        background: var(--warm);
+        padding: 24px;
+      }
+
+      .site-footer {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 30px 0 38px;
+        border-top: 1px solid var(--line);
+      }
+
+      .site-footer p {
+        margin: 0;
+      }
+
+      @media (max-width: 820px) {
+        .site-header,
+        .site-footer {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .nav {
+          justify-content: flex-start;
+        }
+
+        .hero,
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        .hero {
+          padding-top: 48px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="Open SheetCanvas app">
+        <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
+        <span>SheetCanvas</span>
+      </a>
+      <nav class="nav" aria-label="Main navigation">
+        <a href="/">Open app</a>
+        <a href="/learn/">Learn</a>
+        <a href="/docs/">Docs</a>
+        <a href="/use-cases/spreadsheet-canvas/">Spreadsheet canvas</a>
+        <a href="/use-cases/csv-to-dashboard/">CSV dashboard</a>
+        <a href="/use-cases/data-analysis-canvas/">Data analysis</a>
+        <a href="/alternatives/excel/">Excel alternative</a>
+        <a href="/alternatives/google-sheets/">Google Sheets alternative</a>
+        <a href="/alternatives/airtable/">Airtable alternative</a>
+        <a href="/connectors/clickhouse/">ClickHouse</a>
+        <a href="/connectors/google-analytics/">Google Analytics</a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Local spreadsheet workflow</p>
+          <h1>Analyze local spreadsheet files without tab sprawl.</h1>
+          <p class="hero-copy">SheetCanvas is useful when CSV or XLSX work starts from files on your machine and the analysis needs room. Import the file, keep the source table visible, and place charts, pivots, sparklines, and notes beside the rows you are checking.</p>
+          <div class="actions">
+            <a class="button button-primary" href="/">Open SheetCanvas</a>
+            <a class="button button-secondary" href="/docs/">Read the docs</a>
+          </div>
+          <p class="reviewed">Last reviewed: May 27, 2026</p>
+        </div>
+        <aside class="panel" aria-labelledby="fit-title">
+          <h2 id="fit-title">Best fit</h2>
+          <ul class="check-list">
+            <li><strong>File-first work:</strong> start from a CSV or XLSX file instead of setting up a database or dashboard project.</li>
+            <li><strong>Visible context:</strong> keep the imported table, visual checks, and notes together while you inspect the data.</li>
+            <li><strong>Low setup analysis:</strong> use the canvas for one-off or recurring file reviews that do not need a formal BI workflow.</li>
+          </ul>
+        </aside>
+      </section>
+
+      <section class="section" aria-labelledby="workflow-title">
+        <p class="eyebrow">How the workflow maps to the app</p>
+        <h2 id="workflow-title">Use the file as the starting point, then keep the analysis spatial.</h2>
+        <p class="lede">The app keeps imported data and derived views on the same canvas. That makes it easier to compare original rows, chart objects, pivot summaries, sparklines, and written observations without hiding context in another worksheet.</p>
+        <div class="grid">
+          <article class="card">
+            <h3>Import the local file.</h3>
+            <p>Drop in a CSV or XLSX file and use the resulting table as the source object. The table stays visible so every chart, pivot, or note can be checked against the imported rows.</p>
+          </article>
+          <article class="card">
+            <h3>Build checks near the rows.</h3>
+            <p>Add charts, pivots, and sparklines near the relevant fields to inspect trends, totals, and outliers without moving analysis into separate workbook tabs.</p>
+          </article>
+          <article class="card">
+            <h3>Capture the review context.</h3>
+            <p>Use canvas notes for cleanup questions, assumptions, decisions, and next checks while the surrounding objects show the numbers that support them.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="steps-title">
+        <div class="panel">
+          <p class="eyebrow">Practical setup</p>
+          <h2 id="steps-title">A simple local spreadsheet pass in SheetCanvas</h2>
+          <ul class="workflow-list">
+            <li><strong>Open the file:</strong> add the CSV or XLSX file to SheetCanvas as a table object.</li>
+            <li><strong>Inspect the shape:</strong> use the visible table to confirm column names, date fields, categories, duplicate-looking rows, and obvious gaps.</li>
+            <li><strong>Add analysis objects:</strong> create chart, pivot, or sparkline objects for the few questions you are answering now.</li>
+            <li><strong>Keep notes in place:</strong> put cleanup notes, decisions, and follow-up questions near the fields or summaries they refer to.</li>
+            <li><strong>Separate files from refreshable sources:</strong> when the source should refresh from a system instead of a local file, use the shipped <a href="/connectors/clickhouse/">ClickHouse</a> or <a href="/connectors/google-analytics/">Google Analytics</a> connector flows where they match the source.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="boundaries-title">
+        <div class="callout">
+          <p class="eyebrow">Current boundaries</p>
+          <h2 id="boundaries-title">Use this for local analysis, not every mature spreadsheet feature.</h2>
+          <p>SheetCanvas is strongest when you need a fast, visible workspace around spreadsheet-shaped files. For advanced workbook automation, governed production models, or broad reporting distribution, keep using the mature spreadsheet or BI system and use SheetCanvas for spatial analysis around the source data.</p>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="next-title">
+        <p class="eyebrow">Related SheetCanvas pages</p>
+        <h2 id="next-title">Continue from the local spreadsheet workflow.</h2>
+        <div class="actions">
+          <a class="button button-primary" href="/">Open SheetCanvas</a>
+          <a class="button button-secondary" href="/use-cases/spreadsheet-canvas/">Spreadsheet canvas use case</a>
+          <a class="button button-secondary" href="/use-cases/csv-to-dashboard/">CSV dashboard workflow</a>
+          <a class="button button-secondary" href="/use-cases/data-analysis-canvas/">Data analysis canvas use case</a>
+          <a class="button button-secondary" href="/alternatives/excel/">Excel alternative comparison</a>
+          <a class="button button-secondary" href="/alternatives/google-sheets/">Google Sheets alternative comparison</a>
+          <a class="button button-secondary" href="/alternatives/airtable/">Airtable alternative comparison</a>
+          <a class="button button-secondary" href="/docs/">Docs</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>SheetCanvas is built by <a href="https://theindie.app/">theindie.app</a>.</p>
+      <nav class="footer-links" aria-label="Footer links">
+        <a href="/">Open app</a>
+        <a href="/learn/">Learn</a>
+        <a href="/docs/">Docs</a>
+        <a href="/use-cases/spreadsheet-canvas/">Spreadsheet canvas use case</a>
+        <a href="/use-cases/csv-to-dashboard/">CSV to dashboard use case</a>
+        <a href="/use-cases/local-spreadsheet-app/">Local spreadsheet app use case</a>
+        <a href="/use-cases/data-analysis-canvas/">Data analysis canvas use case</a>
+        <a href="/alternatives/excel/">Excel alternative</a>
+        <a href="/alternatives/google-sheets/">Google Sheets alternative</a>
+        <a href="/alternatives/airtable/">Airtable alternative</a>
+        <a href="/connectors/clickhouse/">ClickHouse connector</a>
+        <a href="/connectors/google-analytics/">Google Analytics connector</a>
+      </nav>
+    </footer>
+  </body>
+</html>

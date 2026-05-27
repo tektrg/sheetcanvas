@@ -3,21 +3,21 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>SheetCanvas Docs - Spreadsheet canvas setup and connectors</title>
-    <meta name="description" content="SheetCanvas docs for importing local spreadsheet files, using canvas objects, and configuring ClickHouse or Google Analytics connected sheets.">
-    <link rel="canonical" href="https://sheetcanvas.com/docs/">
+    <title>Spreadsheet canvas use case - SheetCanvas</title>
+    <meta name="description" content="Use SheetCanvas as a spreadsheet canvas when CSV, XLSX, charts, pivots, sparklines, and notes need to stay visible together.">
+    <link rel="canonical" href="https://sheetcanvas.com/use-cases/spreadsheet-canvas/">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="SheetCanvas">
-    <meta property="og:title" content="SheetCanvas Docs - Spreadsheet canvas setup and connectors">
-    <meta property="og:description" content="Product-specific SheetCanvas docs for local files, canvas objects, ClickHouse, and Google Analytics connected sheets.">
-    <meta property="og:url" content="https://sheetcanvas.com/docs/">
+    <meta property="og:title" content="Spreadsheet canvas use case - SheetCanvas">
+    <meta property="og:description" content="A product-specific guide to using SheetCanvas when spreadsheet analysis needs a spatial canvas instead of another tab.">
+    <meta property="og:url" content="https://sheetcanvas.com/use-cases/spreadsheet-canvas/">
     <meta property="og:image" content="https://sheetcanvas.com/brand/sheetcanvas-og.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta property="og:image:alt" content="SheetCanvas spreadsheet canvas preview">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="SheetCanvas Docs - Spreadsheet canvas setup and connectors">
-    <meta name="twitter:description" content="Set up SheetCanvas local imports and connected sheets for ClickHouse or Google Analytics.">
+    <meta name="twitter:title" content="Spreadsheet canvas use case - SheetCanvas">
+    <meta name="twitter:description" content="Use SheetCanvas to keep tables, charts, pivots, sparklines, and notes in one spreadsheet canvas.">
     <meta name="twitter:image" content="https://sheetcanvas.com/brand/sheetcanvas-og.png">
     <meta name="theme-color" content="#0f766e">
     <link rel="icon" type="image/svg+xml" href="/brand/sheetcanvas-logo.svg">
@@ -44,10 +44,10 @@
           },
           {
             "@type": "WebPage",
-            "name": "SheetCanvas Docs",
-            "url": "https://sheetcanvas.com/docs/",
-            "description": "Documentation for SheetCanvas local imports, canvas objects, and connected sheets.",
-            "dateModified": "2026-05-26",
+            "name": "Spreadsheet canvas use case",
+            "url": "https://sheetcanvas.com/use-cases/spreadsheet-canvas/",
+            "description": "A SheetCanvas use-case guide for spatial spreadsheet analysis with tables, charts, pivots, sparklines, and notes.",
+            "dateModified": "2026-05-27",
             "isPartOf": {
               "@type": "WebSite",
               "name": "SheetCanvas",
@@ -77,8 +77,8 @@
                 {
                   "@type": "ListItem",
                   "position": 2,
-                  "name": "Docs",
-                  "item": "https://sheetcanvas.com/docs/"
+                  "name": "Spreadsheet canvas",
+                  "item": "https://sheetcanvas.com/use-cases/spreadsheet-canvas/"
                 }
               ]
             }
@@ -97,7 +97,6 @@
         --teal: #0f766e;
         --teal-dark: #0b4f4a;
         --warm: #f3efe6;
-        --code: #eef4f2;
       }
 
       * {
@@ -171,29 +170,35 @@
         background: var(--teal);
       }
 
-      .nav {
+      .nav,
+      .footer-links {
         display: flex;
         flex-wrap: wrap;
-        justify-content: flex-end;
         gap: 14px;
         color: var(--muted);
         font-size: 14px;
       }
 
-      .nav a {
+      .nav {
+        justify-content: flex-end;
+      }
+
+      .nav a,
+      .footer-links a {
         text-decoration: none;
       }
 
-      .nav a:hover {
+      .nav a:hover,
+      .footer-links a:hover {
         color: var(--ink);
       }
 
       .hero {
         display: grid;
-        grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+        grid-template-columns: minmax(0, 1.05fr) minmax(280px, 0.95fr);
         gap: 44px;
         align-items: start;
-        padding: 72px 0 62px;
+        padding: 72px 0 64px;
         border-top: 1px solid var(--line);
       }
 
@@ -281,31 +286,58 @@
         font-size: 14px;
       }
 
-      .toc {
+      .canvas-card {
         border: 1px solid var(--line);
         border-radius: 8px;
         background: var(--panel);
-        padding: 22px;
+        padding: 18px;
+        box-shadow: 0 18px 45px rgba(31, 48, 45, 0.08);
       }
 
-      .toc strong {
-        display: block;
-        margin-bottom: 12px;
+      .object {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        padding: 14px;
       }
 
-      .toc a {
-        display: block;
-        padding: 8px 0;
+      .object + .object {
+        margin-top: 12px;
+      }
+
+      .object-title {
+        margin-bottom: 8px;
+        color: var(--teal-dark);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .table-row {
+        display: grid;
+        grid-template-columns: 1fr 0.8fr 0.8fr;
+        gap: 8px;
+        border-top: 1px solid var(--line);
+        padding: 7px 0;
         color: var(--muted);
-        text-decoration: none;
+        font-size: 13px;
       }
 
-      .toc a:hover {
-        color: var(--ink);
+      .bars {
+        display: flex;
+        align-items: end;
+        gap: 8px;
+        height: 92px;
+      }
+
+      .bars span {
+        flex: 1;
+        min-width: 18px;
+        border-radius: 5px 5px 0 0;
+        background: var(--teal);
       }
 
       .section {
-        padding: 54px 0;
+        padding: 56px 0;
         border-top: 1px solid var(--line);
       }
 
@@ -316,81 +348,45 @@
 
       .grid {
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 16px;
       }
 
-      .card {
-        min-height: 220px;
+      .card,
+      .band {
         border: 1px solid var(--line);
         border-radius: 8px;
         background: var(--panel);
         padding: 22px;
       }
 
-      .status {
-        display: inline-flex;
-        margin-bottom: 14px;
-        border-radius: 999px;
-        background: var(--code);
-        color: var(--teal-dark);
-        padding: 4px 10px;
-        font-size: 12px;
-        font-weight: 800;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-      }
-
       .list {
         display: grid;
-        gap: 14px;
+        gap: 12px;
         margin: 0;
-        padding: 0;
-        list-style: none;
+        padding-left: 20px;
       }
 
       .list li {
-        border-left: 3px solid var(--teal);
-        background: var(--warm);
-        padding: 14px 16px;
-      }
-
-      code {
-        border-radius: 5px;
-        background: var(--code);
-        padding: 2px 5px;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-        font-size: 0.92em;
+        padding-left: 4px;
       }
 
       .band {
-        border-radius: 8px;
-        background: var(--ink);
-        color: #fff;
-        padding: 34px;
-      }
-
-      .band p {
-        color: #c8d3d1;
+        background: var(--warm);
       }
 
       .site-footer {
-        display: flex;
-        flex-wrap: wrap;
-        justify-content: space-between;
-        gap: 22px;
-        padding: 34px 0 46px;
-        border-top: 1px solid var(--line);
-        color: var(--muted);
-      }
-
-      .footer-links {
-        display: flex;
-        flex-wrap: wrap;
+        display: grid;
         gap: 14px;
+        padding: 34px 0 44px;
+        border-top: 1px solid var(--line);
       }
 
-      @media (max-width: 860px) {
+      .site-footer p {
+        margin-bottom: 0;
+      }
+
+      @media (max-width: 760px) {
         .site-header {
           align-items: flex-start;
           flex-direction: column;
@@ -430,7 +426,7 @@
       <nav class="nav" aria-label="Primary navigation">
         <a href="/">Open app</a>
         <a href="/learn/">Learn</a>
-        <a href="/use-cases/spreadsheet-canvas/">Use case</a>
+        <a href="/docs/">Docs</a>
         <a href="/use-cases/csv-to-dashboard/">CSV dashboard</a>
         <a href="/use-cases/local-spreadsheet-app/">Local files</a>
         <a href="/use-cases/data-analysis-canvas/">Data analysis</a>
@@ -439,113 +435,96 @@
         <a href="/alternatives/airtable/">Airtable alternative</a>
         <a href="/connectors/clickhouse/">ClickHouse</a>
         <a href="/connectors/google-analytics/">Google Analytics</a>
-        <a href="#local-files">Local files</a>
-        <a href="#connectors">Connectors</a>
       </nav>
     </header>
 
     <main id="main">
       <section class="hero" aria-labelledby="hero-title">
         <div>
-          <p class="eyebrow">Docs</p>
-          <h1 id="hero-title">Set up SheetCanvas objects and connected sheets.</h1>
-          <p class="hero-copy">These docs cover the product paths that exist in SheetCanvas now: importing local spreadsheet files, arranging canvas objects, and using connector-backed sheets for ClickHouse or Google Analytics data.</p>
-          <p class="reviewed">Last reviewed: May 26, 2026</p>
+          <p class="eyebrow">Use case</p>
+          <h1 id="hero-title">Use a spreadsheet canvas when one grid stops being enough.</h1>
+          <p class="hero-copy">SheetCanvas is useful when the work is not only entering cells. Put source tables, charts, pivots, sparklines, and notes on one canvas so the evidence and interpretation stay visible together.</p>
+          <p class="reviewed">Last reviewed: May 27, 2026</p>
           <div class="actions">
             <a class="button button-primary" href="/">Open SheetCanvas</a>
-            <a class="button button-secondary" href="/learn/">Read the product guide</a>
+            <a class="button button-secondary" href="/use-cases/csv-to-dashboard/">CSV to dashboard workflow</a>
+            <a class="button button-secondary" href="/docs/">Read the docs</a>
           </div>
         </div>
-        <aside class="toc" aria-label="Docs sections">
-          <strong>On this page</strong>
-          <a href="#local-files">Local spreadsheet files</a>
-          <a href="#canvas-objects">Canvas objects</a>
-          <a href="#connectors">Connected sheets</a>
-          <a href="#troubleshooting">Troubleshooting</a>
-        </aside>
-      </section>
-
-      <section id="local-files" class="section" aria-labelledby="local-files-title">
-        <div class="section-head">
-          <p class="eyebrow">Local files</p>
-          <h2 id="local-files-title">Start with CSV, XLSX, or XLS imports.</h2>
-          <p class="lede">Local file import is the fastest path into SheetCanvas. The imported file becomes a placed table object, so analysis can happen beside the source instead of inside a single expanding grid.</p>
+        <div class="canvas-card" aria-label="Illustration of a SheetCanvas spreadsheet canvas">
+          <div class="object">
+            <p class="object-title">Imported table</p>
+            <div class="table-row"><strong>channel</strong><strong>users</strong><strong>revenue</strong></div>
+            <div class="table-row"><span>Organic</span><span>1,204</span><span>$84k</span></div>
+            <div class="table-row"><span>Referral</span><span>612</span><span>$48k</span></div>
+            <div class="table-row"><span>Paid</span><span>410</span><span>$31k</span></div>
+          </div>
+          <div class="object">
+            <p class="object-title">Chart object</p>
+            <div class="bars" aria-hidden="true">
+              <span style="height: 72%"></span>
+              <span style="height: 46%"></span>
+              <span style="height: 31%"></span>
+              <span style="height: 58%"></span>
+            </div>
+          </div>
+          <div class="object">
+            <p class="object-title">Canvas note</p>
+            <p>Keep the question, caveat, or next step beside the table it explains.</p>
+          </div>
         </div>
-        <ul class="list">
-          <li><strong>Import:</strong> open the app and add a CSV, XLSX, or XLS file to create a table object on the canvas.</li>
-          <li><strong>Inspect:</strong> sort, filter, and scan the imported table without moving the rest of the workspace.</li>
-          <li><strong>Build from it:</strong> create charts, pivots, sparklines, and notes next to the source table.</li>
-        </ul>
       </section>
 
-      <section id="canvas-objects" class="section" aria-labelledby="canvas-objects-title">
+      <section class="section" aria-labelledby="fit-title">
         <div class="section-head">
-          <p class="eyebrow">Object model</p>
-          <h2 id="canvas-objects-title">Use the canvas to keep evidence and interpretation together.</h2>
-          <p class="lede">SheetCanvas treats tables, charts, pivots, sparklines, and notes as workspace objects. This is useful when the analysis has multiple views or caveats that would be hard to track across tabs.</p>
+          <p class="eyebrow">Workflow fit</p>
+          <h2 id="fit-title">Best for analysis that needs layout, comparison, and context.</h2>
+          <p class="lede">A spreadsheet canvas helps when the important part is seeing multiple views at once, not hiding them in separate sheets or browser tabs.</p>
         </div>
         <div class="grid">
           <article class="card">
-            <h3>Tables</h3>
-            <p>Use table objects as the source for visual checks and summary views. Local imports and connector queries both create table-shaped data on the canvas.</p>
+            <h3>Local file analysis</h3>
+            <p>Import CSV, XLSX, or XLS files as table objects, then place charts and notes next to the source data.</p>
           </article>
           <article class="card">
-            <h3>Charts and pivots</h3>
-            <p>Create chart and pivot objects from selected data, then place the results beside the table they explain. See the <a href="/use-cases/spreadsheet-canvas/">spreadsheet canvas use case</a>, the <a href="/use-cases/csv-to-dashboard/">CSV to dashboard workflow</a>, the <a href="/use-cases/local-spreadsheet-app/">local spreadsheet app workflow</a>, the <a href="/use-cases/data-analysis-canvas/">data analysis canvas workflow</a>, the <a href="/alternatives/excel/">Excel alternative comparison</a>, the <a href="/alternatives/google-sheets/">Google Sheets alternative comparison</a>, or the <a href="/alternatives/airtable/">Airtable alternative comparison</a>.</p>
+            <h3>Exploratory dashboards</h3>
+            <p>Arrange charts, pivots, and sparklines while you are deciding what the dashboard should say.</p>
           </article>
           <article class="card">
-            <h3>Notes</h3>
-            <p>Add notes for assumptions, decisions, and next steps directly beside the data view they reference.</p>
+            <h3>Review workspaces</h3>
+            <p>Use notes beside the numbers so assumptions, caveats, and decisions do not get separated from the evidence.</p>
           </article>
         </div>
       </section>
 
-      <section id="connectors" class="section" aria-labelledby="connectors-title">
+      <section class="section" aria-labelledby="how-title">
         <div class="section-head">
-          <p class="eyebrow">Connected sheets</p>
-          <h2 id="connectors-title">Use connectors when the source data should refresh.</h2>
-          <p class="lede">Connector-backed sheets keep credentials behind the backend proxy and store a refreshable connector configuration on the sheet.</p>
-        </div>
-        <div class="grid">
-          <article class="card">
-            <span class="status">Available</span>
-            <h3>ClickHouse</h3>
-            <p>Save a ClickHouse connector, run read-only <code>SELECT</code> or <code>WITH</code> queries, and refresh the resulting connected sheet from the canvas. Read the <a href="/connectors/clickhouse/">ClickHouse connector guide</a>.</p>
-          </article>
-          <article class="card">
-            <span class="status">Available with setup</span>
-            <h3>Google Analytics</h3>
-            <p>Connect GA4 through the backend OAuth flow, choose a property and report fields, then create a connected sheet from the returned rows. Read the <a href="/connectors/google-analytics/">Google Analytics connector guide</a>.</p>
-          </article>
-          <article class="card">
-            <span class="status">Backend proxy</span>
-            <h3>Credential handling</h3>
-            <p>Connector credentials and OAuth tokens are stored by the backend, not in the browser. The frontend receives public connector metadata and query results.</p>
-          </article>
-        </div>
-      </section>
-
-      <section id="troubleshooting" class="section" aria-labelledby="troubleshooting-title">
-        <div class="section-head">
-          <p class="eyebrow">Troubleshooting</p>
-          <h2 id="troubleshooting-title">Check the backend before debugging the canvas.</h2>
-          <p class="lede">Most connector failures come from local backend configuration, missing auth values, or a query that exceeds the connector guardrails.</p>
+          <p class="eyebrow">How it works</p>
+          <h2 id="how-title">Turn spreadsheet data into placed objects.</h2>
+          <p class="lede">SheetCanvas keeps the root URL as the live app. This use case explains the product path without adding a marketing gate before the canvas.</p>
         </div>
         <ul class="list">
-          <li><strong>Connectors do not load:</strong> check <code>VITE_BACKEND_URL</code>, backend availability, and any configured <code>VITE_API_BEARER_TOKEN</code>.</li>
-          <li><strong>ClickHouse query rejected:</strong> use a single read-only query starting with <code>SELECT</code> or <code>WITH</code>; write statements are blocked.</li>
-          <li><strong>Google Analytics auth fails:</strong> verify the OAuth redirect URL, requested GA4 readonly scope, and backend token exchange settings.</li>
+          <li><strong>Start with data:</strong> drop in a local spreadsheet file or create a connected sheet from ClickHouse or Google Analytics when backend setup is available.</li>
+          <li><strong>Create views:</strong> add charts, pivots, and sparklines from selected data so summaries stay near their source.</li>
+          <li><strong>Add interpretation:</strong> write notes on the canvas for questions, caveats, and next actions.</li>
+          <li><strong>Keep moving:</strong> reopen the app at <a href="/">sheetcanvas.com</a> when the fastest next step is working directly with the canvas.</li>
         </ul>
       </section>
 
-      <section class="section" aria-labelledby="next-title">
+      <section class="section" aria-labelledby="related-title">
         <div class="band">
-          <p class="eyebrow">Fastest path to value</p>
-          <h2 id="next-title">Use the docs when setup matters, then return to the app.</h2>
-          <p>SheetCanvas keeps the live product at the root URL. The docs explain setup details without turning the app homepage into a marketing or documentation page.</p>
+          <p class="eyebrow">Related setup</p>
+          <h2 id="related-title">Use docs and connector pages when the source data needs setup.</h2>
+          <p>For local files, the app is the fastest path; the <a href="/use-cases/local-spreadsheet-app/">local spreadsheet app workflow</a> shows that path in more detail. For broader investigation, use the <a href="/use-cases/data-analysis-canvas/">data analysis canvas workflow</a>. If you are comparing this against workbook-first or database-first analysis, read the <a href="/alternatives/excel/">Excel alternative comparison</a>, the <a href="/alternatives/google-sheets/">Google Sheets alternative comparison</a>, or the <a href="/alternatives/airtable/">Airtable alternative comparison</a>. For refreshable data, use the product-specific connector guides before returning to the canvas.</p>
           <div class="actions">
             <a class="button button-primary" href="/">Open SheetCanvas</a>
-            <a class="button button-secondary" href="/learn/">Learn the product model</a>
+            <a class="button button-secondary" href="/use-cases/local-spreadsheet-app/">Local spreadsheet app use case</a>
+            <a class="button button-secondary" href="/use-cases/data-analysis-canvas/">Data analysis canvas use case</a>
+            <a class="button button-secondary" href="/alternatives/excel/">Excel alternative comparison</a>
+            <a class="button button-secondary" href="/alternatives/google-sheets/">Google Sheets alternative comparison</a>
+            <a class="button button-secondary" href="/alternatives/airtable/">Airtable alternative comparison</a>
+            <a class="button button-secondary" href="/connectors/clickhouse/">ClickHouse connector</a>
+            <a class="button button-secondary" href="/connectors/google-analytics/">Google Analytics connector</a>
           </div>
         </div>
       </section>
@@ -557,7 +536,6 @@
         <a href="/">Open app</a>
         <a href="/learn/">Learn</a>
         <a href="/docs/">Docs</a>
-        <a href="/blog/">Blog</a>
         <a href="/use-cases/spreadsheet-canvas/">Spreadsheet canvas use case</a>
         <a href="/use-cases/csv-to-dashboard/">CSV to dashboard use case</a>
         <a href="/use-cases/local-spreadsheet-app/">Local spreadsheet app use case</a>
@@ -567,9 +545,6 @@
         <a href="/alternatives/airtable/">Airtable alternative</a>
         <a href="/connectors/clickhouse/">ClickHouse connector</a>
         <a href="/connectors/google-analytics/">Google Analytics connector</a>
-        <a href="/rss.xml">RSS</a>
-        <a href="/privacy/">Privacy</a>
-        <a href="/terms/">Terms</a>
         <a href="https://fasttab.theindie.app">FastTab</a>
         <a href="https://strider.theindie.app">Strider</a>
         <a href="https://pineapplelog.theindie.app">Pineapple Log</a>

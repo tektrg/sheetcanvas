@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SheetCanvas Privacy - Local files, connectors, and analytics</title>
+    <meta name="description" content="SheetCanvas privacy notes for local spreadsheet files, connector-backed sheets, site analytics, and the data paths used by the live spreadsheet canvas app.">
+    <link rel="canonical" href="https://sheetcanvas.com/privacy/">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="SheetCanvas">
+    <meta property="og:title" content="SheetCanvas Privacy - Local files, connectors, and analytics">
+    <meta property="og:description" content="How SheetCanvas handles local files, connector-backed sheets, and site analytics for the live spreadsheet canvas app.">
+    <meta property="og:url" content="https://sheetcanvas.com/privacy/">
+    <meta property="og:image" content="https://sheetcanvas.com/brand/sheetcanvas-og.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="SheetCanvas spreadsheet canvas preview">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="SheetCanvas Privacy - Local files, connectors, and analytics">
+    <meta name="twitter:description" content="Privacy notes for SheetCanvas local imports, connected sheets, and product analytics.">
+    <meta name="twitter:image" content="https://sheetcanvas.com/brand/sheetcanvas-og.png">
+    <meta name="theme-color" content="#0f766e">
+    <link rel="icon" type="image/svg+xml" href="/brand/sheetcanvas-logo.svg">
+    <link rel="apple-touch-icon" href="/brand/sheetcanvas-logo.png">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "name": "theindie.app",
+            "url": "https://theindie.app/",
+            "email": "yourfriend@theindie.app"
+          },
+          {
+            "@type": "WebPage",
+            "name": "SheetCanvas Privacy",
+            "url": "https://sheetcanvas.com/privacy/",
+            "description": "Privacy notes for SheetCanvas local files, connector-backed sheets, and analytics.",
+            "dateModified": "2026-05-27",
+            "isPartOf": {
+              "@type": "WebSite",
+              "name": "SheetCanvas",
+              "url": "https://sheetcanvas.com/"
+            },
+            "about": {
+              "@type": "SoftwareApplication",
+              "name": "SheetCanvas",
+              "applicationCategory": "BusinessApplication",
+              "operatingSystem": "Web",
+              "url": "https://sheetcanvas.com/"
+            }
+          },
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "SheetCanvas",
+                "item": "https://sheetcanvas.com/"
+              },
+              {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "Privacy",
+                "item": "https://sheetcanvas.com/privacy/"
+              }
+            ]
+          }
+        ]
+      }
+    </script>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #121717;
+        --muted: #53605f;
+        --line: #d8e1df;
+        --paper: #fbfbf8;
+        --panel: #ffffff;
+        --teal: #0f766e;
+        --teal-dark: #0b4f4a;
+        --warm: #f3efe6;
+        --code: #eef4f2;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font: 16px/1.6 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      a {
+        color: inherit;
+      }
+
+      .skip-link {
+        position: absolute;
+        left: 16px;
+        top: 12px;
+        transform: translateY(-140%);
+        background: var(--ink);
+        color: #fff;
+        padding: 8px 12px;
+        border-radius: 6px;
+        transition: transform 0.15s;
+      }
+
+      .skip-link:focus {
+        transform: translateY(0);
+      }
+
+      .site-header,
+      main,
+      .site-footer {
+        width: min(960px, calc(100% - 40px));
+        margin: 0 auto;
+      }
+
+      .site-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        padding: 22px 0;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        text-decoration: none;
+        font-weight: 700;
+      }
+
+      .brand-mark {
+        display: grid;
+        width: 24px;
+        height: 24px;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 3px;
+      }
+
+      .brand-mark span {
+        border: 1px solid var(--teal);
+        border-radius: 4px;
+      }
+
+      .brand-mark span:last-child {
+        background: var(--teal);
+      }
+
+      .nav,
+      .footer-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .nav {
+        justify-content: flex-end;
+      }
+
+      .nav a,
+      .footer-links a {
+        text-decoration: none;
+      }
+
+      .nav a:hover,
+      .footer-links a:hover {
+        color: var(--ink);
+      }
+
+      .hero {
+        padding: 72px 0 58px;
+        border-top: 1px solid var(--line);
+      }
+
+      .eyebrow {
+        margin: 0 0 16px;
+        color: var(--teal-dark);
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        max-width: 780px;
+        margin-bottom: 20px;
+        font-size: clamp(42px, 7vw, 72px);
+        line-height: 0.98;
+        letter-spacing: 0;
+      }
+
+      h2 {
+        margin-bottom: 12px;
+        font-size: clamp(28px, 4vw, 42px);
+        line-height: 1.1;
+        letter-spacing: 0;
+      }
+
+      h3 {
+        margin-bottom: 8px;
+        font-size: 21px;
+        line-height: 1.2;
+      }
+
+      .hero-copy,
+      .lede,
+      .card p,
+      .site-footer p {
+        color: var(--muted);
+      }
+
+      .hero-copy {
+        max-width: 720px;
+        font-size: 19px;
+      }
+
+      .reviewed {
+        margin: 18px 0 0;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 30px;
+      }
+
+      .button {
+        display: inline-flex;
+        min-height: 44px;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 10px 16px;
+        text-decoration: none;
+        font-weight: 700;
+      }
+
+      .button-primary {
+        border-color: var(--teal);
+        background: var(--teal);
+        color: #fff;
+      }
+
+      .button-secondary {
+        background: #fff;
+      }
+
+      .section {
+        padding: 48px 0;
+        border-top: 1px solid var(--line);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+        margin-top: 24px;
+      }
+
+      .card {
+        min-height: 190px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        padding: 22px;
+      }
+
+      .list {
+        display: grid;
+        gap: 14px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .list li {
+        border-left: 3px solid var(--teal);
+        background: var(--warm);
+        padding: 14px 16px;
+      }
+
+      code {
+        border-radius: 5px;
+        background: var(--code);
+        padding: 2px 5px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+        font-size: 0.92em;
+      }
+
+      .site-footer {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 22px;
+        padding: 34px 0 46px;
+        border-top: 1px solid var(--line);
+      }
+
+      .site-footer p {
+        margin: 0;
+      }
+
+      @media (max-width: 760px) {
+        .site-header,
+        .site-footer {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .nav {
+          justify-content: flex-start;
+        }
+
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 560px) {
+        .site-header,
+        main,
+        .site-footer {
+          width: min(100% - 28px, 960px);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header" aria-label="Site header">
+      <a class="brand" href="/" aria-label="Open SheetCanvas app">
+        <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
+        <span>SheetCanvas</span>
+      </a>
+      <nav class="nav" aria-label="Primary navigation">
+        <a href="/">Open app</a>
+        <a href="/learn/">Learn</a>
+        <a href="/docs/">Docs</a>
+        <a href="/terms/">Terms</a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero" aria-labelledby="hero-title">
+        <p class="eyebrow">Privacy</p>
+        <h1 id="hero-title">Privacy notes for the SheetCanvas app.</h1>
+        <p class="hero-copy">SheetCanvas is a browser-based spreadsheet canvas for local files, visual analysis objects, and connector-backed sheets. This page explains the product-specific data paths that matter when you open the app.</p>
+        <p class="reviewed">Last reviewed: May 27, 2026</p>
+        <div class="actions">
+          <a class="button button-primary" href="/">Open SheetCanvas</a>
+          <a class="button button-secondary" href="/docs/">Read setup docs</a>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="local-title">
+        <p class="eyebrow">Local files</p>
+        <h2 id="local-title">Local spreadsheet imports start in your browser.</h2>
+        <p class="lede">When you import a CSV, XLSX, or XLS file, SheetCanvas turns it into a canvas table object for analysis in the app. The SEO pages and app shell do not require account creation before you can inspect a local file.</p>
+        <ul class="list">
+          <li><strong>Workspace data:</strong> tables, charts, pivots, sparklines, and notes are part of the SheetCanvas workspace you create in the browser.</li>
+          <li><strong>File contents:</strong> do not put sensitive or regulated data into SheetCanvas unless the current product behavior and your own policies are appropriate for that data.</li>
+          <li><strong>Browser storage:</strong> if the app stores workspace state locally, clearing browser data may remove that local state.</li>
+        </ul>
+      </section>
+
+      <section class="section" aria-labelledby="connector-title">
+        <p class="eyebrow">Connected sheets</p>
+        <h2 id="connector-title">Connectors use backend flows where setup is required.</h2>
+        <div class="grid">
+          <article class="card">
+            <h3>Google Analytics</h3>
+            <p>The GA4 connector uses an OAuth-backed flow through the configured backend. Use it only with properties you are allowed to access, and review the <a href="/connectors/google-analytics/">Google Analytics connector guide</a> before connecting production reporting data.</p>
+          </article>
+          <article class="card">
+            <h3>ClickHouse</h3>
+            <p>The ClickHouse connector is designed around read-only query workflows. Use single read-only queries that match the <a href="/connectors/clickhouse/">ClickHouse connector guide</a> and avoid credentials or queries that expose data you do not intend to analyze in SheetCanvas.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="analytics-title">
+        <p class="eyebrow">Site analytics</p>
+        <h2 id="analytics-title">SheetCanvas uses site analytics to understand product discovery.</h2>
+        <p class="lede">The public app shell includes Google Analytics measurement for page and product discovery reporting. This is separate from the Google Analytics connector, which is for bringing your GA4 reporting rows into a connected sheet.</p>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>SheetCanvas is built by <a href="https://theindie.app/">theindie.app</a>.</p>
+      <nav class="footer-links" aria-label="Footer links">
+        <a href="/">Open app</a>
+        <a href="/learn/">Learn</a>
+        <a href="/docs/">Docs</a>
+        <a href="/privacy/">Privacy</a>
+        <a href="/terms/">Terms</a>
+      </nav>
+    </footer>
+  </body>
+</html>

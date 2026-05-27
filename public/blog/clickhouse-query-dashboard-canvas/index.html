@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Build a ClickHouse query dashboard canvas - SheetCanvas</title>
+    <meta name="description" content="A practical SheetCanvas tutorial for running a read-only ClickHouse query, importing results, and arranging charts, pivots, sparklines, and notes on one canvas.">
+    <link rel="canonical" href="https://sheetcanvas.com/blog/clickhouse-query-dashboard-canvas/">
+    <link rel="alternate" type="application/rss+xml" title="SheetCanvas Blog RSS" href="https://sheetcanvas.com/rss.xml">
+    <meta property="og:type" content="article">
+    <meta property="og:site_name" content="SheetCanvas">
+    <meta property="og:title" content="Build a ClickHouse query dashboard canvas - SheetCanvas">
+    <meta property="og:description" content="Run a focused ClickHouse query through SheetCanvas and review the result beside charts, pivots, sparklines, and notes.">
+    <meta property="og:url" content="https://sheetcanvas.com/blog/clickhouse-query-dashboard-canvas/">
+    <meta property="og:image" content="https://sheetcanvas.com/brand/sheetcanvas-og.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="SheetCanvas spreadsheet canvas preview">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Build a ClickHouse query dashboard canvas - SheetCanvas">
+    <meta name="twitter:description" content="A product-specific SheetCanvas tutorial for ClickHouse connected sheets.">
+    <meta name="twitter:image" content="https://sheetcanvas.com/brand/sheetcanvas-og.png">
+    <meta name="theme-color" content="#0f766e">
+    <link rel="icon" type="image/svg+xml" href="/brand/sheetcanvas-logo.svg">
+    <link rel="apple-touch-icon" href="/brand/sheetcanvas-logo.png">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "name": "theindie.app",
+            "url": "https://theindie.app/",
+            "email": "yourfriend@theindie.app",
+            "description": "theindie.app is a founder-led indie studio building small, focused software products.",
+            "sameAs": [
+              "https://fasttab.theindie.app",
+              "https://strider.theindie.app",
+              "https://pineapplelog.theindie.app",
+              "https://gptbreeze.io",
+              "https://speechtodo.com",
+              "https://sheetcanvas.com"
+            ]
+          },
+          {
+            "@type": "BlogPosting",
+            "headline": "Build a ClickHouse query dashboard canvas in SheetCanvas",
+            "description": "A practical SheetCanvas tutorial for running a read-only ClickHouse query, importing results, and keeping interpretation beside the source table.",
+            "url": "https://sheetcanvas.com/blog/clickhouse-query-dashboard-canvas/",
+            "datePublished": "2026-05-27",
+            "dateModified": "2026-05-27",
+            "author": {
+              "@type": "Organization",
+              "name": "theindie.app",
+              "url": "https://theindie.app/"
+            },
+            "publisher": {
+              "@type": "Organization",
+              "name": "theindie.app",
+              "url": "https://theindie.app/"
+            },
+            "image": "https://sheetcanvas.com/brand/sheetcanvas-og.png",
+            "mainEntityOfPage": "https://sheetcanvas.com/blog/clickhouse-query-dashboard-canvas/"
+          },
+          {
+            "@type": "WebPage",
+            "name": "Build a ClickHouse query dashboard canvas",
+            "url": "https://sheetcanvas.com/blog/clickhouse-query-dashboard-canvas/",
+            "description": "A SheetCanvas tutorial for turning ClickHouse query results into a dashboard-style canvas.",
+            "dateModified": "2026-05-27",
+            "isPartOf": {
+              "@type": "WebSite",
+              "name": "SheetCanvas",
+              "url": "https://sheetcanvas.com/"
+            },
+            "about": {
+              "@type": "SoftwareApplication",
+              "name": "SheetCanvas",
+              "applicationCategory": "BusinessApplication",
+              "operatingSystem": "Web",
+              "url": "https://sheetcanvas.com/",
+              "publisher": {
+                "@type": "Organization",
+                "name": "theindie.app",
+                "url": "https://theindie.app/"
+              }
+            },
+            "breadcrumb": {
+              "@type": "BreadcrumbList",
+              "itemListElement": [
+                {
+                  "@type": "ListItem",
+                  "position": 1,
+                  "name": "SheetCanvas",
+                  "item": "https://sheetcanvas.com/"
+                },
+                {
+                  "@type": "ListItem",
+                  "position": 2,
+                  "name": "Blog",
+                  "item": "https://sheetcanvas.com/blog/"
+                },
+                {
+                  "@type": "ListItem",
+                  "position": 3,
+                  "name": "ClickHouse query dashboard canvas",
+                  "item": "https://sheetcanvas.com/blog/clickhouse-query-dashboard-canvas/"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    </script>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #121717;
+        --muted: #53605f;
+        --line: #d8e1df;
+        --paper: #fbfbf8;
+        --panel: #ffffff;
+        --teal: #0f766e;
+        --teal-dark: #0b4f4a;
+        --warm: #f3efe6;
+        --code: #eef4f2;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font: 16px/1.6 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      a {
+        color: inherit;
+      }
+
+      code {
+        border-radius: 5px;
+        background: var(--code);
+        padding: 0.15rem 0.35rem;
+        font-size: 0.92em;
+      }
+
+      pre {
+        overflow-x: auto;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--code);
+        padding: 18px;
+      }
+
+      pre code {
+        background: transparent;
+        padding: 0;
+      }
+
+      .skip-link {
+        position: absolute;
+        left: 16px;
+        top: 12px;
+        transform: translateY(-140%);
+        background: var(--ink);
+        color: #fff;
+        padding: 8px 12px;
+        border-radius: 6px;
+        transition: transform 0.15s;
+      }
+
+      .skip-link:focus {
+        transform: translateY(0);
+      }
+
+      .site-header,
+      main,
+      .site-footer {
+        width: min(1120px, calc(100% - 40px));
+        margin: 0 auto;
+      }
+
+      .site-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        padding: 22px 0;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        text-decoration: none;
+        font-weight: 700;
+      }
+
+      .brand-mark {
+        display: grid;
+        width: 24px;
+        height: 24px;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 3px;
+      }
+
+      .brand-mark span {
+        border: 1px solid var(--teal);
+        border-radius: 4px;
+      }
+
+      .brand-mark span:last-child {
+        background: var(--teal);
+      }
+
+      .nav,
+      .footer-links,
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+      }
+
+      .nav,
+      .footer-links {
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .nav {
+        justify-content: flex-end;
+      }
+
+      .nav a,
+      .footer-links a,
+      .button {
+        text-decoration: none;
+      }
+
+      .nav a:hover,
+      .footer-links a:hover {
+        color: var(--ink);
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.08fr) minmax(280px, 0.82fr);
+        gap: 44px;
+        align-items: start;
+        padding: 72px 0 62px;
+        border-top: 1px solid var(--line);
+      }
+
+      .eyebrow {
+        margin: 0 0 16px;
+        color: var(--teal-dark);
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        max-width: 760px;
+        margin-bottom: 20px;
+        font-size: clamp(42px, 7vw, 72px);
+        line-height: 0.98;
+        letter-spacing: 0;
+      }
+
+      h2 {
+        margin-bottom: 12px;
+        font-size: clamp(30px, 4vw, 46px);
+        line-height: 1.08;
+        letter-spacing: 0;
+      }
+
+      h3 {
+        margin-bottom: 10px;
+        font-size: 22px;
+        line-height: 1.2;
+      }
+
+      .hero-copy,
+      .lede {
+        color: var(--muted);
+        font-size: 20px;
+      }
+
+      .reviewed {
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 44px;
+        border: 1px solid var(--teal);
+        border-radius: 6px;
+        padding: 10px 16px;
+        font-weight: 700;
+      }
+
+      .button-primary {
+        background: var(--teal);
+        color: #fff;
+      }
+
+      .button-secondary {
+        background: transparent;
+        color: var(--teal-dark);
+      }
+
+      .panel,
+      .band,
+      .card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+      }
+
+      .panel,
+      .band,
+      .card {
+        padding: 24px;
+      }
+
+      .panel {
+        display: grid;
+        gap: 12px;
+      }
+
+      .section {
+        padding: 42px 0;
+        border-top: 1px solid var(--line);
+      }
+
+      .section-head {
+        max-width: 780px;
+        margin-bottom: 22px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 18px;
+      }
+
+      .checklist {
+        margin: 0;
+        padding-left: 20px;
+      }
+
+      .checklist li + li {
+        margin-top: 10px;
+      }
+
+      .site-footer {
+        padding: 42px 0 56px;
+        border-top: 1px solid var(--line);
+      }
+
+      @media (max-width: 760px) {
+        .site-header,
+        .hero,
+        .grid {
+          display: block;
+        }
+
+        .nav,
+        .footer-links {
+          margin-top: 14px;
+        }
+
+        .hero {
+          padding-top: 42px;
+        }
+
+        .panel,
+        .card {
+          margin-top: 18px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="Open SheetCanvas">
+        <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
+        <span>SheetCanvas</span>
+      </a>
+      <nav class="nav" aria-label="Primary">
+        <a href="/learn/">Learn</a>
+        <a href="/docs/">Docs</a>
+        <a href="/blog/">Blog</a>
+        <a href="/connectors/clickhouse/">ClickHouse connector</a>
+        <a href="/rss.xml">RSS</a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero" aria-labelledby="hero-title">
+        <div>
+          <p class="eyebrow">ClickHouse tutorial</p>
+          <h1 id="hero-title">Build a ClickHouse query dashboard canvas.</h1>
+          <p class="hero-copy">Use SheetCanvas to run a focused read-only ClickHouse query through the backend connector, import the result as a connected sheet, and keep the table beside charts, pivots, sparklines, and notes. This walkthrough is for repeated review questions where the result needs visible context, not for database administration.</p>
+          <p class="reviewed">Last reviewed: May 27, 2026</p>
+          <div class="actions">
+            <a class="button button-primary" href="/">Open SheetCanvas</a>
+            <a class="button button-secondary" href="/connectors/clickhouse/">Read connector setup</a>
+          </div>
+        </div>
+        <aside class="panel" aria-label="What this covers">
+          <strong>Use this when</strong>
+          <p>You have ClickHouse data that needs review context, not a database admin workflow. SheetCanvas keeps the query result visible while the interpretation work happens nearby.</p>
+          <a href="/docs/">Review the docs hub</a>
+          <a href="/use-cases/data-analysis-canvas/">Compare the data-analysis canvas workflow</a>
+        </aside>
+      </section>
+
+      <section class="section" aria-labelledby="query-title">
+        <div class="section-head">
+          <p class="eyebrow">Query setup</p>
+          <h2 id="query-title">Start with one read-only question.</h2>
+          <p class="lede">The ClickHouse connector is strongest when a query returns a focused result set that can be refreshed and explained on the canvas. Keep administration, schema changes, and exploratory SQL editing in your database tools.</p>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <h3>1. Use the backend connector</h3>
+            <p>Save the ClickHouse HTTP URL and credentials through the SheetCanvas connector flow so the browser does not connect to the database directly.</p>
+          </article>
+          <article class="card">
+            <h3>2. Keep SQL read-only</h3>
+            <p>Use one <code>SELECT</code> or <code>WITH</code> statement. The backend rejects write-style operations and multi-statement SQL.</p>
+          </article>
+          <article class="card">
+            <h3>3. Import a bounded table</h3>
+            <p>Return the columns needed for the review, then let SheetCanvas place the rows as a connected sheet that can be refreshed later.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="prerequisites-title">
+        <div class="section-head">
+          <p class="eyebrow">Prerequisites</p>
+          <h2 id="prerequisites-title">Prepare the connector before designing the canvas.</h2>
+          <p class="lede">A useful ClickHouse canvas starts with a safe connection and a narrow reporting question. Do this setup once, then use the canvas for analysis and review.</p>
+        </div>
+        <ul class="checklist">
+          <li><strong>Backend worker:</strong> the SheetCanvas frontend sends connector requests to the backend proxy. The browser should not hold the ClickHouse password or call the database directly.</li>
+          <li><strong>Read-only account:</strong> use a ClickHouse user intended for analysis reads. The SheetCanvas connector still validates query shape, but the database account should also be scoped to the data you are comfortable reviewing.</li>
+          <li><strong>Focused source table:</strong> choose the event, order, account, or operations table that answers the current review question. Avoid importing a broad warehouse extract just because it is available.</li>
+          <li><strong>Expected row count:</strong> start with a bounded date range, segment, or <code>LIMIT</code>. The backend caps returned rows and can mark truncated results, so the first version of the query should already be canvas-sized.</li>
+          <li><strong>Review owner:</strong> decide who will read the canvas. A founder reviewing growth, an operator checking latency, and an analyst reviewing revenue need different columns and chart objects.</li>
+        </ul>
+      </section>
+
+      <section class="section" aria-labelledby="sql-title">
+        <div class="section-head">
+          <p class="eyebrow">SQL shape</p>
+          <h2 id="sql-title">Write the query like a dashboard source, not a scratchpad.</h2>
+          <p class="lede">SheetCanvas expects a single read-only statement. A good first query returns plain columns that can be charted, pivoted, and discussed without extra cleanup.</p>
+        </div>
+        <p>Use column aliases that will make sense on the canvas. A result with <code>event_day</code>, <code>source</code>, <code>sessions</code>, and <code>conversion_rate</code> is easier to turn into chart and pivot objects than a result full of temporary expression names.</p>
+        <pre><code>SELECT
+  toDate(event_time) AS event_day,
+  traffic_source AS source,
+  count() AS sessions,
+  uniqExact(user_id) AS users,
+  sumIf(1, event_name = 'signup') AS signups
+FROM product_events
+WHERE event_time >= now() - INTERVAL 30 DAY
+GROUP BY event_day, source
+ORDER BY event_day DESC, sessions DESC
+LIMIT 500</code></pre>
+        <p>This is only an example shape. The important parts are the constraints: one statement, read-only SQL, analysis-ready columns, and a row count small enough to keep the canvas readable. If you need several unrelated questions, create separate connected sheets so each table has a clear purpose.</p>
+      </section>
+
+      <section class="section" aria-labelledby="canvas-title">
+        <div class="section-head">
+          <p class="eyebrow">Canvas workflow</p>
+          <h2 id="canvas-title">Build the review around the query result.</h2>
+          <p class="lede">The useful pattern is to keep the source query result and the interpretation together. That makes it easier to see which chart, pivot, note, or follow-up question came from which rows.</p>
+        </div>
+        <ul class="checklist">
+          <li><strong>Anchor the connected sheet:</strong> place the ClickHouse result near the upper-left of the canvas so it remains the source of truth.</li>
+          <li><strong>Chart one question at a time:</strong> use separate chart objects for volume, conversion, latency, revenue, or segment mix instead of one crowded dashboard.</li>
+          <li><strong>Use pivots for segment review:</strong> group by campaign, account, source, product, region, or event class when the query returns analysis-ready columns.</li>
+          <li><strong>Add notes beside outliers:</strong> keep caveats, assumptions, and follow-up SQL ideas next to the exact chart or pivot that raised the question.</li>
+        </ul>
+      </section>
+
+      <section class="section" aria-labelledby="layout-title">
+        <div class="section-head">
+          <p class="eyebrow">Layout</p>
+          <h2 id="layout-title">Arrange the canvas by decision flow.</h2>
+          <p class="lede">A ClickHouse result often starts as a database answer, but the canvas should turn it into a review path. Put the raw table, visual summaries, and interpretation in an order a teammate can scan.</p>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <h3>Source zone</h3>
+            <p>Keep the connected sheet visible and label it with the question it answers, such as "30-day acquisition by source" or "weekly error volume by endpoint". When someone asks where a chart came from, the source rows are still on the canvas.</p>
+          </article>
+          <article class="card">
+            <h3>Visual zone</h3>
+            <p>Create charts, pivots, or sparklines that each answer one follow-up. Use small objects with clear labels instead of a dense dashboard that hides the query assumptions.</p>
+          </article>
+          <article class="card">
+            <h3>Decision zone</h3>
+            <p>Use notes for interpretation, next actions, and caveats. If a number looks wrong, write the follow-up query idea beside the chart instead of losing it in a separate document.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="result-title">
+        <div class="section-head">
+          <p class="eyebrow">Result handling</p>
+          <h2 id="result-title">Keep the connected sheet traceable.</h2>
+          <p class="lede">After a successful query, SheetCanvas stores connector metadata on the sheet so the table can be refreshed later. Treat that sheet as the source object for every visual built from it.</p>
+        </div>
+        <ul class="checklist">
+          <li><strong>Preserve the query purpose:</strong> name the sheet after the business or product question, not just the ClickHouse table name.</li>
+          <li><strong>Watch truncation state:</strong> if the backend marks the result as truncated, narrow the query before making decisions from the tail of the result set.</li>
+          <li><strong>Keep derived objects nearby:</strong> place charts, pivots, and sparklines close enough to the connected sheet that their source stays obvious.</li>
+          <li><strong>Separate experiments:</strong> when you need a second SQL variant, create another connected sheet rather than overwriting the first review surface.</li>
+        </ul>
+      </section>
+
+      <section class="section" aria-labelledby="review-title">
+        <div class="section-head">
+          <p class="eyebrow">Review checklist</p>
+          <h2 id="review-title">Check the canvas before sharing it.</h2>
+          <p class="lede">The final review is less about decoration and more about whether a teammate can understand the data source, the visual summary, and the decision without opening a separate SQL notebook.</p>
+        </div>
+        <ul class="checklist">
+          <li><strong>Can someone find the source?</strong> The connected sheet should still be visible, named clearly, and close to the charts or pivots that depend on it.</li>
+          <li><strong>Can someone see the time window?</strong> If the date range is part of the query, put it in the sheet name or a nearby note so a refreshed canvas is not misread as all-time data.</li>
+          <li><strong>Can someone see what changed?</strong> If you refresh the sheet before a meeting, add a short note about the refresh time and any visible difference that matters for the decision.</li>
+          <li><strong>Can someone trust the limits?</strong> If rows were truncated or filtered heavily, note that beside the source table before using the visuals as a final answer.</li>
+          <li><strong>Can someone act on it?</strong> Put the follow-up owner, next SQL idea, or product decision near the relevant object so the canvas remains a working surface rather than a static screenshot.</li>
+        </ul>
+      </section>
+
+      <section class="section" aria-labelledby="boundaries-title">
+        <div class="section-head">
+          <p class="eyebrow">Boundaries</p>
+          <h2 id="boundaries-title">Use the right tool for the parts around the canvas.</h2>
+          <p class="lede">SheetCanvas is useful once a query result is ready to review visually. It does not need to replace ClickHouse administration, SQL development, access management, or deeper BI governance.</p>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <h3>Keep database work in ClickHouse tools</h3>
+            <p>Use your normal database tooling for schema design, permissions, performance tuning, migrations, and broad exploratory SQL work. Bring the result into SheetCanvas when it is ready for visual review.</p>
+          </article>
+          <article class="card">
+            <h3>Keep governed dashboards in BI tools</h3>
+            <p>If a metric needs company-wide definitions, scheduled distribution, permissions, or production dashboard governance, keep that in the system your team already uses for formal reporting.</p>
+          </article>
+          <article class="card">
+            <h3>Use SheetCanvas for working analysis</h3>
+            <p>Use the canvas when the question is still being discussed and the source table, visuals, caveats, and notes need to stay together while the team decides what to do next.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="refresh-title">
+        <div class="band">
+          <p class="eyebrow">Refresh and limits</p>
+          <h2 id="refresh-title">Refresh the same question, not every possible query.</h2>
+          <p>SheetCanvas stores connector metadata and refresh state on the connected sheet. If the question changes, create a separate connected sheet with a separate SQL query so the canvas remains readable and the source for each visual stays clear. A refresh should update the same review question, not silently turn the canvas into a different report.</p>
+          <p>If a refresh fails, check backend availability, connector credentials, SQL shape, row limits, and ClickHouse HTTP access before rearranging the canvas. Failed refreshes should be treated as source-data problems first, because the chart or pivot objects are only as useful as the connected table they depend on.</p>
+          <div class="actions">
+            <a class="button button-primary" href="/">Open SheetCanvas</a>
+            <a class="button button-secondary" href="/blog/google-analytics-dashboard-canvas/">Compare the GA4 tutorial</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="next-steps-title">
+        <div class="section-head">
+          <p class="eyebrow">Next steps</p>
+          <h2 id="next-steps-title">Use the durable pages when the question moves.</h2>
+          <p class="lede">This tutorial is the hands-on path. The connector and use-case pages are better when you need setup details, workflow boundaries, or a comparison with local-file analysis.</p>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <h3>Connector setup</h3>
+            <p>Use the <a href="/connectors/clickhouse/">ClickHouse connector page</a> for backend proxy setup, credential handling, read-only query guardrails, and troubleshooting notes.</p>
+          </article>
+          <article class="card">
+            <h3>Analysis workflow</h3>
+            <p>Use the <a href="/use-cases/data-analysis-canvas/">data-analysis canvas use case</a> when the source could be ClickHouse, GA4, CSV, or XLSX and the main question is how to organize the review surface.</p>
+          </article>
+          <article class="card">
+            <h3>Local file comparison</h3>
+            <p>Use the <a href="/blog/csv-dashboard-from-local-files/">CSV dashboard tutorial</a> when the source data starts as a local export rather than a refreshable database query.</p>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>SheetCanvas is built by <a href="https://theindie.app/">theindie.app</a>, a founder-led indie studio.</p>
+      <nav class="footer-links" aria-label="Footer links">
+        <a href="/">Open app</a>
+        <a href="/learn/">Learn</a>
+        <a href="/docs/">Docs</a>
+        <a href="/blog/">Blog</a>
+        <a href="/blog/csv-dashboard-from-local-files/">CSV dashboard tutorial</a>
+        <a href="/blog/google-analytics-dashboard-canvas/">GA4 dashboard tutorial</a>
+        <a href="/connectors/clickhouse/">ClickHouse connector</a>
+        <a href="/use-cases/csv-to-dashboard/">CSV to dashboard use case</a>
+        <a href="/use-cases/data-analysis-canvas/">Data analysis canvas use case</a>
+        <a href="/alternatives/excel/">Excel alternative</a>
+        <a href="/privacy/">Privacy</a>
+        <a href="/terms/">Terms</a>
+      </nav>
+    </footer>
+  </body>
+</html>

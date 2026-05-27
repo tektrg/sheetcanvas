@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>SheetCanvas Blog</title>
+    <link>https://sheetcanvas.com/blog/</link>
+    <atom:link href="https://sheetcanvas.com/rss.xml" rel="self" type="application/rss+xml"/>
+    <description>Product-specific SheetCanvas tutorials for spreadsheet canvas workflows, local files, and shipped connectors.</description>
+    <language>en-us</language>
+    <lastBuildDate>Wed, 27 May 2026 00:00:00 GMT</lastBuildDate>
+    <item>
+      <title>Build a CSV dashboard from local files in SheetCanvas</title>
+      <link>https://sheetcanvas.com/blog/csv-dashboard-from-local-files/</link>
+      <guid isPermaLink="true">https://sheetcanvas.com/blog/csv-dashboard-from-local-files/</guid>
+      <pubDate>Wed, 27 May 2026 00:00:00 GMT</pubDate>
+      <description>A practical SheetCanvas tutorial for importing a local CSV or XLSX file, adding analysis objects, and keeping interpretation near the source table.</description>
+    </item>
+    <item>
+      <title>Build a GA4 dashboard canvas in SheetCanvas</title>
+      <link>https://sheetcanvas.com/blog/google-analytics-dashboard-canvas/</link>
+      <guid isPermaLink="true">https://sheetcanvas.com/blog/google-analytics-dashboard-canvas/</guid>
+      <pubDate>Wed, 27 May 2026 00:00:00 GMT</pubDate>
+      <description>A practical SheetCanvas tutorial for connecting Google Analytics 4, importing a report, and keeping interpretation next to the source data.</description>
+    </item>
+    <item>
+      <title>Build a ClickHouse query dashboard canvas in SheetCanvas</title>
+      <link>https://sheetcanvas.com/blog/clickhouse-query-dashboard-canvas/</link>
+      <guid isPermaLink="true">https://sheetcanvas.com/blog/clickhouse-query-dashboard-canvas/</guid>
+      <pubDate>Wed, 27 May 2026 00:00:00 GMT</pubDate>
+      <description>A practical SheetCanvas tutorial for running a read-only ClickHouse query, importing results, and keeping interpretation beside the source table.</description>
+    </item>
+  </channel>
+</rss>
