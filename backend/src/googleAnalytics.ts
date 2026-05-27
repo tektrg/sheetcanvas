@@ -12,6 +12,11 @@ type TokenResponse = {
   scope?: string;
 };
 
+type OAuthErrorResponse = {
+  error?: string;
+  error_description?: string;
+};
+
 export type GoogleAnalyticsReport = {
   dateRanges?: Array<{ startDate: string; endDate: string }>;
   dimensions?: Array<{ name: string }>;
@@ -50,13 +55,14 @@ async function fetchToken(params: Record<string, string>) {
     body: buildTokenParams(params)
   });
 
-  const json = (await res.json().catch(() => null)) as TokenResponse | null;
+  const json = (await res.json().catch(() => null)) as (TokenResponse & OAuthErrorResponse) | null;
   if (!res.ok || !json?.access_token) {
     const msg =
-      (json as any)?.error_description ||
-      (json as any)?.error ||
+      json?.error_description ||
+      json?.error ||
       `Token exchange failed (${res.status})`;
-    throw new HttpError(502, "oauth_error", msg);
+    const status = json?.error === "invalid_grant" ? 401 : 400;
+    throw new HttpError(status, "oauth_error", msg);
   }
   return json;
 }
@@ -158,8 +164,20 @@ export async function runGoogleAnalyticsReport(args: {
     ...metricHeaders.map((h) => ({ name: h.name, type: h.type || "metric" }))
   ];
 
+  const dateDimIndices = new Set(
+    dimensionHeaders
+      .map((h, i) => (h.name === "date" ? i : -1))
+      .filter((i) => i >= 0)
+  );
+
   const mappedRows = rows.map((row) => {
-    const dims = (row.dimensionValues ?? []).map((v) => v?.value ?? "");
+    const dims = (row.dimensionValues ?? []).map((v, i) => {
+      const raw = v?.value ?? "";
+      if (dateDimIndices.has(i) && /^\d{8}$/.test(raw)) {
+        return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
+      }
+      return raw;
+    });
     const metrics = (row.metricValues ?? []).map((v) => v?.value ?? "");
     return [...dims, ...metrics];
   });

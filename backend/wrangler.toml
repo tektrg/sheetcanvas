@@ -4,7 +4,7 @@ compatibility_date = "2025-01-01"
 
 [vars]
 # Comma-separated list of allowed origins. Use "*" only if you understand the risk.
-ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:5173"
+ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173,http://127.0.0.1:3000"
 DEFAULT_TIMEOUT_MS = "15000"
 MAX_ROWS = "5000"
 # OAuth client settings for Google Analytics (GA4).
