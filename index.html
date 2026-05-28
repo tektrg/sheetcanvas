@@ -20,6 +20,7 @@
     <meta name="twitter:description" content="Open SheetCanvas to work with tables, charts, pivots, and notes on a fast local-first spreadsheet canvas.">
     <meta name="twitter:image" content="https://sheetcanvas.com/brand/sheetcanvas-og.png">
     <meta name="theme-color" content="#0f766e">
+    <link rel="alternate" type="application/rss+xml" title="SheetCanvas Blog RSS" href="https://sheetcanvas.com/rss.xml">
     <link rel="icon" type="image/svg+xml" href="/brand/sheetcanvas-logo.svg">
     <link rel="apple-touch-icon" href="/brand/sheetcanvas-logo.png">
     <link rel="manifest" href="/manifest.webmanifest">
@@ -41,6 +42,18 @@
               "https://speechtodo.com",
               "https://sheetcanvas.com"
             ]
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://sheetcanvas.com/#website",
+            "name": "SheetCanvas",
+            "url": "https://sheetcanvas.com/",
+            "inLanguage": "en",
+            "publisher": {
+              "@type": "Organization",
+              "name": "theindie.app",
+              "url": "https://theindie.app/"
+            }
           },
           {
             "@type": "SoftwareApplication",
@@ -83,6 +96,15 @@
     </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
+      /**
+       * Tailwind semantic colour aliases.
+       * Values come from CSS custom properties defined below in <style>,
+       * so a single variable change propagates to every utility class.
+       *
+       * Usage:  bg-accent  text-accent  border-accent  ring-accent
+       *         bg-accent-hover  text-accent-hover
+       *         bg-accent-muted  (low-opacity tint for selections / highlights)
+       */
       tailwind.config = {
         darkMode: 'class',
         theme: {
@@ -90,7 +112,11 @@
             colors: {
               neutral: {
                 850: '#1f1f1f', // Medium contrast dark
-              }
+              },
+              // ── Accent (brand teal) ──────────────────────────────────────
+              accent: 'var(--color-accent)',
+              'accent-hover': 'var(--color-accent-hover)',
+              'accent-muted': 'var(--color-accent-muted)',
             }
           }
         }
@@ -98,6 +124,20 @@
     </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
+      /* ── Design system tokens ──────────────────────────────────────────
+         Keep in sync with theme.ts (the JS mirror).
+         All accent colour usage in CSS/Tailwind should read from here.   */
+      :root {
+        --color-accent:       #0d9488; /* teal-600 */
+        --color-accent-hover: #0f766e; /* teal-700 */
+        --color-accent-muted: rgba(13, 148, 136, 0.14);
+      }
+      .dark {
+        --color-accent:       #14b8a6; /* teal-500 */
+        --color-accent-hover: #0d9488; /* teal-600 */
+        --color-accent-muted: rgba(20, 184, 166, 0.2);
+      }
+
       body {
         font-family: 'Inter', sans-serif;
         overflow: hidden; /* Prevent native scroll */
@@ -128,6 +168,18 @@
       .dark ::-webkit-scrollbar-thumb:hover {
         background: #737373; /* neutral-500 */
       }
+
+      /* Sheet grid scrollbar: hidden unless hovering the sheet or it is selected */
+      .sheet-scroll::-webkit-scrollbar-thumb { background: transparent; }
+      .sheet-scroll::-webkit-scrollbar-thumb:hover { background: transparent; }
+      .group:hover .sheet-scroll::-webkit-scrollbar-thumb,
+      .sheet-scroll-active::-webkit-scrollbar-thumb { background: #d4d4d4; }
+      .group:hover .sheet-scroll::-webkit-scrollbar-thumb:hover,
+      .sheet-scroll-active::-webkit-scrollbar-thumb:hover { background: #a3a3a3; }
+      .dark .group:hover .sheet-scroll::-webkit-scrollbar-thumb,
+      .dark .sheet-scroll-active::-webkit-scrollbar-thumb { background: #525252; }
+      .dark .group:hover .sheet-scroll::-webkit-scrollbar-thumb:hover,
+      .dark .sheet-scroll-active::-webkit-scrollbar-thumb:hover { background: #737373; }
 
       /* Rich Text Content Styles */
       .rich-text-content ul { list-style-type: disc; margin-left: 1.5rem; }
@@ -170,7 +222,7 @@
 
       /* Cell Flash Animation for Updates */
       @keyframes cellFlash {
-        0% { background-color: rgba(20, 184, 166, 0.3); } /* teal-500 @ 30% */
+        0% { background-color: var(--color-accent-muted); }
         100% { background-color: transparent; }
       }
       .animate-cell-flash {
