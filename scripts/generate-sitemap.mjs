@@ -8,9 +8,11 @@ import {
   SITE_ORIGIN,
   metadataForRoute,
 } from './seo-route-config.mjs';
+import { assertStrictIsoDate } from './seo-date.mjs';
 
 const PUBLIC_DIR = join(process.cwd(), 'public');
 const SITEMAP_PATH = join(PUBLIC_DIR, 'sitemap.xml');
+const SITEMAP_INDEX_PATH = join(PUBLIC_DIR, 'sitemap-index.xml');
 
 function normalizedPath(filePath) {
   return filePath.split(sep).join('/');
@@ -107,9 +109,7 @@ function getPageLastmod(filePath, routePath) {
     .map((schema) => findSchemaByType(schema, 'WebPage'))
     .find((schema) => schemaUrlMatches(schema?.url, expectedUrl));
   const dateModified = webPage?.dateModified ?? '';
-  if (!dateModified || !/^\d{4}-\d{2}-\d{2}$/.test(dateModified)) {
-    throw new Error(`${routePath} WebPage dateModified must be YYYY-MM-DD for sitemap lastmod.`);
-  }
+  assertStrictIsoDate(dateModified, `${routePath} WebPage dateModified for sitemap lastmod`);
   return dateModified;
 }
 
@@ -136,9 +136,11 @@ function discoverRoutes() {
 }
 
 function buildSitemap(routes) {
+  const lastmods = [];
   const urlEntries = routes.map(({ filePath, routePath }) => {
     const metadata = metadataForRoute(routePath);
     const lastmod = getPageLastmod(filePath, routePath);
+    lastmods.push(lastmod);
     const entry = [
       '  <url>',
       `    <loc>${SITE_ORIGIN}${routePath}</loc>`,
@@ -154,22 +156,47 @@ function buildSitemap(routes) {
     return entry.join('\n');
   });
 
-  return [
+  const sitemap = [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
     ...urlEntries,
     '</urlset>',
     '',
   ].join('\n');
+  const latestLastmod = lastmods.sort().at(-1);
+
+  return { latestLastmod, sitemap };
+}
+
+function buildSitemapIndex(latestLastmod) {
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    '  <sitemap>',
+    `    <loc>${SITE_ORIGIN}/sitemap.xml</loc>`,
+    `    <lastmod>${latestLastmod}</lastmod>`,
+    '  </sitemap>',
+    '</sitemapindex>',
+    '',
+  ].join('\n');
 }
 
 const routes = discoverRoutes();
-const sitemap = buildSitemap(routes);
+const { latestLastmod, sitemap } = buildSitemap(routes);
+const sitemapIndex = buildSitemapIndex(latestLastmod);
 const previousSitemap = existsSync(SITEMAP_PATH) ? readFileSync(SITEMAP_PATH, 'utf8') : '';
+const previousSitemapIndex = existsSync(SITEMAP_INDEX_PATH) ? readFileSync(SITEMAP_INDEX_PATH, 'utf8') : '';
 
 if (previousSitemap !== sitemap) {
   writeFileSync(SITEMAP_PATH, sitemap);
   console.log(`Generated public/sitemap.xml with ${routes.length} routes.`);
 } else {
   console.log(`public/sitemap.xml is current with ${routes.length} routes.`);
+}
+
+if (previousSitemapIndex !== sitemapIndex) {
+  writeFileSync(SITEMAP_INDEX_PATH, sitemapIndex);
+  console.log(`Generated public/sitemap-index.xml with latest lastmod ${latestLastmod}.`);
+} else {
+  console.log(`public/sitemap-index.xml is current with latest lastmod ${latestLastmod}.`);
 }

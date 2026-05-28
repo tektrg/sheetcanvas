@@ -8,9 +8,36 @@ import {
   SITE_ORIGIN,
   metadataForRoute,
 } from './seo-route-config.mjs';
+import { isStrictIsoDate, reviewedDateLabel } from './seo-date.mjs';
+import {
+  findSchemaObjectsByType,
+  flattenSchemaTypes,
+  getAlternateRss,
+  getCanonical,
+  getInternalLinks,
+  getJsonLdBlocks,
+  getMetaContent,
+  getTitle,
+  getVisibleReviewedDate,
+  schemaUrlListMatches,
+  schemaUrlMatches,
+  schemaUrlValue,
+} from './seo-html.mjs';
+import { auditLlmsGeneratorScript, auditLlmsText } from './seo-llms-audit.mjs';
+import { auditRssFeed } from './seo-rss-audit.mjs';
+import {
+  auditSupportAnalyticsAsset,
+  auditSupportAnalyticsCtaInPage,
+  auditSupportAnalyticsScriptInPage,
+} from './seo-support-analytics-audit.mjs';
 
 const REQUIRED_SUPPORT_SCHEMA_TYPES = ['WebPage', 'BreadcrumbList'];
+const MAX_SEO_AUDIT_LINES = 1000;
 const BLOG_ROOT_PATH = '/blog/';
+const RSS_FEED_URL = `${SITE_ORIGIN}/rss.xml`;
+const BLOG_POST_PATHS = ROUTE_ORDER.filter((routePath) => (
+  routePath.startsWith(BLOG_ROOT_PATH) && routePath !== BLOG_ROOT_PATH
+));
 const PAGE_ROOTS = [
   { label: 'source', rootPath: process.cwd() },
   { label: 'dist', rootPath: join(process.cwd(), 'dist') },
@@ -30,107 +57,6 @@ function reportError(pageLabel, message) {
   errors.push(`${pageLabel}: ${message}`);
 }
 
-function getTitle(html) {
-  return html.match(/<title>([^<]+)<\/title>/i)?.[1]?.trim() ?? '';
-}
-
-function getAttribute(html, tagPattern, attributeName) {
-  const tag = html.match(tagPattern)?.[0] ?? '';
-  const attributePattern = new RegExp(`${attributeName}=["']([^"']+)["']`, 'i');
-  return tag.match(attributePattern)?.[1]?.trim() ?? '';
-}
-
-function getMetaContent(html, selectorName, selectorValue) {
-  const escapedValue = selectorValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return getAttribute(
-    html,
-    new RegExp(`<meta\\b(?=[^>]*\\b${selectorName}=["']${escapedValue}["'])[^>]*>`, 'i'),
-    'content',
-  );
-}
-
-function getCanonical(html) {
-  return getAttribute(html, /<link\b(?=[^>]*\brel=["']canonical["'])[^>]*>/i, 'href');
-}
-
-function getAlternateRss(html) {
-  const alternateLinks = [...html.matchAll(/<link\b(?=[^>]*\brel=["']alternate["'])[^>]*>/gi)]
-    .map((match) => match[0]);
-  const rssLink = alternateLinks.find((tag) => getAttribute(tag, /^.*$/i, 'type') === 'application/rss+xml');
-  return rssLink ? getAttribute(rssLink, /^.*$/i, 'href') : '';
-}
-
-function getInternalLinks(html) {
-  return [...html.matchAll(/<a\b[^>]*\bhref=["']([^"']+)["'][^>]*>/gi)]
-    .map((match) => normalizeInternalLink(match[1]))
-    .filter(Boolean);
-}
-
-function normalizeInternalLink(href) {
-  if (href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:')) {
-    return null;
-  }
-
-  if (href.startsWith(`${SITE_ORIGIN}/`)) {
-    return new URL(href).pathname;
-  }
-
-  if (href.startsWith('/') && !href.startsWith('//')) {
-    return href.split('#')[0].split('?')[0];
-  }
-
-  return null;
-}
-
-function getJsonLdBlocks(html) {
-  return [...html.matchAll(/<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)]
-    .map((match) => match[1].trim())
-    .filter(Boolean);
-}
-
-function flattenSchemaTypes(schema) {
-  const values = [];
-  const visit = (node) => {
-    if (!node || typeof node !== 'object') {
-      return;
-    }
-    if (Array.isArray(node)) {
-      node.forEach(visit);
-      return;
-    }
-    const typeValue = node['@type'];
-    if (Array.isArray(typeValue)) {
-      values.push(...typeValue);
-    } else if (typeValue) {
-      values.push(typeValue);
-    }
-    Object.values(node).forEach(visit);
-  };
-  visit(schema);
-  return values;
-}
-
-function findSchemaObjectsByType(schema, schemaType) {
-  const matches = [];
-  const visit = (node) => {
-    if (!node || typeof node !== 'object') {
-      return;
-    }
-    if (Array.isArray(node)) {
-      node.forEach(visit);
-      return;
-    }
-    const typeValue = node['@type'];
-    const typeValues = Array.isArray(typeValue) ? typeValue : [typeValue];
-    if (typeValues.includes(schemaType)) {
-      matches.push(node);
-    }
-    Object.values(node).forEach(visit);
-  };
-  visit(schema);
-  return matches;
-}
-
 function auditRootAppShell(html, pageLabel) {
   if (!/<div\b[^>]*\bid=["']root["'][^>]*>/i.test(html)) {
     reportError(pageLabel, 'root page must keep the Vite app mount element.');
@@ -140,6 +66,26 @@ function auditRootAppShell(html, pageLabel) {
   const hasBuiltEntry = /<script\b(?=[^>]*\btype=["']module["'])(?=[^>]*\bsrc=["']\/assets\/index-[^"']+\.js["'])[^>]*>/i.test(html);
   if (!hasSourceEntry && !hasBuiltEntry) {
     reportError(pageLabel, 'root page must keep the Vite app module entry.');
+  }
+
+  if (getAlternateRss(html) !== RSS_FEED_URL) {
+    reportError(pageLabel, 'root page must advertise the SheetCanvas RSS feed with rel="alternate".');
+  }
+}
+
+function auditRootWebsiteSchema(pageLabel, schemaObjects) {
+  const websiteSchemas = schemaObjects.flatMap((schema) => findSchemaObjectsByType(schema, 'WebSite'));
+  const hasValidWebsite = websiteSchemas.some((schema) => (
+    schema['@id'] === `${SITE_ORIGIN}/#website`
+    && schema.name === 'SheetCanvas'
+    && schemaUrlMatches(schema.url, `${SITE_ORIGIN}/`)
+    && schema.inLanguage === 'en'
+    && schema.publisher?.name === 'theindie.app'
+    && schemaUrlMatches(schema.publisher?.url, 'https://theindie.app/')
+  ));
+
+  if (!hasValidWebsite) {
+    reportError(pageLabel, 'root page must include top-level WebSite JSON-LD for SheetCanvas with publisher and language.');
   }
 }
 
@@ -208,22 +154,31 @@ function isBlogPost(urlPath) {
   return isBlogPage(urlPath) && urlPath !== BLOG_ROOT_PATH;
 }
 
-function schemaUrlMatches(value, expectedUrl) {
-  if (value === expectedUrl) {
-    return true;
-  }
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-  return value['@id'] === expectedUrl || value.url === expectedUrl;
-}
-
 function auditBlogArticle(page, html, pageLabel, schemaObjects, schemaTypes, openGraphType) {
-  if (getAlternateRss(html) !== `${SITE_ORIGIN}/rss.xml`) {
+  if (getAlternateRss(html) !== RSS_FEED_URL) {
     reportError(pageLabel, 'blog pages must link to the RSS feed with rel="alternate".');
   }
 
   if (!isBlogPost(page.urlPath)) {
+    const expectedBlogPostUrls = BLOG_POST_PATHS.map((routePath) => `${SITE_ORIGIN}${routePath}`);
+    const blogSchemas = schemaObjects.flatMap((schema) => findSchemaObjectsByType(schema, 'Blog'));
+    const itemListSchemas = schemaObjects.flatMap((schema) => findSchemaObjectsByType(schema, 'ItemList'));
+    const hasValidBlog = blogSchemas.some((schema) => {
+      const blogPosts = Array.isArray(schema.blogPost) ? schema.blogPost : [schema.blogPost].filter(Boolean);
+      const blogPostUrls = blogPosts.map((blogPost) => schemaUrlValue(blogPost.url ?? blogPost));
+      return schemaUrlMatches(schema.url, `${SITE_ORIGIN}${BLOG_ROOT_PATH}`)
+        && schemaUrlListMatches(blogPostUrls, expectedBlogPostUrls);
+    });
+    const hasValidItemList = itemListSchemas.some((schema) => {
+      const items = Array.isArray(schema.itemListElement) ? schema.itemListElement : [];
+      const itemUrls = items.map((item) => schemaUrlValue(item.url ?? item.item));
+      const positionsAreSequential = items.every((item, index) => item.position === index + 1);
+      return positionsAreSequential && schemaUrlListMatches(itemUrls, expectedBlogPostUrls);
+    });
+
+    if (!hasValidBlog || !hasValidItemList) {
+      reportError(pageLabel, 'blog hub must include Blog and ItemList JSON-LD with the current tutorial post URLs in route order.');
+    }
     return;
   }
 
@@ -237,16 +192,18 @@ function auditBlogArticle(page, html, pageLabel, schemaObjects, schemaTypes, ope
   }
 
   const expectedCanonical = `${SITE_ORIGIN}${page.urlPath}`;
+  const expectedArticleImage = `${SITE_ORIGIN}/brand/sheetcanvas-og.png`;
   const blogPostSchemas = schemaObjects.flatMap((schema) => findSchemaObjectsByType(schema, 'BlogPosting'));
   const hasValidBlogPost = blogPostSchemas.some((schema) => (
     schemaUrlMatches(schema.url, expectedCanonical)
     && schemaUrlMatches(schema.mainEntityOfPage, expectedCanonical)
-    && /^\d{4}-\d{2}-\d{2}$/.test(schema.datePublished ?? '')
-    && /^\d{4}-\d{2}-\d{2}$/.test(schema.dateModified ?? '')
+    && schemaUrlMatches(schema.image, expectedArticleImage)
+    && isStrictIsoDate(schema.datePublished ?? '')
+    && isStrictIsoDate(schema.dateModified ?? '')
   ));
 
   if (!hasValidBlogPost) {
-    reportError(pageLabel, 'BlogPosting JSON-LD must include url, mainEntityOfPage, datePublished, and dateModified for this route.');
+    reportError(pageLabel, 'BlogPosting JSON-LD must include url, mainEntityOfPage, image, datePublished, and dateModified for this route.');
   }
 }
 
@@ -254,7 +211,7 @@ function auditPage(page, supportPagePaths) {
   const html = readText(page.filePath);
   const pageLabel = `${page.label}:${page.urlPath}`;
   const expectedCanonical = `${SITE_ORIGIN}${page.urlPath}`;
-  const internalLinks = getInternalLinks(html);
+  const internalLinks = getInternalLinks(html, SITE_ORIGIN);
 
   const title = getTitle(html);
   if (!title) {
@@ -330,8 +287,14 @@ function auditPage(page, supportPagePaths) {
   }
 
   if (page.urlPath === '/') {
+    auditRootWebsiteSchema(pageLabel, schemaObjects);
     auditRootAppShell(html, pageLabel);
   } else {
+    auditSupportAnalyticsScriptInPage(html, pageLabel, reportError);
+    auditSupportAnalyticsCtaInPage(html, pageLabel, reportError);
+    if (getAlternateRss(html) !== RSS_FEED_URL) {
+      reportError(pageLabel, 'support page must advertise the SheetCanvas RSS feed with rel="alternate".');
+    }
     if (!internalLinks.includes('/')) {
       reportError(pageLabel, 'support page must link back to the root app.');
     }
@@ -346,15 +309,24 @@ function auditPage(page, supportPagePaths) {
         reportError(pageLabel, `support page must include ${requiredType} JSON-LD.`);
       }
     }
-    if (!/Last reviewed:\s+[A-Z][a-z]+ \d{1,2}, \d{4}/.test(html)) {
+    const visibleReviewedDate = getVisibleReviewedDate(html);
+    if (!visibleReviewedDate) {
       reportError(pageLabel, 'support page must include a visible Last reviewed date.');
     }
     const webPageSchemas = schemaObjects.flatMap((schema) => findSchemaObjectsByType(schema, 'WebPage'));
     const routeWebPageSchema = webPageSchemas.find((schema) => (
       schemaUrlMatches(schema.url, expectedCanonical)
     ));
-    if (!routeWebPageSchema || !/^\d{4}-\d{2}-\d{2}$/.test(routeWebPageSchema.dateModified ?? '')) {
+    if (!routeWebPageSchema || !isStrictIsoDate(routeWebPageSchema.dateModified ?? '')) {
       reportError(pageLabel, 'support page must include route-matched WebPage JSON-LD with dateModified as YYYY-MM-DD.');
+    } else {
+      const expectedReviewedDate = reviewedDateLabel(routeWebPageSchema.dateModified);
+      if (visibleReviewedDate !== expectedReviewedDate) {
+        reportError(
+          pageLabel,
+          `visible Last reviewed date should match WebPage dateModified as "${expectedReviewedDate}", found "${visibleReviewedDate || 'nothing'}".`,
+        );
+      }
     }
     if (isBlogPage(page.urlPath)) {
       auditBlogArticle(page, html, pageLabel, schemaObjects, schemaTypes, openGraphType);
@@ -446,6 +418,19 @@ function auditSitemap(rootPath, pages) {
   if (!sitemapIndex.includes(`<loc>${SITE_ORIGIN}/sitemap.xml</loc>`)) {
     reportError(label, 'sitemap-index.xml must include sitemap.xml.');
   }
+
+  const latestSitemapLastmod = [...sitemapEntriesByPath.values()]
+    .map((entry) => entry.lastmod)
+    .filter(Boolean)
+    .sort()
+    .at(-1);
+  const sitemapIndexLastmod = getSitemapIndexLastmod(sitemapIndex);
+  if (sitemapIndexLastmod !== latestSitemapLastmod) {
+    reportError(
+      label,
+      `sitemap-index.xml lastmod should be ${latestSitemapLastmod}, found ${sitemapIndexLastmod || 'nothing'}.`,
+    );
+  }
 }
 
 function auditAppAliasRedirect(rootPath) {
@@ -508,12 +493,14 @@ function auditDeployScript() {
   const packageJson = JSON.parse(readText(packageJsonPath));
   const deployScript = packageJson.scripts?.['deploy:pages'] ?? '';
   const gscScript = packageJson.scripts?.['seo:gsc'] ?? '';
+  const llmsScript = packageJson.scripts?.['seo:llms'] ?? '';
   const rssScript = packageJson.scripts?.['seo:rss'] ?? '';
   const seoAuditScript = packageJson.scripts?.['seo:audit'] ?? '';
   const expectedDeployScript = 'npm run seo:audit && wrangler pages deploy dist --project-name sheetcanvas --branch main';
   const expectedGscScript = 'node scripts/search-console-report.mjs';
+  const expectedLlmsScript = 'node scripts/generate-llms.mjs';
   const expectedRssScript = 'node scripts/generate-rss.mjs';
-  const expectedSeoAuditScript = 'npm run seo:sitemap && npm run seo:rss && npm run build && node scripts/seo-audit.mjs';
+  const expectedSeoAuditScript = 'npm run seo:sitemap && npm run seo:rss && npm run seo:llms && npm run build && node scripts/seo-audit.mjs';
 
   if (deployScript !== expectedDeployScript) {
     reportError(label, `deploy:pages should be "${expectedDeployScript}", found "${deployScript || 'nothing'}".`);
@@ -523,138 +510,16 @@ function auditDeployScript() {
     reportError(label, `seo:gsc should be "${expectedGscScript}", found "${gscScript || 'nothing'}".`);
   }
 
+  if (llmsScript !== expectedLlmsScript) {
+    reportError(label, `seo:llms should be "${expectedLlmsScript}", found "${llmsScript || 'nothing'}".`);
+  }
+
   if (rssScript !== expectedRssScript) {
     reportError(label, `seo:rss should be "${expectedRssScript}", found "${rssScript || 'nothing'}".`);
   }
 
   if (seoAuditScript !== expectedSeoAuditScript) {
     reportError(label, `seo:audit should be "${expectedSeoAuditScript}", found "${seoAuditScript || 'nothing'}".`);
-  }
-}
-
-function getRssItems(rss) {
-  return [...rss.matchAll(/<item>([\s\S]*?)<\/item>/gi)]
-    .map((match) => {
-      const itemXml = match[1];
-      const guidTag = itemXml.match(/<guid\b[^>]*>[^<]+<\/guid>/i)?.[0] ?? '';
-      return {
-        description: decodeXml(itemXml.match(/<description>([^<]+)<\/description>/i)?.[1]?.trim() ?? ''),
-        link: itemXml.match(/<link>([^<]+)<\/link>/i)?.[1]?.trim() ?? '',
-        guid: guidTag.match(/<guid\b[^>]*>([^<]+)<\/guid>/i)?.[1]?.trim() ?? '',
-        isPermaLink: /\bisPermaLink=["']true["']/i.test(guidTag),
-        pubDate: itemXml.match(/<pubDate>([^<]+)<\/pubDate>/i)?.[1]?.trim() ?? '',
-        title: decodeXml(itemXml.match(/<title>([^<]+)<\/title>/i)?.[1]?.trim() ?? ''),
-      };
-    });
-}
-
-function decodeXml(value) {
-  return value
-    .replaceAll('&apos;', "'")
-    .replaceAll('&quot;', '"')
-    .replaceAll('&gt;', '>')
-    .replaceAll('&lt;', '<')
-    .replaceAll('&amp;', '&');
-}
-
-function toRssDate(dateValue) {
-  const parsed = new Date(`${dateValue}T00:00:00.000Z`);
-  if (Number.isNaN(parsed.getTime())) {
-    return '';
-  }
-  return parsed.toUTCString();
-}
-
-function expectedRssItemForPage(page) {
-  const html = readText(page.filePath);
-  const jsonLdBlocks = getJsonLdBlocks(html);
-  const schemaObjects = [];
-
-  jsonLdBlocks.forEach((block, index) => {
-    try {
-      schemaObjects.push(JSON.parse(block));
-    } catch (error) {
-      reportError(`${page.label}:${page.urlPath}`, `JSON-LD block ${index + 1} is not valid JSON: ${error.message}`);
-    }
-  });
-
-  const blogPost = schemaObjects
-    .flatMap((schema) => findSchemaObjectsByType(schema, 'BlogPosting'))
-    .find((schema) => schemaUrlMatches(schema.url, `${SITE_ORIGIN}${page.urlPath}`));
-  const webPage = schemaObjects
-    .flatMap((schema) => findSchemaObjectsByType(schema, 'WebPage'))
-    .find((schema) => schemaUrlMatches(schema.url, `${SITE_ORIGIN}${page.urlPath}`));
-  const publishedDate = blogPost?.datePublished ?? webPage?.dateModified ?? '';
-
-  return {
-    description: blogPost?.description ?? webPage?.description ?? getMetaContent(html, 'name', 'description'),
-    link: `${SITE_ORIGIN}${page.urlPath}`,
-    pubDate: toRssDate(publishedDate),
-    title: blogPost?.headline ?? webPage?.name ?? getTitle(html),
-  };
-}
-
-function auditRssFeed(rootPath, pages) {
-  const isDistRoot = rootPath.endsWith(`${sep}dist`);
-  const assetRoot = isDistRoot ? rootPath : join(rootPath, 'public');
-  const rssPath = join(assetRoot, 'rss.xml');
-  const label = `${isDistRoot ? 'dist' : 'source'}:rss`;
-
-  if (!existsSync(rssPath)) {
-    reportError(label, 'missing rss.xml for the blog feed.');
-    return;
-  }
-
-  const rss = readText(rssPath);
-  const requiredSnippets = [
-    '<rss version="2.0"',
-    '<title>SheetCanvas Blog</title>',
-    '<link>https://sheetcanvas.com/blog/</link>',
-    '<atom:link href="https://sheetcanvas.com/rss.xml" rel="self" type="application/rss+xml"/>',
-  ];
-
-  for (const snippet of requiredSnippets) {
-    if (!rss.includes(snippet)) {
-      reportError(label, `RSS feed must include ${snippet}.`);
-    }
-  }
-
-  const expectedFeedPaths = pages
-    .map((page) => page.urlPath)
-    .filter(isBlogPost);
-  const expectedFeedUrls = new Set(expectedFeedPaths.map((urlPath) => `${SITE_ORIGIN}${urlPath}`));
-  const expectedFeedItems = pages
-    .filter((page) => isBlogPost(page.urlPath))
-    .map(expectedRssItemForPage);
-  const rssItems = getRssItems(rss);
-
-  if (rssItems.length !== expectedFeedItems.length) {
-    reportError(label, `RSS feed should include ${expectedFeedItems.length} items, found ${rssItems.length}.`);
-  }
-
-  for (const expectedItem of expectedFeedItems) {
-    const matchingItem = rssItems.find((item) => item.link === expectedItem.link);
-    if (!matchingItem) {
-      reportError(label, `RSS feed must include an item link for ${expectedItem.link}.`);
-      continue;
-    }
-    if (matchingItem.guid !== expectedItem.link || !matchingItem.isPermaLink) {
-      reportError(label, `RSS feed item for ${expectedItem.link} must include a matching permalink guid.`);
-    }
-    for (const fieldName of ['title', 'description', 'pubDate']) {
-      if (matchingItem[fieldName] !== expectedItem[fieldName]) {
-        reportError(
-          label,
-          `RSS feed item for ${expectedItem.link} should have ${fieldName} "${expectedItem[fieldName]}", found "${matchingItem[fieldName] || 'nothing'}".`,
-        );
-      }
-    }
-  }
-
-  for (const item of rssItems) {
-    if (item.link.startsWith(`${SITE_ORIGIN}/blog/`) && !expectedFeedUrls.has(item.link)) {
-      reportError(label, `RSS feed includes unexpected blog item ${item.link}.`);
-    }
   }
 }
 
@@ -738,6 +603,24 @@ function auditRssGeneratorScript() {
   }
 }
 
+function auditSeoAuditMaintainability() {
+  const scriptPath = join(process.cwd(), 'scripts/seo-audit.mjs');
+  const label = 'source:scripts/seo-audit.mjs';
+
+  if (!existsSync(scriptPath)) {
+    reportError(label, 'missing SEO audit script.');
+    return;
+  }
+
+  const lineCount = readText(scriptPath).split(/\r?\n/).length;
+  if (lineCount > MAX_SEO_AUDIT_LINES) {
+    reportError(
+      label,
+      `must stay under ${MAX_SEO_AUDIT_LINES} lines; move new guardrails into focused modules before adding more checks. Found ${lineCount}.`,
+    );
+  }
+}
+
 function parseSitemapEntries(sitemap, label) {
   const entries = [];
   const urlBlocks = [...sitemap.matchAll(/<url>([\s\S]*?)<\/url>/gi)];
@@ -757,6 +640,11 @@ function parseSitemapEntries(sitemap, label) {
   return entries;
 }
 
+function getSitemapIndexLastmod(sitemapIndex) {
+  const sitemapBlock = sitemapIndex.match(/<sitemap>([\s\S]*?)<\/sitemap>/i)?.[1] ?? '';
+  return sitemapBlock.match(/<lastmod>([^<]+)<\/lastmod>/i)?.[1]?.trim() ?? '';
+}
+
 function expectedSitemapLastmodForPage(page) {
   const html = readText(page.filePath);
   const schemaObjects = [];
@@ -774,9 +662,9 @@ function expectedSitemapLastmodForPage(page) {
     .find((schema) => schemaUrlMatches(schema.url, `${SITE_ORIGIN}${page.urlPath}`));
 
   const dateModified = webPage?.dateModified ?? '';
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateModified)) {
-      reportError(`${page.label}:${page.urlPath}`, 'sitemap lastmod requires route-matched WebPage JSON-LD dateModified as YYYY-MM-DD.');
-    }
+  if (!isStrictIsoDate(dateModified)) {
+    reportError(`${page.label}:${page.urlPath}`, 'sitemap lastmod requires route-matched WebPage JSON-LD dateModified as YYYY-MM-DD.');
+  }
   return dateModified;
 }
 
@@ -856,12 +744,24 @@ for (const pageRoot of PAGE_ROOTS) {
   auditSitemap(pageRoot.rootPath, pages);
   auditAppAliasRedirect(pageRoot.rootPath);
   auditExcludedPublicHeaders(pageRoot.rootPath);
-  auditRssFeed(pageRoot.rootPath, pages);
+  auditSupportAnalyticsAsset(pageRoot.rootPath, readText, reportError);
+  auditRssFeed(pageRoot.rootPath, pages, {
+    findSchemaObjectsByType,
+    getJsonLdBlocks,
+    getMetaContent,
+    getTitle,
+    readText,
+    reportError,
+    schemaUrlMatches,
+  });
+  auditLlmsText(pageRoot.rootPath, pages, { readText, reportError });
 }
 
 auditDeployScript();
 auditSearchConsoleScript();
 auditRssGeneratorScript();
+auditLlmsGeneratorScript({ readText, reportError });
+auditSeoAuditMaintainability();
 
 if (errors.length > 0) {
   console.error('SEO audit failed:');

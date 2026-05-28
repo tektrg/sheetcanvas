@@ -2,6 +2,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
+import { isStrictIsoDate, toRssDate } from './seo-date.mjs';
 import { ROUTE_ORDER, SITE_ORIGIN } from './seo-route-config.mjs';
 
 const BLOG_DIR = join(process.cwd(), 'public', 'blog');
@@ -137,12 +138,11 @@ function sortFeedItems(left, right) {
   return routeOrder(left.routePath) - routeOrder(right.routePath);
 }
 
-function toRssDate(dateValue) {
-  const parsed = new Date(`${dateValue}T00:00:00.000Z`);
-  if (Number.isNaN(parsed.getTime())) {
+function requireRssDate(dateValue) {
+  if (!isStrictIsoDate(dateValue)) {
     throw new Error(`Invalid RSS date: ${dateValue}`);
   }
-  return parsed.toUTCString();
+  return toRssDate(dateValue);
 }
 
 function buildRss(items) {
@@ -156,7 +156,7 @@ function buildRss(items) {
     `      <title>${escapeXml(item.title)}</title>`,
     `      <link>${escapeXml(item.link)}</link>`,
     `      <guid isPermaLink="true">${escapeXml(item.link)}</guid>`,
-    `      <pubDate>${toRssDate(item.publishedDate)}</pubDate>`,
+    `      <pubDate>${requireRssDate(item.publishedDate)}</pubDate>`,
     `      <description>${escapeXml(item.description)}</description>`,
     '    </item>',
   ].join('\n'));
@@ -170,7 +170,7 @@ function buildRss(items) {
     `    <atom:link href="${FEED_URL}" rel="self" type="application/rss+xml"/>`,
     '    <description>Product-specific SheetCanvas tutorials for spreadsheet canvas workflows, local files, and shipped connectors.</description>',
     '    <language>en-us</language>',
-    `    <lastBuildDate>${toRssDate(latestModifiedDate)}</lastBuildDate>`,
+    `    <lastBuildDate>${requireRssDate(latestModifiedDate)}</lastBuildDate>`,
     ...itemXml,
     '  </channel>',
     '</rss>',

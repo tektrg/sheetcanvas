@@ -1,0 +1,35 @@
+# SheetCanvas
+
+> SheetCanvas is a browser-based spreadsheet canvas for local CSV/XLSX files, canvas objects, and shipped connector-backed sheets. The live app stays at https://sheetcanvas.com/.
+
+## Start here
+
+- SheetCanvas app: https://sheetcanvas.com/
+- Learn SheetCanvas: https://sheetcanvas.com/learn/
+- SheetCanvas Docs: https://sheetcanvas.com/docs/
+- SheetCanvas Blog: https://sheetcanvas.com/blog/
+- RSS feed: https://sheetcanvas.com/rss.xml
+
+## Product-specific guides
+
+- Build a CSV dashboard from local files in SheetCanvas: https://sheetcanvas.com/blog/csv-dashboard-from-local-files/
+- Build a GA4 dashboard canvas in SheetCanvas: https://sheetcanvas.com/blog/google-analytics-dashboard-canvas/
+- Build a ClickHouse query dashboard canvas in SheetCanvas: https://sheetcanvas.com/blog/clickhouse-query-dashboard-canvas/
+- Spreadsheet canvas use case: https://sheetcanvas.com/use-cases/spreadsheet-canvas/
+- CSV to dashboard use case: https://sheetcanvas.com/use-cases/csv-to-dashboard/
+- Local spreadsheet app use case: https://sheetcanvas.com/use-cases/local-spreadsheet-app/
+- Data analysis canvas use case: https://sheetcanvas.com/use-cases/data-analysis-canvas/
+- SheetCanvas ClickHouse connector: https://sheetcanvas.com/connectors/clickhouse/
+- SheetCanvas Google Analytics connector: https://sheetcanvas.com/connectors/google-analytics/
+
+## Comparisons and boundaries
+
+- SheetCanvas vs Excel: https://sheetcanvas.com/alternatives/excel/
+- SheetCanvas vs Google Sheets: https://sheetcanvas.com/alternatives/google-sheets/
+- SheetCanvas vs Airtable: https://sheetcanvas.com/alternatives/airtable/
+- SheetCanvas Privacy: https://sheetcanvas.com/privacy/
+- SheetCanvas Terms: https://sheetcanvas.com/terms/
+
+## Product boundaries
+
+SheetCanvas is best for arranging source tables, charts, pivots, sparklines, and notes on one canvas. It does not replace mature spreadsheet macros, full BI governance, collaborative database apps, database administration tools, or source-system permissions. Connector pages describe shipped connector paths and guardrails; they should not be treated as claims for every possible integration.
