@@ -1416,7 +1416,7 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
 
       <div 
         ref={gridRef}
-        className="bg-white dark:bg-neutral-850 cursor-text select-none overflow-auto relative rounded-b-xl"
+        className={`bg-white dark:bg-neutral-850 cursor-text select-none overflow-auto relative rounded-b-xl sheet-scroll ${selected ? 'sheet-scroll-active' : ''}`}
         style={{ height: windowHeight }}
       >
         {(isSetup || showPivotConfig) && isPivot && (
@@ -1459,8 +1459,8 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                 }}
             >
                 {/* 1. Corner (Sticky Top & Left) */}
-                <div 
-                    className="sticky top-0 left-0 z-50 bg-neutral-50 dark:bg-neutral-800 border-r border-b border-neutral-100 dark:border-neutral-800" 
+                <div
+                    className="sticky top-0 left-0 z-50 bg-white dark:bg-neutral-850 border-r border-b border-neutral-100 dark:border-neutral-800"
                     style={{ width: HEADER_COL_WIDTH, height: HEADER_ROW_HEIGHT }}
                 />
 
@@ -1533,7 +1533,7 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
 
                 {/* 3. Row Headers (Sticky Left) */}
                 <div 
-                    className="sticky left-0 z-30 bg-neutral-50/95 dark:bg-neutral-800/95 border-r border-neutral-100 dark:border-neutral-800"
+                    className="sticky left-0 z-30 bg-white/95 dark:bg-neutral-850/95 border-r border-neutral-100 dark:border-neutral-800"
                     style={{ 
                         width: HEADER_COL_WIDTH, 
                         height: rowVirtualizer.getTotalSize(),

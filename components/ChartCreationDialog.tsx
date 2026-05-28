@@ -4,7 +4,7 @@
 import React, { useState, useMemo } from 'react';
 import { SheetData, ChartType, ChartConfig } from '../types';
 import { getSheetHeaders } from '../utils/chartHelpers';
-import { CHART_COLORS } from '../constants';
+import { ACCENT_COLOR } from '../constants';
 import { X, BarChart3, LineChart, PieChart, AreaChart, ScatterChart, LayoutGrid } from 'lucide-react';
 
 interface ChartCreationDialogProps {
@@ -43,7 +43,7 @@ export const ChartCreationDialog: React.FC<ChartCreationDialogProps> = ({
       type,
       labelColumn: labelCol,
       dataColumns: [dataCol],
-      color: CHART_COLORS[0],
+      color: ACCENT_COLOR,
       highlightIndex: -1,
       animation: true,
       showLabels: true
