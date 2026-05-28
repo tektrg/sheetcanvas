@@ -9,14 +9,19 @@
     "tmux:capture": "node scripts/tmux-run-capture.mjs",
     "build": "vite build",
     "seo:gsc": "node scripts/search-console-report.mjs",
+    "seo:llms": "node scripts/generate-llms.mjs",
     "seo:rss": "node scripts/generate-rss.mjs",
     "seo:sitemap": "node scripts/generate-sitemap.mjs",
-    "seo:audit": "npm run seo:sitemap && npm run seo:rss && npm run build && node scripts/seo-audit.mjs",
+    "seo:audit": "npm run seo:sitemap && npm run seo:rss && npm run seo:llms && npm run build && node scripts/seo-audit.mjs",
     "deploy:pages": "npm run seo:audit && wrangler pages deploy dist --project-name sheetcanvas --branch main",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@ai-sdk/google": "^3.0.79",
+    "@ai-sdk/react": "^3.0.193",
     "@tanstack/react-virtual": "3.5.0",
+    "ai": "^6.0.191",
+    "alasql": "^4.17.3",
     "d3-format": "3.1.0",
     "html2canvas": "1.4.1",
     "idb": "8.0.0",
@@ -26,6 +31,7 @@
     "react-dom": "^19.2.0",
     "recharts": "2.15.0",
     "xlsx": "0.18.5",
+    "zod": "^4.4.3",
     "zustand": "4.5.0"
   },
   "devDependencies": {
