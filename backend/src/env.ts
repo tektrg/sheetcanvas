@@ -7,4 +7,9 @@ export type Env = {
   API_BEARER_TOKEN?: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
+  GOOGLE_GENERATIVE_AI_API_KEY?: string;
+  AGENT_MODEL?: string;
+  AGENT_DAILY_LIMIT?: string;
+  AGENT_QUOTA?: KVNamespace;
+  ENVIRONMENT?: string;
 };

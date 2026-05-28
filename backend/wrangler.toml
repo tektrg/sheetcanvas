@@ -7,9 +7,20 @@ compatibility_date = "2025-01-01"
 ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173,http://127.0.0.1:3000,https://sheetcanvas.com,https://www.sheetcanvas.com,https://sheetcanvas.pages.dev"
 DEFAULT_TIMEOUT_MS = "15000"
 MAX_ROWS = "5000"
+AGENT_MODEL = "gemini-2.5-flash"
+AGENT_DAILY_LIMIT = "50"
+# Set ENVIRONMENT="development" in backend/.dev.vars for local agent testing
+# without an AGENT_QUOTA KV binding. Production requires KV.
 # OAuth client settings for Google Analytics (GA4).
 # GOOGLE_CLIENT_ID = "your-client-id"
 # GOOGLE_CLIENT_SECRET = "your-client-secret"
+
+# KV namespace for per-session agent quotas. Create with:
+#   wrangler kv namespace create AGENT_QUOTA
+# then paste the returned id below. Optional locally — quota is fail-open if unbound.
+# [[kv_namespaces]]
+# binding = "AGENT_QUOTA"
+# id = "REPLACE_ME"
 
 [[d1_databases]]
 binding = "DB"

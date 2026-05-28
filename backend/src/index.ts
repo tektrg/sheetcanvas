@@ -20,6 +20,7 @@ import {
   googleAnalyticsPropertiesSchema,
   googleAnalyticsQuerySchema
 } from "./validation";
+import { handleAgentRequest, handleQuotaRead } from "./agent/route";
 
 function parseAllowedOrigins(origins: string | undefined) {
   const v = (origins ?? "").trim();
@@ -52,7 +53,8 @@ app.use(
       if (!origin) return allowed[0] ?? "http://localhost:5173";
       return allowed.includes(origin) ? origin : "";
     },
-    allowHeaders: ["Content-Type", "Authorization"],
+    allowHeaders: ["Content-Type", "Authorization", "x-session-id"],
+    exposeHeaders: ["x-agent-quota-used", "x-agent-quota-limit"],
     allowMethods: ["GET", "POST", "OPTIONS"],
     maxAge: 86400
   })
@@ -75,6 +77,15 @@ app.onError((err, c) => {
 });
 
 app.get("/health", (c) => c.json({ ok: true }));
+
+app.post("/api/agent", (c) => {
+  requireBearerToken(c.req.raw, c.env);
+  return handleAgentRequest(c);
+});
+app.get("/api/agent/quota", (c) => {
+  requireBearerToken(c.req.raw, c.env);
+  return handleQuotaRead(c);
+});
 
 app.get("/api/connectors", async (c) => {
   requireBearerToken(c.req.raw, c.env);
