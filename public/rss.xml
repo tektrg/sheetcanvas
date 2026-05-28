@@ -6,7 +6,7 @@
     <atom:link href="https://sheetcanvas.com/rss.xml" rel="self" type="application/rss+xml"/>
     <description>Product-specific SheetCanvas tutorials for spreadsheet canvas workflows, local files, and shipped connectors.</description>
     <language>en-us</language>
-    <lastBuildDate>Wed, 27 May 2026 00:00:00 GMT</lastBuildDate>
+    <lastBuildDate>Thu, 28 May 2026 00:00:00 GMT</lastBuildDate>
     <item>
       <title>Build a CSV dashboard from local files in SheetCanvas</title>
       <link>https://sheetcanvas.com/blog/csv-dashboard-from-local-files/</link>

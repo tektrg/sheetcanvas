@@ -40,6 +40,14 @@ There is no automated test harness yet, so rely on targeted manual QA flows: val
 
 For backend changes, smoke test locally with `wrangler dev` and hit `GET /health` plus one happy-path connector+query flow against a test ClickHouse instance.
 
+## Project Memory
+- Agents **must use the `memory-project` skill** to work with project memory.
+- `AGENTS.md` is the entry point for agent context; read it first, then use the `memory-project` skill to consult `memory/` for durable project knowledge.
+- Write reusable insights, decisions, learnings, and analysis outputs into the repo's `memory/` PARA structure instead of leaving them only in chat.
+- Before repeating prior analysis or rediscovering project context, use the `memory-project` skill to search and read relevant notes from `memory/`.
+- Use `memory/Resources/` for reusable reference knowledge (stack, branding, IDs), `memory/Projects/` for active initiative notes, `memory/Areas/` for ongoing responsibilities (deployment, SEO, dev-environment, workflow), and `memory/Archives/` for inactive material.
+- `CONTINUITY.md` remains the in-session ledger (compaction-safe); `memory/` is the durable cross-session knowledge layer behind it.
+
 ## Commit & Pull Request Guidelines
 Follow the existing Conventional Commit style (`feat:`, optional scopes like `feat(charting): ...`) to keep `git log` navigable. Each PR should include: a concise summary, linked issue/task IDs when available, screenshots or GIFs for UI changes, reproduction steps for bug fixes, and a checklist of tested scenarios (keyboard shortcuts, multi-node selection, import limits). Favor small, reviewable commits and ensure lint/build succeed before requesting review.
 
