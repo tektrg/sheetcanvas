@@ -10,7 +10,7 @@ import { GlobalCommandBar } from './components/GlobalCommandBar';
 import { DataConnectorDialog } from './components/DataConnectorDialog';
 import { OnboardingGuide } from './components/OnboardingGuide';
 import { SheetData, ChartData, NoteData, CanvasTransform, Position, CellData, ChartConfig, PivotConfig, ToolMode, SparklineConfig, Command, SelectionContext, CellFormat, ConnectorConfig, ConnectorType, TimeGranularity, ChartType } from './types';
-import { INITIAL_COLS, INITIAL_ROWS, CELL_WIDTH, CELL_HEIGHT, HEADER_COL_WIDTH, HEADER_ROW_HEIGHT, DEFAULT_CHART_SIZE, CHART_COLORS, MAX_IMPORT_ROWS, MAX_IMPORT_COLS } from './constants';
+import { INITIAL_COLS, INITIAL_ROWS, CELL_WIDTH, CELL_HEIGHT, HEADER_COL_WIDTH, HEADER_ROW_HEIGHT, DEFAULT_CHART_SIZE, CHART_COLORS, MAX_IMPORT_ROWS, MAX_IMPORT_COLS, MAX_INITIAL_VIEWPORT_COVERAGE } from './constants';
 import { parseClipboardData } from './utils/clipboard';
 import { parseFile } from './utils/fileParser';
 import { getCellId, parseCellId, computeSheet } from './utils/formulas';
@@ -19,6 +19,8 @@ import { inferColumnType, getFilteredRows, getValidDataCount, suggestGranularity
 import { Upload, Moon, Sun, Table, StickyNote, Undo2, Redo2, Grid3X3, BarChart3, TrendingUp, Palette, AlignLeft, Trash2, ArrowDownAZ, ArrowUpAZ, Filter, MousePointer2, Hand, Hash, Percent, Image as ImageIcon, Database, FileSpreadsheet, BarChart2, Globe, Calendar, Minimize2, Maximize2, DollarSign, ArrowLeft, ArrowRight, Eraser, Type } from 'lucide-react';
 import { useStore, AppState } from './store';
 import { useChartPalette } from './hooks/useChartPalette';
+import AgentChatPanel from './src/components/AgentChatPanel';
+import { Sparkles } from 'lucide-react';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 const ONBOARDING_DISMISSED_KEY = 'sheetcanvas:onboarding-dismissed:v4';
@@ -71,6 +73,9 @@ const App: React.FC = () => {
   
   // Selection Context
   const [activeSelection, setActiveSelection] = useState<SelectionContext>({ sheetId: null, cellId: null, range: null });
+  const activeSelectionRef = useRef(activeSelection);
+  useEffect(() => { activeSelectionRef.current = activeSelection; }, [activeSelection]);
+  const [agentPanelOpen, setAgentPanelOpen] = useState(false);
 
   // Delete Confirmation State
   const [deleteConfirmPending, setDeleteConfirmPending] = useState(false);
@@ -718,8 +723,8 @@ const App: React.FC = () => {
         const cols = matrix.reduce((max, row) => Math.max(max, row.length), 0);
         const finalCols = Math.max(cols, INITIAL_COLS);
         const finalRows = Math.max(rows, INITIAL_ROWS);
-        const maxViewportRows = Math.floor((window.innerHeight - 200) / CELL_HEIGHT);
-        const maxViewportCols = Math.floor((window.innerWidth - 200) / CELL_WIDTH);
+        const maxViewportRows = Math.floor((window.innerHeight * MAX_INITIAL_VIEWPORT_COVERAGE) / CELL_HEIGHT);
+        const maxViewportCols = Math.floor((window.innerWidth * MAX_INITIAL_VIEWPORT_COVERAGE) / CELL_WIDTH);
         const constrainedRows = Math.min(finalRows, Math.max(INITIAL_ROWS, maxViewportRows));
         const constrainedCols = Math.min(finalCols, Math.max(INITIAL_COLS, maxViewportCols));
 
@@ -787,8 +792,8 @@ const App: React.FC = () => {
       const cols = finalMatrix.reduce((max, row) => Math.max(max, row.length), 0);
       const finalCols = Math.max(cols, INITIAL_COLS);
       const finalRows = Math.max(rows, INITIAL_ROWS);
-      const maxViewportRows = Math.floor((window.innerHeight - 200) / CELL_HEIGHT);
-      const maxViewportCols = Math.floor((window.innerWidth - 200) / CELL_WIDTH);
+      const maxViewportRows = Math.floor((window.innerHeight * MAX_INITIAL_VIEWPORT_COVERAGE) / CELL_HEIGHT);
+      const maxViewportCols = Math.floor((window.innerWidth * MAX_INITIAL_VIEWPORT_COVERAGE) / CELL_WIDTH);
       const constrainedRows = Math.min(finalRows, Math.max(INITIAL_ROWS, maxViewportRows));
       const constrainedCols = Math.min(finalCols, Math.max(INITIAL_COLS, maxViewportCols));
       const tableWidth = (constrainedCols * CELL_WIDTH) + HEADER_COL_WIDTH;
@@ -858,8 +863,8 @@ const App: React.FC = () => {
         
         const finalCols = Math.max(cols, INITIAL_COLS);
         const finalRows = Math.max(rows, INITIAL_ROWS);
-        const maxViewportRows = Math.floor((window.innerHeight - 200) / CELL_HEIGHT);
-        const maxViewportCols = Math.floor((window.innerWidth - 200) / CELL_WIDTH);
+        const maxViewportRows = Math.floor((window.innerHeight * MAX_INITIAL_VIEWPORT_COVERAGE) / CELL_HEIGHT);
+        const maxViewportCols = Math.floor((window.innerWidth * MAX_INITIAL_VIEWPORT_COVERAGE) / CELL_WIDTH);
         const constrainedRows = Math.min(finalRows, Math.max(INITIAL_ROWS, maxViewportRows));
         const constrainedCols = Math.min(finalCols, Math.max(INITIAL_COLS, maxViewportCols));
         const tableWidth = (constrainedCols * CELL_WIDTH) + HEADER_COL_WIDTH;
@@ -1016,6 +1021,30 @@ const App: React.FC = () => {
         )}
 
         <Toast message={toast.message} isVisible={toast.visible} onClose={() => setToast({ ...toast, visible: false })} />
+
+        {/* AI Copilot bubble — same pill style as the Toolbar nav bar */}
+        <div
+            className="fixed bottom-8 z-[999] transition-all duration-[120ms] ease-in-out"
+            style={{ right: agentPanelOpen ? 396 : 16 }}
+        >
+            <div className="p-1.5 bg-white/90 dark:bg-neutral-900/90 backdrop-blur-xl shadow-xl border border-neutral-200/50 dark:border-neutral-700/50 rounded-full">
+                <button
+                    onClick={() => setAgentPanelOpen((v) => !v)}
+                    title="Open Copilot"
+                    aria-label="Open Copilot"
+                    className="group relative p-2.5 rounded-full flex items-center justify-center text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100 transition-all cursor-pointer"
+                >
+                    <Sparkles size={20} strokeWidth={1.5} />
+                </button>
+            </div>
+        </div>
+
+        <AgentChatPanel
+            open={agentPanelOpen}
+            onClose={() => setAgentPanelOpen(false)}
+            getSelection={() => activeSelectionRef.current}
+            darkMode={darkMode}
+        />
 
         <GlobalCommandBar 
             isOpen={isCommandBarOpen} 

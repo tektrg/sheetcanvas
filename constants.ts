@@ -1,4 +1,4 @@
-
+import { COLORS, COLORS_DARK } from './theme';
 
 export const CELL_WIDTH = 100;
 export const CELL_HEIGHT = 34; // Slightly taller for breathing room
@@ -14,28 +14,35 @@ export const MAX_IMPORT_ROWS = 50000; // Keep high to allow full data storage
 export const MAX_IMPORT_COLS = 50;
 export const MAX_RENDER_ROWS = 100; // Strict UI rendering limit for performance
 
+// Max fraction of viewport each new sheet can occupy (per dimension) so there's
+// always room around the sheet for canvas navigation.
+export const MAX_INITIAL_VIEWPORT_COVERAGE = 0.5;
+
 export const MIN_SCALE = 0.1;
 export const MAX_SCALE = 3;
 
 export const COLOR_PALETTE = {
   light: {
-    grid: '#f0f0f0', // Very subtle grid dots
-    headerBg: '#f7f7f5', // Notion-like light gray
+    grid: '#f0f0f0',       // Very subtle grid dots
+    headerBg: '#f7f7f5',   // Notion-like light gray
     headerText: '#787774', // Notion-like text gray
-    selection: '#0d9488', // teal-600
-    selectionBg: 'rgba(13, 148, 136, 0.14)', 
+    selection: COLORS.accent,
+    selectionBg: COLORS.accentMuted,
   },
   dark: {
-    grid: '#262626', 
-    headerBg: '#1f1f1f', 
-    headerText: '#9ca3af', 
-    selection: '#14b8a6', // teal-500
-    selectionBg: 'rgba(20, 184, 166, 0.2)',
+    grid: '#262626',
+    headerBg: '#1f1f1f',
+    headerText: '#9ca3af',
+    selection: COLORS_DARK.accent,
+    selectionBg: COLORS_DARK.accentMuted,
   }
 };
 
+/** The app's primary accent colour — always use this, never a raw hex. */
+export const ACCENT_COLOR = COLORS.accent;
+
 export const CHART_COLORS = [
-  '#0d9488', // Teal
+  ACCENT_COLOR,
   '#eb5757', // Red
   '#f2c94c', // Yellow
   '#27ae60', // Green
