@@ -1,0 +1,13 @@
+{
+  "cases": [
+    {
+      "id": "ga-traffic-source-gptbreeze",
+      "prompt": "can you use google analytics tell me traffic sources to my website\ngptbreeze.io",
+      "expect": {
+        "minSheetsDelta": 1,
+        "connectorSheetCreated": true,
+        "assistantIncludes": ["traffic"]
+      }
+    }
+  ]
+}

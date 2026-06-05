@@ -40,6 +40,39 @@ There is no automated test harness yet, so rely on targeted manual QA flows: val
 
 For backend changes, smoke test locally with `wrangler dev` and hit `GET /health` plus one happy-path connector+query flow against a test ClickHouse instance.
 
+## Agent Eval Harness
+Use the browser-driven eval harness when changing Copilot/LLM behavior, client tools, data manipulation flows, chart creation, connector query behavior, or insight responses.
+
+Prerequisites:
+- Frontend must be running at `http://127.0.0.1:5173/` with `npm run dev -- --host 127.0.0.1 --port 5173 --strictPort`.
+- Backend must be running locally on port `8787` when the eval uses the agent API or connectors.
+- The eval bridge only registers on localhost and only in dev mode, or when `VITE_ENABLE_AGENT_EVAL=true` is explicitly set. The page must be opened with `?agent_eval=1`.
+
+Commands:
+- `npm run agent:eval` – run the default eval suite from `agent/evals/sample.json`.
+- `npm run agent:eval -- --cases agent/evals/real-data.example.json` – run a specific eval file.
+- `npm run agent:eval -- --timeout-ms 60000` – override the per-case prompt timeout.
+- `npm run agent:eval -- --headed` – show the browser for visual debugging.
+- `npm run agent:eval -- --include-raw-messages` – include raw AI SDK messages in the JSON run log.
+- `npm run agent:eval -- --browser-ws-url <ws://...>` – reuse an already-running Chromium DevTools browser when local browser launch is flaky.
+
+Outputs:
+- Run logs are written to `.agent-eval-runs/`, which is intentionally gitignored.
+- Each log includes prompt, run status/error, before/after canvas state, bounded sheet cell values/raw formulas, filters, sort state, created sheets/charts, selected IDs, assistant text, and summarized tool events.
+
+Eval authoring:
+- Add new evals under `agent/evals/`.
+- Treat correct final canvas state as the pass condition, not just assistant wording.
+- Prefer expectations that verify specific sheet/chart state: `minSheetsDelta`, `minChartsDelta`, `noNewSheets`, `noNewCharts`, `sheets`, `newSheets`, `newCharts`, `sheetTitleIncludes`, `chartTitleIncludes`, `assistantIncludes`, and `connectorSheetCreated`.
+- For sheet state, use checks such as `titleIncludes`, `headersInclude`, `cellEquals`, `rangeIncludes`, `filters`, and `sort`.
+- For chart state, use checks such as `titleIncludes`, `type`, `sourceSheetTitleIncludes`, `labelColumn`, `labelHeader`, `dataColumns`, `dataColumnsInclude`, and `dataHeadersInclude`.
+- Run errors fail by default. Set `allowRunError` only for cases intentionally validating error behavior.
+- Empty external query-result cases should assert `noNewSheets`, `noNewCharts`, and assistant copy that explains no data was returned and stops.
+
+Browser notes:
+- The runner prefers `CHROME_PATH` if set, then arm64 Microsoft Edge on this Mac, then Chrome/Chromium candidates.
+- If Chromium launch fails, first clean stale eval browser processes matching `sheetcanvas-agent-eval`, then rerun. Keep active dev servers and ambiguous sessions.
+
 ## Project Memory
 - Agents **must use the `memory-project` skill** to work with project memory.
 - `AGENTS.md` is the entry point for agent context; read it first, then use the `memory-project` skill to consult `memory/` for durable project knowledge.

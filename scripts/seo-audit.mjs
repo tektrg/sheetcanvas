@@ -30,8 +30,24 @@ import {
   auditSupportAnalyticsCtaInPage,
   auditSupportAnalyticsScriptInPage,
 } from './seo-support-analytics-audit.mjs';
+import {
+  auditDeployPreflightScript,
+  auditDeployPreflightSmokeScript,
+  auditDeployScript,
+  auditLiveRootCheckScript,
+  auditLiveSupportCheckScript,
+  auditRootAnalyticsSmokeScript,
+  auditRssGeneratorScript,
+  auditSearchConsoleScript,
+  auditSearchConsoleSmokeScript,
+} from './seo-tooling-audit.mjs';
 
 const REQUIRED_SUPPORT_SCHEMA_TYPES = ['WebPage', 'BreadcrumbList'];
+const REQUIRED_ROOT_APP_FEATURES = [
+  'Local CSV and spreadsheet file analysis',
+  'Canvas-based tables, charts, pivots, and notes',
+  'Connected-sheet workflows for ClickHouse and Google Analytics',
+];
 const MAX_SEO_AUDIT_LINES = 1000;
 const BLOG_ROOT_PATH = '/blog/';
 const RSS_FEED_URL = `${SITE_ORIGIN}/rss.xml`;
@@ -71,6 +87,18 @@ function auditRootAppShell(html, pageLabel) {
   if (getAlternateRss(html) !== RSS_FEED_URL) {
     reportError(pageLabel, 'root page must advertise the SheetCanvas RSS feed with rel="alternate".');
   }
+
+  const requiredSupportEntrySnippets = [
+    "sessionStorage.getItem('sheetcanvas:support-entry')",
+    'support_entry_path',
+    'support_entry_title',
+    "sessionStorage.removeItem('sheetcanvas:support-entry')",
+  ];
+  for (const snippet of requiredSupportEntrySnippets) {
+    if (!html.includes(snippet)) {
+      reportError(pageLabel, `root page GA4 config must include "${snippet}" for app visits from SEO support pages.`);
+    }
+  }
 }
 
 function auditRootWebsiteSchema(pageLabel, schemaObjects) {
@@ -86,6 +114,41 @@ function auditRootWebsiteSchema(pageLabel, schemaObjects) {
 
   if (!hasValidWebsite) {
     reportError(pageLabel, 'root page must include top-level WebSite JSON-LD for SheetCanvas with publisher and language.');
+  }
+}
+
+function auditRootWebPageSchema(pageLabel, schemaObjects) {
+  const webPageSchemas = schemaObjects.flatMap((schema) => findSchemaObjectsByType(schema, 'WebPage'));
+  const hasValidWebPage = webPageSchemas.some((schema) => (
+    schema.name === 'SheetCanvas app'
+    && schemaUrlMatches(schema.url, `${SITE_ORIGIN}/`)
+    && isStrictIsoDate(schema.dateModified ?? '')
+    && schemaUrlMatches(schema.mainEntity, `${SITE_ORIGIN}/`)
+    && schemaUrlMatches(schema.isPartOf, `${SITE_ORIGIN}/#website`)
+  ));
+
+  if (!hasValidWebPage) {
+    reportError(pageLabel, 'root page must include route-matched WebPage JSON-LD with dateModified, mainEntity app, and isPartOf website.');
+  }
+}
+
+function auditRootSoftwareApplicationSchema(pageLabel, schemaObjects) {
+  const appSchemas = schemaObjects.flatMap((schema) => findSchemaObjectsByType(schema, 'SoftwareApplication'));
+  const hasValidApplication = appSchemas.some((schema) => {
+    const featureList = Array.isArray(schema.featureList) ? schema.featureList : [];
+    return schema.name === 'SheetCanvas'
+      && schema.description?.includes('local-first spreadsheet canvas')
+      && schema.applicationCategory === 'BusinessApplication'
+      && schema.applicationSubCategory === 'Spreadsheet'
+      && schema.operatingSystem === 'Web'
+      && schemaUrlMatches(schema.url, `${SITE_ORIGIN}/`)
+      && schemaUrlMatches(schema.screenshot, `${SITE_ORIGIN}/brand/sheetcanvas-og.png`)
+      && schema.publisher?.name === 'theindie.app'
+      && REQUIRED_ROOT_APP_FEATURES.every((feature) => featureList.includes(feature));
+  });
+
+  if (!hasValidApplication) {
+    reportError(pageLabel, 'root page must include product-specific SoftwareApplication JSON-LD with shipped SheetCanvas features.');
   }
 }
 
@@ -282,12 +345,10 @@ function auditPage(page, supportPagePaths) {
     }
   });
 
-  if (page.urlPath === '/' && !schemaTypes.includes('SoftwareApplication')) {
-    reportError(pageLabel, 'root page must include SoftwareApplication JSON-LD.');
-  }
-
   if (page.urlPath === '/') {
+    auditRootSoftwareApplicationSchema(pageLabel, schemaObjects);
     auditRootWebsiteSchema(pageLabel, schemaObjects);
+    auditRootWebPageSchema(pageLabel, schemaObjects);
     auditRootAppShell(html, pageLabel);
   } else {
     auditSupportAnalyticsScriptInPage(html, pageLabel, reportError);
@@ -320,6 +381,9 @@ function auditPage(page, supportPagePaths) {
     if (!routeWebPageSchema || !isStrictIsoDate(routeWebPageSchema.dateModified ?? '')) {
       reportError(pageLabel, 'support page must include route-matched WebPage JSON-LD with dateModified as YYYY-MM-DD.');
     } else {
+      if (!schemaUrlMatches(routeWebPageSchema.isPartOf, `${SITE_ORIGIN}/#website`)) {
+        reportError(pageLabel, 'support page WebPage JSON-LD must link isPartOf to the canonical WebSite @id.');
+      }
       const expectedReviewedDate = reviewedDateLabel(routeWebPageSchema.dateModified);
       if (visibleReviewedDate !== expectedReviewedDate) {
         reportError(
@@ -481,128 +545,6 @@ function auditExcludedPublicHeaders(rootPath) {
   }
 }
 
-function auditDeployScript() {
-  const packageJsonPath = join(process.cwd(), 'package.json');
-  const label = 'source:package.json';
-
-  if (!existsSync(packageJsonPath)) {
-    reportError(label, 'missing package.json.');
-    return;
-  }
-
-  const packageJson = JSON.parse(readText(packageJsonPath));
-  const deployScript = packageJson.scripts?.['deploy:pages'] ?? '';
-  const gscScript = packageJson.scripts?.['seo:gsc'] ?? '';
-  const llmsScript = packageJson.scripts?.['seo:llms'] ?? '';
-  const rssScript = packageJson.scripts?.['seo:rss'] ?? '';
-  const seoAuditScript = packageJson.scripts?.['seo:audit'] ?? '';
-  const expectedDeployScript = 'npm run seo:audit && wrangler pages deploy dist --project-name sheetcanvas --branch main';
-  const expectedGscScript = 'node scripts/search-console-report.mjs';
-  const expectedLlmsScript = 'node scripts/generate-llms.mjs';
-  const expectedRssScript = 'node scripts/generate-rss.mjs';
-  const expectedSeoAuditScript = 'npm run seo:sitemap && npm run seo:rss && npm run seo:llms && npm run build && node scripts/seo-audit.mjs';
-
-  if (deployScript !== expectedDeployScript) {
-    reportError(label, `deploy:pages should be "${expectedDeployScript}", found "${deployScript || 'nothing'}".`);
-  }
-
-  if (gscScript !== expectedGscScript) {
-    reportError(label, `seo:gsc should be "${expectedGscScript}", found "${gscScript || 'nothing'}".`);
-  }
-
-  if (llmsScript !== expectedLlmsScript) {
-    reportError(label, `seo:llms should be "${expectedLlmsScript}", found "${llmsScript || 'nothing'}".`);
-  }
-
-  if (rssScript !== expectedRssScript) {
-    reportError(label, `seo:rss should be "${expectedRssScript}", found "${rssScript || 'nothing'}".`);
-  }
-
-  if (seoAuditScript !== expectedSeoAuditScript) {
-    reportError(label, `seo:audit should be "${expectedSeoAuditScript}", found "${seoAuditScript || 'nothing'}".`);
-  }
-}
-
-function auditSearchConsoleScript() {
-  const scriptPath = join(process.cwd(), 'scripts/search-console-report.mjs');
-  const label = 'source:scripts/search-console-report.mjs';
-
-  if (!existsSync(scriptPath)) {
-    reportError(label, 'missing Search Console reporting wrapper.');
-    return;
-  }
-
-  const script = readText(scriptPath);
-  const expectedSnippets = [
-    {
-      snippet: "const DEFAULT_GSC_REPORT_BIN = '/Users/trungluong/clawd/bin/gsc-report';",
-      message: 'must default to the global Search Console reporting wrapper.',
-    },
-    {
-      snippet: 'process.env.SHEETCANVAS_GSC_REPORT_BIN',
-      message: 'must allow overriding the Search Console reporting binary.',
-    },
-    {
-      snippet: "const DEFAULT_SITE_URL = 'sc-domain:sheetcanvas.com';",
-      message: 'must default to the SheetCanvas domain property.',
-    },
-    {
-      snippet: "const DEFAULT_OUTPUT_DIR = 'reports/seo/search-console';",
-      message: 'must default report output to the gitignored Search Console report folder.',
-    },
-    {
-      snippet: "hasOption(finalArgs, '--stdout-only')",
-      message: 'must honor --stdout-only without adding the default output directory.',
-    },
-    {
-      snippet: "hasOption(finalArgs, '--output-dir')",
-      message: 'must honor a custom --output-dir without adding the default output directory.',
-    },
-  ];
-
-  for (const { snippet, message } of expectedSnippets) {
-    if (!script.includes(snippet)) {
-      reportError(label, message);
-    }
-  }
-}
-
-function auditRssGeneratorScript() {
-  const scriptPath = join(process.cwd(), 'scripts/generate-rss.mjs');
-  const label = 'source:scripts/generate-rss.mjs';
-
-  if (!existsSync(scriptPath)) {
-    reportError(label, 'missing RSS generator script.');
-    return;
-  }
-
-  const script = readText(scriptPath);
-  const expectedSnippets = [
-    {
-      snippet: "const BLOG_DIR = join(process.cwd(), 'public', 'blog');",
-      message: 'must discover the public blog directory.',
-    },
-    {
-      snippet: "findSchemaByType(schema, 'BlogPosting')",
-      message: 'must read BlogPosting JSON-LD for feed entries.',
-    },
-    {
-      snippet: ".filter((item) => !item.isBlogRoot)",
-      message: 'must exclude the blog hub from RSS item output.',
-    },
-    {
-      snippet: "Generated public/rss.xml",
-      message: 'must write the source RSS feed when blog metadata changes.',
-    },
-  ];
-
-  for (const { snippet, message } of expectedSnippets) {
-    if (!script.includes(snippet)) {
-      reportError(label, message);
-    }
-  }
-}
-
 function auditSeoAuditMaintainability() {
   const scriptPath = join(process.cwd(), 'scripts/seo-audit.mjs');
   const label = 'source:scripts/seo-audit.mjs';
@@ -757,9 +699,15 @@ for (const pageRoot of PAGE_ROOTS) {
   auditLlmsText(pageRoot.rootPath, pages, { readText, reportError });
 }
 
-auditDeployScript();
-auditSearchConsoleScript();
-auditRssGeneratorScript();
+auditDeployScript({ readText, reportError });
+auditDeployPreflightScript({ readText, reportError });
+auditDeployPreflightSmokeScript({ readText, reportError });
+auditSearchConsoleScript({ readText, reportError });
+auditSearchConsoleSmokeScript({ readText, reportError });
+auditRootAnalyticsSmokeScript({ readText, reportError });
+auditLiveRootCheckScript({ readText, reportError });
+auditLiveSupportCheckScript({ readText, reportError });
+auditRssGeneratorScript({ readText, reportError });
 auditLlmsGeneratorScript({ readText, reportError });
 auditSeoAuditMaintainability();
 

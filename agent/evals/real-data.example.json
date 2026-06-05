@@ -1,0 +1,23 @@
+{
+  "cases": [
+    {
+      "id": "ga4-traffic-chart",
+      "prompt": "Use the Google Analytics connection for any property, create a sheet with sessions by date for the last 30 days, then create a line chart from it.",
+      "expect": {
+        "minSheetsDelta": 1,
+        "minChartsDelta": 1,
+        "connectorSheetCreated": true,
+        "chartTitleIncludes": ["sessions"]
+      }
+    },
+    {
+      "id": "external-empty-result-stops",
+      "prompt": "Use an external connection and query a date range that has no rows. Explain the empty result and do not create a sheet or chart.",
+      "expect": {
+        "noNewSheets": true,
+        "noNewCharts": true,
+        "assistantIncludes": ["no data"]
+      }
+    }
+  ]
+}

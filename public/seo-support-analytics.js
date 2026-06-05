@@ -11,6 +11,7 @@
   var supportPageTitle = document.title;
   var searchParams = new URLSearchParams(window.location.search);
   var isDebugMode = searchParams.get('debug_ga') === '1';
+  var supportEntryStorageKey = 'sheetcanvas:support-entry';
 
   function withDebugMode(parameters) {
     if (!isDebugMode) {
@@ -52,8 +53,21 @@
   }
 
   function isAppCta(anchor) {
-    var label = (anchor.textContent || anchor.getAttribute('aria-label') || '').trim();
-    return /open (sheetcanvas|app)/i.test(label);
+    var textLabel = (anchor.textContent || '').trim();
+    var ariaLabel = (anchor.getAttribute('aria-label') || '').trim();
+    return /open (sheetcanvas|app)/i.test(textLabel) || /open (sheetcanvas|app)/i.test(ariaLabel);
+  }
+
+  function rememberSupportEntry() {
+    try {
+      window.sessionStorage.setItem(supportEntryStorageKey, JSON.stringify({
+        path: supportPagePath,
+        title: supportPageTitle,
+        timestamp: Date.now()
+      }));
+    } catch (error) {
+      // Analytics context is best-effort; private browsing/storage failures should not block app navigation.
+    }
   }
 
   document.addEventListener('click', function trackSupportAppCta(event) {
@@ -61,6 +75,8 @@
     if (!anchor || !isRootAppLink(anchor) || !isAppCta(anchor) || typeof window.gtag !== 'function') {
       return;
     }
+
+    rememberSupportEntry();
 
     window.gtag('event', 'support_open_app_click', withDebugMode({
       event_category: 'SEO support page',

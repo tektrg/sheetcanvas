@@ -13,6 +13,7 @@ dist
 dist-ssr
 test-results/
 reports/seo/search-console/
+.agent-eval-runs/
 *.local
 
 # Local design-tool artifacts

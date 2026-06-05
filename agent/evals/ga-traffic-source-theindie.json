@@ -1,0 +1,9 @@
+{
+  "cases": [
+    {
+      "id": "ga-traffic-source-theindie",
+      "prompt": "can you use google analytics tell me traffic sources to my website\ntheindie.app",
+      "expect": {}
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "cases": [
+    {
+      "id": "demo-budget-chart",
+      "prompt": "Create a bar chart of Actual by Category from the Monthly Budget sheet.",
+      "expect": {
+        "minChartsDelta": 1,
+        "chartTitleIncludes": ["Actual"],
+        "sheets": [
+          {
+            "titleIncludes": "Monthly Budget",
+            "headersInclude": ["Category", "Actual"],
+            "cellEquals": [
+              { "cell": "A3", "value": "Groceries" },
+              { "cell": "C3", "value": 450 }
+            ]
+          }
+        ],
+        "newCharts": [
+          {
+            "titleIncludes": "Actual",
+            "type": "bar",
+            "sourceSheetTitleIncludes": "Monthly Budget",
+            "labelColumn": "A",
+            "labelHeader": "Category",
+            "dataColumns": ["C"],
+            "dataHeadersInclude": ["Actual"]
+          }
+        ],
+        "assistantIncludes": ["bar chart"]
+      }
+    }
+  ]
+}
