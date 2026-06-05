@@ -10,6 +10,7 @@ export type Env = {
   GOOGLE_GENERATIVE_AI_API_KEY?: string;
   AGENT_MODEL?: string;
   AGENT_DAILY_LIMIT?: string;
+  AGENT_FLOW_DEBUG?: string;
   AGENT_QUOTA?: KVNamespace;
   ENVIRONMENT?: string;
 };

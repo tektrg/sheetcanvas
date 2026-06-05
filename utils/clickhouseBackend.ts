@@ -54,6 +54,31 @@ export async function queryClickhouse(args: { connectorId: string; sql: string; 
   });
 }
 
+export type ClickHouseSchemaResponse = { tables: Array<{ name: string }> };
+export type ClickHouseDescribeResponse = { columns: Array<{ name: string; type: string }> };
+
+export async function getClickhouseSchema(args: {
+  connectorId: string;
+  database?: string;
+}): Promise<ClickHouseSchemaResponse> {
+  return requestJson<ClickHouseSchemaResponse>('/api/connectors/clickhouse/schema', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(args),
+  });
+}
+
+export async function describeClickhouseTable(args: {
+  connectorId: string;
+  table: string;
+}): Promise<ClickHouseDescribeResponse> {
+  return requestJson<ClickHouseDescribeResponse>('/api/connectors/clickhouse/describe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(args),
+  });
+}
+
 export function clickhouseResultToMatrix(result: ClickHouseQueryResponse): string[][] {
   const headers = result.columns.map((c) => c.name);
   const rows = result.rows.map((row) =>

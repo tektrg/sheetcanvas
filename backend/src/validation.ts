@@ -51,5 +51,22 @@ export const googleAnalyticsQuerySchema = z.object({
 });
 
 export const googleAnalyticsPropertiesSchema = z.object({
-  connectorId: z.string().trim().min(1)
+  connectorId: z.string().trim().min(1),
+  pageSize: z.number().int().min(1).max(200).optional(),
+  pageToken: z.string().trim().min(1).optional(),
+});
+
+export const clickhouseSchemaSchema = z.object({
+  connectorId: z.string().trim().min(1),
+  database: z.string().trim().min(1).optional(),
+});
+
+export const clickhouseDescribeSchema = z.object({
+  connectorId: z.string().trim().min(1),
+  table: z.string().trim().min(1),
+});
+
+export const googleAnalyticsMetadataSchema = z.object({
+  connectorId: z.string().trim().min(1),
+  propertyId: z.string().trim().min(1),
 });

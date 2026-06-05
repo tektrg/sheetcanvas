@@ -1,4 +1,5 @@
 import { useStore } from '../../store';
+import { computeDateAnchors } from '../../utils/dates';
 import { getCellId } from '../../utils/formulas';
 import type { SelectionContext } from '../../types';
 
@@ -26,9 +27,12 @@ export function buildAgentContextLine(
       hasSort: !!s.sort,
     };
   });
+  const nowStr = new Date().toISOString();
+  const dateAnchors = computeDateAnchors(nowStr);
   return JSON.stringify({
     sheets,
     selection: attachSelection ? selection : null,
-    now: new Date().toISOString(),
+    now: nowStr,
+    dateAnchors,
   });
 }

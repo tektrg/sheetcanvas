@@ -4,9 +4,10 @@ import type { Env } from "./env";
 import { HttpError, toJsonError } from "./errors";
 import { requireBearerToken } from "./auth";
 import { decryptString, encryptString } from "./crypto";
-import { executeClickhouseQuery } from "./clickhouse";
+import { executeClickhouseQuery, getClickhouseSchema, describeClickhouseTable } from "./clickhouse";
 import {
   exchangeGoogleAnalyticsCode,
+  getGoogleAnalyticsMetadata,
   listGoogleAnalyticsProperties,
   refreshGoogleAnalyticsAccessToken,
   runGoogleAnalyticsReport
@@ -14,9 +15,12 @@ import {
 import { getConnectorById, insertClickhouseConnector, insertGoogleAnalyticsConnector, listConnectors } from "./db";
 import {
   clickhouseCreateSchema,
+  clickhouseDescribeSchema,
   clickhouseQuerySchema,
+  clickhouseSchemaSchema,
   clickhouseTestSchema,
   googleAnalyticsAuthExchangeSchema,
+  googleAnalyticsMetadataSchema,
   googleAnalyticsPropertiesSchema,
   googleAnalyticsQuerySchema
 } from "./validation";
@@ -238,9 +242,13 @@ app.post("/api/connectors/google-analytics/properties", async (c) => {
     clientSecret: c.env.GOOGLE_CLIENT_SECRET?.trim()
   });
 
-  const properties = await listGoogleAnalyticsProperties({ accessToken: access.access_token });
+  const propertiesResult = await listGoogleAnalyticsProperties({
+    accessToken: access.access_token,
+    pageSize: parsed.data.pageSize,
+    pageToken: parsed.data.pageToken
+  });
 
-  return c.json({ properties });
+  return c.json(propertiesResult);
 });
 
 app.post("/api/query/google-analytics", async (c) => {
@@ -287,6 +295,47 @@ app.post("/api/query/google-analytics", async (c) => {
     rowCount: result.rowCount,
     truncated: result.truncated
   });
+});
+
+app.post('/api/connectors/clickhouse/schema', async (c) => {
+  requireBearerToken(c.req.raw, c.env);
+  const parsed = clickhouseSchemaSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: { code: 'bad_request', message: parsed.error.message } }, 400);
+  const connector = await getConnectorById(c.env, parsed.data.connectorId);
+  if (connector.type !== 'clickhouse') throw new HttpError(400, 'unsupported_connector', 'Unsupported connector type');
+  if (!connector.url || !connector.username) throw new HttpError(400, 'missing_config', 'Connector is missing connection details');
+  if (!connector.password_ciphertext_b64 || !connector.password_iv_b64) throw new HttpError(400, 'missing_secret', 'Connector is missing credentials');
+  const password = await decryptString(connector.password_ciphertext_b64, connector.password_iv_b64, c.env.ENCRYPTION_KEY_B64);
+  const result = await getClickhouseSchema({ url: connector.url, username: connector.username, password, database: parsed.data.database, timeoutMs: getTimeoutMs(c.env) });
+  return c.json(result);
+});
+
+app.post('/api/connectors/clickhouse/describe', async (c) => {
+  requireBearerToken(c.req.raw, c.env);
+  const parsed = clickhouseDescribeSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: { code: 'bad_request', message: parsed.error.message } }, 400);
+  const connector = await getConnectorById(c.env, parsed.data.connectorId);
+  if (connector.type !== 'clickhouse') throw new HttpError(400, 'unsupported_connector', 'Unsupported connector type');
+  if (!connector.url || !connector.username) throw new HttpError(400, 'missing_config', 'Connector is missing connection details');
+  if (!connector.password_ciphertext_b64 || !connector.password_iv_b64) throw new HttpError(400, 'missing_secret', 'Connector is missing credentials');
+  const password = await decryptString(connector.password_ciphertext_b64, connector.password_iv_b64, c.env.ENCRYPTION_KEY_B64);
+  const result = await describeClickhouseTable({ url: connector.url, username: connector.username, password, table: parsed.data.table, timeoutMs: getTimeoutMs(c.env) });
+  return c.json(result);
+});
+
+app.post('/api/connectors/google-analytics/metadata', async (c) => {
+  requireBearerToken(c.req.raw, c.env);
+  const parsed = googleAnalyticsMetadataSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: { code: 'bad_request', message: parsed.error.message } }, 400);
+  const connector = await getConnectorById(c.env, parsed.data.connectorId);
+  if (connector.type !== 'google-analytics') throw new HttpError(400, 'unsupported_connector', 'Unsupported connector type');
+  const clientId = c.env.GOOGLE_CLIENT_ID?.trim();
+  if (!clientId) throw new HttpError(500, 'missing_config', 'GOOGLE_CLIENT_ID is not set');
+  if (!connector.secret_ciphertext_b64 || !connector.secret_iv_b64) throw new HttpError(400, 'missing_secret', 'Connector is missing credentials');
+  const refreshToken = await decryptString(connector.secret_ciphertext_b64, connector.secret_iv_b64, c.env.ENCRYPTION_KEY_B64);
+  const access = await refreshGoogleAnalyticsAccessToken({ refreshToken, clientId, clientSecret: c.env.GOOGLE_CLIENT_SECRET?.trim() });
+  const result = await getGoogleAnalyticsMetadata({ accessToken: access.access_token, propertyId: parsed.data.propertyId });
+  return c.json(result);
 });
 
 export default app;

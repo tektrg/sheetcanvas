@@ -89,11 +89,29 @@ export interface SortConfig {
 // Data Connector Types
 export type ConnectorType = 'google-sheets' | 'google-analytics' | 'csv-url' | 'clickhouse';
 
+export type ClickhouseQuery = { sql: string };
+export type GaQuery = { propertyId: string; report: GoogleAnalyticsReport };
+
+export type GoogleAnalyticsReport = {
+  dateRanges?: Array<{ startDate: string; endDate: string }>;
+  dimensions?: Array<{ name: string }>;
+  metrics?: Array<{ name: string }>;
+  dimensionFilter?: unknown;
+  metricFilter?: unknown;
+  orderBys?: unknown[];
+  limit?: number;
+};
+
 export interface ConnectorConfig {
   type: ConnectorType;
   name: string;
-  // Generic params bucket
-  params: Record<string, unknown>;
+  connectionId?: string;
+  query?: ClickhouseQuery | GaQuery;
+  derivation?: string;
+  lastRefreshedAt?: number;
+  truncated?: boolean;
+  lastError?: string;
+  params?: Record<string, unknown>;
 }
 
 export interface ConnectorResult {

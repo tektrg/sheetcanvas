@@ -51,12 +51,13 @@ const mockGoogleAnalyticsFetch = async (propertyId: string): Promise<string[][]>
 export const fetchDataFromConnector = async (config: ConnectorConfig): Promise<ConnectorResult> => {
   // Check if we are in simulation mode (usually determined by env var or UI toggle)
   // For this demo, we assume simulation if no API Key is present in params (or always true for safety)
-  const simulateParam = (config.params as Record<string, unknown>).simulate;
+  const params = config.params ?? {};
+  const simulateParam = params.simulate;
   const isSimulation = simulateParam !== false;
 
   try {
     if (config.type === 'google-sheets') {
-      const sheetId = String(config.params.sheetId || '');
+      const sheetId = String(params.sheetId || '');
       
       if (!isSimulation) {
         // REAL IMPLEMENTATION STUB:
@@ -76,12 +77,13 @@ export const fetchDataFromConnector = async (config: ConnectorConfig): Promise<C
       };
 
     } else if (config.type === 'google-analytics') {
-      const propertyId = String(config.params.propertyId || '');
+      const query = config.query && 'propertyId' in config.query ? config.query : null;
+      const propertyId = String(query?.propertyId || params.propertyId || '');
 
       if (!isSimulation) {
-        const connectorId = String(config.params.connectorId || '');
+        const connectorId = String(config.connectionId || params.connectorId || '');
         if (!connectorId) throw new Error('Missing Google Analytics connector');
-        const report = config.params.report as GoogleAnalyticsReport | undefined;
+        const report = (query?.report || params.report) as GoogleAnalyticsReport | undefined;
         const result = await queryGoogleAnalytics({ connectorId, propertyId, report });
         return {
           title: `Analytics: Prop ${propertyId}`,
@@ -96,7 +98,7 @@ export const fetchDataFromConnector = async (config: ConnectorConfig): Promise<C
       };
 
     } else if (config.type === 'csv-url') {
-      const url = String(config.params.url || '');
+      const url = String(params.url || '');
       // This can actually work for public CORS-enabled CSVs
       try {
         const response = await fetch(url);

@@ -1,10 +1,71 @@
 import { useStore } from '../../store';
-import type { CellData, CellFormat, ChartData, ChartConfig, SheetData, FilterCondition, SortConfig, SelectionContext, ChartType, PivotConfig, SparklineConfig } from '../../types';
+import type { CellData, CellFormat, ChartData, ChartConfig, SheetData, FilterCondition, SortConfig, SelectionContext, ChartType, PivotConfig, SparklineConfig, ConnectorConfig } from '../../types';
 import { parseCellId, getCellId } from '../../utils/formulas';
 import { CELL_WIDTH, DEFAULT_CHART_SIZE, ACCENT_COLOR } from '../../constants';
 import { runSheetQuery, sheetTableSchema } from './alasqlAdapter';
+import { requestJson } from '../../utils/backendApi';
+import { clickhouseResultToMatrix, queryClickhouse, getClickhouseSchema, describeClickhouseTable } from '../../utils/clickhouseBackend';
+import { googleAnalyticsResultToMatrix, queryGoogleAnalytics, getGoogleAnalyticsMetadata, listGoogleAnalyticsPropertiesPage, type GoogleAnalyticsMetadataItem } from '../../utils/googleAnalyticsBackend';
+import { applyMatrixToSheet } from '../../utils/connectorSheet';
 
 const generateId = () => Math.random().toString(36).slice(2, 11);
+
+const DEFAULT_GA_DIMENSIONS = new Set([
+  'date',
+  'sessionSource',
+  'sessionMedium',
+  'sessionCampaignName',
+  'firstUserSource',
+  'firstUserMedium',
+  'pagePath',
+  'pageTitle',
+  'country',
+  'deviceCategory',
+]);
+
+const DEFAULT_GA_METRICS = new Set([
+  'activeUsers',
+  'sessions',
+  'totalUsers',
+  'newUsers',
+  'screenPageViews',
+  'eventCount',
+  'engagementRate',
+  'bounceRate',
+  'conversions',
+]);
+
+function makeSchemaToken(): string {
+  return 'schema_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
+function compactGaMetadata(
+  items: GoogleAnalyticsMetadataItem[],
+  defaults: Set<string>,
+  args: { search?: string; limit?: number; includeDescriptions?: boolean },
+) {
+  const limit = Math.max(1, Math.min(args.limit ?? 25, 50));
+  const terms = (args.search ?? '')
+    .toLowerCase()
+    .split(/\s+/)
+    .map((term) => term.trim())
+    .filter(Boolean);
+
+  const filtered = terms.length
+    ? items.filter((item) => {
+        const haystack = `${item.apiName} ${item.displayName} ${item.description ?? ''}`.toLowerCase();
+        return terms.some((term) => haystack.includes(term));
+      })
+    : items.filter((item) => defaults.has(item.apiName));
+
+  const source = filtered.length ? filtered : items;
+  const selected = source.slice(0, limit);
+  return selected.map((item) => ({
+    apiName: item.apiName,
+    displayName: item.displayName,
+    ...(args.includeDescriptions && item.description ? { description: item.description } : {}),
+  }));
+}
 
 export type ToolResult =
   | { ok: true; [k: string]: unknown }
@@ -49,7 +110,13 @@ function summarizeSheet(sheet: SheetData) {
     filters: sheet.filters ?? [],
     sort: sheet.sort ?? null,
     connector: sheet.connectorConfig
-      ? { type: sheet.connectorConfig.type, name: sheet.connectorConfig.name }
+      ? {
+          type: sheet.connectorConfig.type,
+          name: sheet.connectorConfig.name,
+          derivation: sheet.connectorConfig.derivation ?? null,
+          lastError: sheet.connectorConfig.lastError ?? null,
+          lastRefreshedAt: sheet.connectorConfig.lastRefreshedAt ?? null,
+        }
       : null,
   };
 }
@@ -356,6 +423,177 @@ export async function executeClientTool(
         };
         store.addSheet(newSheet);
         return { ok: true, sheetId: newSheet.id, sourceSheetId: source.id };
+      }
+
+      case 'listConnections': {
+        const res = await requestJson<{ connectors: Array<{ id: string; type: string; name: string }> }>('/api/connectors');
+        const connections = (res.connectors || []).map((c) => ({ connectionId: c.id, type: c.type, name: c.name }));
+        store.setConnections(connections);
+        return { ok: true, connections };
+      }
+
+      case 'listConnectionProperties': {
+        const { connectionId, pageSize, pageToken } = input as { connectionId: string; pageSize?: number; pageToken?: string };
+        let connections = store.connections;
+        if (!connections.length) {
+          const res = await requestJson<{ connectors: Array<{ id: string; type: string; name: string }> }>('/api/connectors');
+          connections = (res.connectors || []).map((c) => ({ connectionId: c.id, type: c.type, name: c.name }));
+          store.setConnections(connections);
+        }
+        const conn = connections.find((c) => c.connectionId === connectionId);
+        if (!conn) return { ok: false, error: 'Connection not found: ' + connectionId };
+        if (conn.type !== 'google-analytics') {
+          return { ok: false, error: 'Properties are only supported for Google Analytics connections' };
+        }
+        const result = await listGoogleAnalyticsPropertiesPage({
+          connectorId: connectionId,
+          pageSize: Math.max(1, Math.min(pageSize ?? 50, 50)),
+          pageToken,
+        });
+        return {
+          ok: true,
+          connectionId,
+          type: 'google-analytics',
+          properties: result.properties,
+          nextPageToken: result.nextPageToken ?? null,
+          truncated: !!result.truncated,
+        };
+      }
+
+      case 'describeConnection': {
+        const { connectionId, table, propertyId, search, limit, includeDescriptions } = input as {
+          connectionId: string;
+          table?: string;
+          propertyId?: string;
+          search?: string;
+          limit?: number;
+          includeDescriptions?: boolean;
+        };
+        let connections = store.connections;
+        if (!connections.length) {
+          const res = await requestJson<{ connectors: Array<{ id: string; type: string; name: string }> }>('/api/connectors');
+          connections = (res.connectors || []).map((c) => ({ connectionId: c.id, type: c.type, name: c.name }));
+          store.setConnections(connections);
+        }
+        const conn = connections.find((c) => c.connectionId === connectionId);
+        if (!conn) return { ok: false, error: 'Connection not found: ' + connectionId };
+        if (conn.type === 'clickhouse') {
+          if (table) {
+            const result = await describeClickhouseTable({ connectorId: connectionId, table });
+            const schemaToken = makeSchemaToken();
+            store.setConnectionSchemaToken(schemaToken, { connectionId, type: 'clickhouse', table, createdAt: Date.now() });
+            return { ok: true, connectionId, type: 'clickhouse', table, schemaToken, columns: result.columns };
+          }
+          const result = await getClickhouseSchema({ connectorId: connectionId });
+          return { ok: true, connectionId, type: 'clickhouse', tables: result.tables };
+        }
+        if (conn.type === 'google-analytics') {
+          if (!propertyId) return { ok: false, error: 'propertyId is required for Google Analytics describeConnection' };
+          const metadataCacheKey = connectionId + ':' + propertyId;
+          const cached = store.gaMetadataCache[metadataCacheKey];
+          const fullMetadata = cached ?? await getGoogleAnalyticsMetadata({ connectorId: connectionId, propertyId });
+          if (!cached) store.setGaMetadata(metadataCacheKey, fullMetadata);
+          const schemaToken = makeSchemaToken();
+          store.setConnectionSchemaToken(schemaToken, { connectionId, type: 'google-analytics', propertyId, createdAt: Date.now() });
+          const compactArgs = { search, limit, includeDescriptions };
+          return {
+            ok: true,
+            connectionId,
+            type: 'google-analytics',
+            propertyId,
+            schemaToken,
+            search: search ?? null,
+            dimensions: compactGaMetadata(fullMetadata.dimensions, DEFAULT_GA_DIMENSIONS, compactArgs),
+            metrics: compactGaMetadata(fullMetadata.metrics, DEFAULT_GA_METRICS, compactArgs),
+            dimensionsTotal: fullMetadata.dimensions.length,
+            metricsTotal: fullMetadata.metrics.length,
+          };
+        }
+        return { ok: false, error: 'Unsupported connection type: ' + conn.type };
+      }
+
+      case 'createQuerySheet': {
+        const { connectionId, schemaToken, type: connType, sql, propertyId, report, derivation, title } = input as {
+          connectionId: string;
+          schemaToken: string;
+          type: 'clickhouse' | 'google-analytics';
+          sql?: string;
+          propertyId?: string;
+          report?: Record<string, unknown>;
+          derivation: string;
+          title?: string;
+        };
+        const tokenScope = store.connectionSchemaTokens[schemaToken];
+        if (!tokenScope) return { ok: false, error: 'Run describeConnection first and pass its schemaToken' };
+        if (tokenScope.connectionId !== connectionId || tokenScope.type !== connType) {
+          return { ok: false, error: 'schemaToken does not match the requested connection/type' };
+        }
+        if (connType === 'google-analytics' && tokenScope.propertyId !== propertyId) {
+          return { ok: false, error: 'schemaToken does not match the requested Google Analytics property' };
+        }
+        let matrix: string[][];
+        let sheetTitle: string;
+        if (connType === 'clickhouse') {
+          if (!sql) return { ok: false, error: 'sql is required for ClickHouse queries' };
+          const result = await queryClickhouse({ connectorId: connectionId, sql });
+          matrix = clickhouseResultToMatrix(result);
+          sheetTitle = title ?? 'ClickHouse Query';
+        } else if (connType === 'google-analytics') {
+          if (!propertyId) return { ok: false, error: 'propertyId is required for Google Analytics queries' };
+          const result = await queryGoogleAnalytics({ connectorId: connectionId, propertyId, report: report as any });
+          matrix = googleAnalyticsResultToMatrix(result);
+          sheetTitle = title ?? ('Analytics: ' + propertyId);
+        } else {
+          return { ok: false, error: 'Unsupported connection type: ' + connType };
+        }
+        if (matrix.length < 2) {
+          return {
+            ok: false,
+            error: 'Query returned no data rows. No sheet or chart was created; explain the empty result and stop.',
+          };
+        }
+        const applied = applyMatrixToSheet(matrix);
+        const position = store.getNextSheetPosition();
+        const connectorConfig: ConnectorConfig = {
+          type: connType,
+          name: sheetTitle,
+          connectionId,
+          query: connType === 'clickhouse' ? { sql: sql! } : { propertyId: propertyId!, report: (report ?? {}) as any },
+          derivation,
+          lastRefreshedAt: Date.now(),
+          truncated: applied.truncated,
+          lastError: '',
+        };
+        const newSheet: SheetData = {
+          id: generateId(),
+          title: sheetTitle,
+          position,
+          size: applied.size,
+          cells: applied.cells,
+          connectorConfig,
+          setupRequired: false,
+        };
+        store.addSheet(newSheet);
+        const headers = matrix[0].map((h, i) => ({
+          columnId: getCellId(i, 0).replace(/\d+$/, ''),
+          header: h,
+        }));
+        const inferredTypes = matrix[0].map((_, i) => {
+          const s = matrix[1]?.[i] ?? '';
+          if (s !== '' && !isNaN(Number(s))) return 'number';
+          if (/\d{4}-\d{2}-\d{2}/.test(s) && !isNaN(Date.parse(s))) return 'date';
+          return 'text';
+        });
+        return {
+          ok: true,
+          sheetId: newSheet.id,
+          title: sheetTitle,
+          rowCount: matrix.length - 1,
+          headers,
+          inferredTypes,
+          derivation,
+          truncated: applied.truncated,
+        };
       }
 
       default:

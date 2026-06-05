@@ -122,8 +122,29 @@ export const loadAppState = async (id: string = 'default'): Promise<AppState> =>
     const defaultChartColor = await db.get('meta', 'defaultChartColor');
     const customColors = await db.get('meta', 'customColors');
     
+    const migratedSheets = (sheets || []).map((sheet: any) => {
+      const cfg = sheet.connectorConfig;
+      if (!cfg || !cfg.params) return sheet;
+      if (cfg.connectionId !== undefined || cfg.query !== undefined) return sheet;
+      const migrated: any = { ...cfg };
+      const p = cfg.params as Record<string, unknown>;
+      if (cfg.type === 'clickhouse' && p.connectorId) {
+        migrated.connectionId = String(p.connectorId);
+        if (p.sql) migrated.query = { sql: String(p.sql) };
+      } else if (cfg.type === 'google-analytics' && p.connectorId) {
+        migrated.connectionId = String(p.connectorId);
+        if (p.propertyId) migrated.query = { propertyId: String(p.propertyId), report: p.report ?? {} };
+      }
+      if (typeof p.lastRefreshedAt === 'number') migrated.lastRefreshedAt = p.lastRefreshedAt;
+      if (typeof p.truncated === 'boolean') migrated.truncated = p.truncated;
+      if (typeof p.lastError === 'string') migrated.lastError = p.lastError;
+      // Drop connector-specific keys from params; keep anything else (e.g. simulate for csv/sheets)
+      const { connectorId: _c, sql: _s, propertyId: _p, report: _r, lastRefreshedAt: _lr, truncated: _tr, lastError: _le, ...remainingParams } = p;
+      migrated.params = Object.keys(remainingParams).length > 0 ? remainingParams : undefined;
+      return { ...sheet, connectorConfig: migrated };
+    });
     return {
-      sheets: sheets || [],
+      sheets: migratedSheets,
       charts: charts || [],
       notes: notes || [],
       transform: transform || null,

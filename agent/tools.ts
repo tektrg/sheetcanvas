@@ -208,6 +208,49 @@ export const toolDefs = {
         }
       ),
   },
+  listConnections: {
+    description:
+      'List all configured data connections (ClickHouse, Google Analytics). Returns connectionId, type, name. Call first before querying external data.',
+    inputSchema: z.object({}),
+  },
+
+  listConnectionProperties: {
+    description:
+      'List selectable properties/resources for one data connection. Google Analytics returns a bounded properties[] page with propertyId, displayName, accountDisplayName, nextPageToken, truncated. Call after choosing a GA connection and before describeConnection.',
+    inputSchema: z.object({
+      connectionId: z.string().min(1),
+      pageToken: z.string().min(1).optional(),
+      pageSize: z.number().int().min(1).max(50).optional(),
+    }),
+  },
+
+  describeConnection: {
+    description:
+      'Describe a data connection and return a schemaToken required by createQuerySheet. ClickHouse without table returns tables[] only; with table returns columns[] and schemaToken. Google Analytics requires propertyId and returns a bounded dimensions[]/metrics[] catalog. Pass search for task-specific GA fields, e.g. "traffic source".',
+    inputSchema: z.object({
+      connectionId: z.string().min(1),
+      table: z.string().min(1).optional(),
+      propertyId: z.string().min(1).optional(),
+      search: z.string().min(1).max(80).optional(),
+      limit: z.number().int().min(1).max(50).optional(),
+      includeDescriptions: z.boolean().optional(),
+    }),
+  },
+
+  createQuerySheet: {
+    description:
+      'Create a new sheet by querying a previously described data connection. Pass schemaToken from describeConnection. ClickHouse: provide sql. Google Analytics: provide propertyId and report (GA Data API report: dateRanges, dimensions, metrics). Always provide derivation. Returns sheetId + headers for immediate createChart use.',
+    inputSchema: z.object({
+      connectionId: z.string().min(1),
+      schemaToken: z.string().min(8),
+      type: z.enum(['clickhouse', 'google-analytics']),
+      sql: z.string().min(1).optional(),
+      propertyId: z.string().min(1).optional(),
+      report: z.record(z.string(), z.unknown()).optional(),
+      derivation: z.string().min(1),
+      title: z.string().optional(),
+    }),
+  },
 } as const;
 
 export type ToolName = keyof typeof toolDefs;

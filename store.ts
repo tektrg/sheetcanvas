@@ -45,6 +45,14 @@ export interface AppState {
   undo: () => void;
   redo: () => void;
   saveSnapshot: () => void;
+
+  connections: Array<{ connectionId: string; type: string; name: string }>;
+  gaMetadataCache: Record<string, { dimensions: Array<{ apiName: string; displayName: string; description?: string }>; metrics: Array<{ apiName: string; displayName: string; description?: string }> }>;
+  connectionSchemaTokens: Record<string, { connectionId: string; type: 'clickhouse' | 'google-analytics'; table?: string; propertyId?: string; createdAt: number }>;
+  getNextSheetPosition: () => { x: number; y: number };
+  setConnections: (connections: Array<{ connectionId: string; type: string; name: string }>) => void;
+  setGaMetadata: (cacheKey: string, metadata: { dimensions: Array<{ apiName: string; displayName: string; description?: string }>; metrics: Array<{ apiName: string; displayName: string; description?: string }> }) => void;
+  setConnectionSchemaToken: (token: string, scope: { connectionId: string; type: 'clickhouse' | 'google-analytics'; table?: string; propertyId?: string; createdAt: number }) => void;
 }
 
 const MAX_HISTORY = 50;
@@ -109,6 +117,10 @@ export const useStore = create<AppState>((set, get) => ({
   
   history: [],
   future: [],
+
+  connections: [],
+  gaMetadataCache: {},
+  connectionSchemaTokens: {},
 
   init: async () => {
       const loaded = await loadAppState('default');
@@ -528,6 +540,20 @@ export const useStore = create<AppState>((set, get) => ({
           future: newFuture
       };
   }),
+
+  getNextSheetPosition: () => {
+    const state = get();
+    if (state.sheetIds.length === 0) return { x: 100, y: 100 };
+    const lastId = state.sheetIds[state.sheetIds.length - 1];
+    const lastSheet = state.sheets[lastId];
+    if (!lastSheet) return { x: 100, y: 100 };
+    return { x: lastSheet.position.x + lastSheet.size.width * 120 + 60, y: lastSheet.position.y };
+  },
+  setConnections: (connections) => set({ connections }),
+  setGaMetadata: (cacheKey, metadata) =>
+    set((state) => ({ gaMetadataCache: { ...state.gaMetadataCache, [cacheKey]: metadata } })),
+  setConnectionSchemaToken: (token, scope) =>
+    set((state) => ({ connectionSchemaTokens: { ...state.connectionSchemaTokens, [token]: scope } })),
 
   redo: () => set(state => {
       if (state.future.length === 0) return {};

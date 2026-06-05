@@ -48,6 +48,12 @@ export type GoogleAnalyticsProperty = {
   accountDisplayName?: string;
 };
 
+export type GoogleAnalyticsPropertiesResult = {
+  properties: GoogleAnalyticsProperty[];
+  nextPageToken?: string;
+  truncated: boolean;
+};
+
 function buildTokenParams(params: Record<string, string>) {
   const body = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -209,8 +215,54 @@ export async function runGoogleAnalyticsReport(args: {
   return { columns, rows: mappedRows, rowCount, truncated };
 }
 
-export async function listGoogleAnalyticsProperties(args: { accessToken: string }): Promise<GoogleAnalyticsProperty[]> {
-  const res = await fetch(`${ADMIN_URL_BASE}/accountSummaries`, {
+export type GoogleAnalyticsMetadataDim = {
+  apiName: string;
+  displayName: string;
+  description?: string;
+};
+
+export type GoogleAnalyticsMetadataResult = {
+  dimensions: GoogleAnalyticsMetadataDim[];
+  metrics: GoogleAnalyticsMetadataDim[];
+};
+
+export async function getGoogleAnalyticsMetadata(args: {
+  accessToken: string;
+  propertyId: string;
+}): Promise<GoogleAnalyticsMetadataResult> {
+  const normalizedId = args.propertyId.replace(/^properties\//i, '');
+  const res = await fetch(REPORT_URL_BASE + '/properties/' + normalizedId + '/metadata', {
+    method: 'GET',
+    headers: { Authorization: 'Bearer ' + args.accessToken },
+  });
+  const json = (await res.json().catch(() => null)) as any;
+  if (!res.ok) {
+    const msg = json?.error?.message || json?.message || 'GA metadata fetch failed (' + res.status + ')';
+    throw new HttpError(502, 'google_analytics_error', msg);
+  }
+  const dimensions = ((json?.dimensions ?? []) as any[]).map((d: any) => ({
+    apiName: d.apiName ?? '',
+    displayName: d.uiName ?? d.apiName ?? '',
+    description: d.description ?? '',
+  }));
+  const metrics = ((json?.metrics ?? []) as any[]).map((m: any) => ({
+    apiName: m.apiName ?? '',
+    displayName: m.uiName ?? m.apiName ?? '',
+    description: m.description ?? '',
+  }));
+  return { dimensions, metrics };
+}
+
+export async function listGoogleAnalyticsProperties(args: {
+  accessToken: string;
+  pageSize?: number;
+  pageToken?: string;
+}): Promise<GoogleAnalyticsPropertiesResult> {
+  const query = new URLSearchParams();
+  query.set("pageSize", String(Math.max(1, Math.min(args.pageSize ?? 50, 200))));
+  if (args.pageToken) query.set("pageToken", args.pageToken);
+
+  const res = await fetch(`${ADMIN_URL_BASE}/accountSummaries?${query.toString()}`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${args.accessToken}`
@@ -246,5 +298,6 @@ export async function listGoogleAnalyticsProperties(args: { accessToken: string 
     });
   });
 
-  return properties;
+  const nextPageToken = typeof json?.nextPageToken === "string" && json.nextPageToken ? json.nextPageToken : undefined;
+  return { properties, nextPageToken, truncated: !!nextPageToken };
 }

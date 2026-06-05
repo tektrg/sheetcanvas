@@ -15,6 +15,12 @@ export type GoogleAnalyticsProperty = {
   accountDisplayName?: string;
 };
 
+export type GoogleAnalyticsPropertiesResponse = {
+  properties: GoogleAnalyticsProperty[];
+  nextPageToken?: string;
+  truncated?: boolean;
+};
+
 export type GoogleAnalyticsReport = {
   dateRanges?: Array<{ startDate: string; endDate: string }>;
   dimensions?: Array<{ name: string }>;
@@ -54,8 +60,19 @@ export async function exchangeGoogleAnalyticsAuthCode(args: {
 
 export async function listGoogleAnalyticsProperties(args: {
   connectorId: string;
+  pageSize?: number;
+  pageToken?: string;
 }): Promise<GoogleAnalyticsProperty[]> {
-  const res = await requestJson<{ properties: GoogleAnalyticsProperty[] }>(
+  const res = await listGoogleAnalyticsPropertiesPage(args);
+  return res.properties || [];
+}
+
+export async function listGoogleAnalyticsPropertiesPage(args: {
+  connectorId: string;
+  pageSize?: number;
+  pageToken?: string;
+}): Promise<GoogleAnalyticsPropertiesResponse> {
+  return requestJson<GoogleAnalyticsPropertiesResponse>(
     '/api/connectors/google-analytics/properties',
     {
       method: 'POST',
@@ -63,7 +80,6 @@ export async function listGoogleAnalyticsProperties(args: {
       body: JSON.stringify(args)
     }
   );
-  return res.properties || [];
 }
 
 export async function queryGoogleAnalytics(args: {
@@ -75,6 +91,28 @@ export async function queryGoogleAnalytics(args: {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(args)
+  });
+}
+
+export type GoogleAnalyticsMetadataItem = {
+  apiName: string;
+  displayName: string;
+  description?: string;
+};
+
+export type GoogleAnalyticsMetadataResponse = {
+  dimensions: GoogleAnalyticsMetadataItem[];
+  metrics: GoogleAnalyticsMetadataItem[];
+};
+
+export async function getGoogleAnalyticsMetadata(args: {
+  connectorId: string;
+  propertyId: string;
+}): Promise<GoogleAnalyticsMetadataResponse> {
+  return requestJson<GoogleAnalyticsMetadataResponse>('/api/connectors/google-analytics/metadata', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(args),
   });
 }
 

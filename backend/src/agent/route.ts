@@ -14,23 +14,119 @@ import { checkAndIncrementQuota, readQuota } from './quota';
 
 const DEFAULT_MODEL = 'gemini-2.5-flash';
 
+const BASE_TOOL_NAMES = [
+  'listSheets',
+  'describeSheet',
+  'getSelection',
+  'getRange',
+  'querySheet',
+  'setCells',
+  'applyFilter',
+  'applySort',
+  'applyFormat',
+  'createChart',
+  'createPivot',
+  'createSparkline',
+  'listConnections',
+] as const satisfies readonly ToolName[];
+
+const SCHEMA_TOOL_NAMES = ['listConnectionProperties', 'describeConnection'] as const satisfies readonly ToolName[];
+const QUERY_TOOL_NAMES = ['createQuerySheet'] as const satisfies readonly ToolName[];
+const CONNECTOR_FLOW_TOOL_NAMES = [
+  'listConnections',
+  'listConnectionProperties',
+  'describeConnection',
+  'createQuerySheet',
+] as const satisfies readonly ToolName[];
+
 const SYSTEM_PROMPT = `You are SheetCanvas Copilot, an agent that operates a spreadsheet+canvas app on the user's behalf.
 
 Capabilities:
 - Read sheet structure and data via listSheets, describeSheet, getSelection, getRange.
-- Run read-only SQL with querySheet(sheetId, sql). The sheet is exposed as a table named "t" with columns named after their headers (sanitized to snake_case lowercase). Use this to inspect, aggregate, or filter data before mutating.
+- Run read-only SQL with querySheet(sheetId, sql). Sheet exposed as table "t" with snake_case column names.
 - Mutate via setCells, applyFilter, applySort, applyFormat, createChart, createPivot, createSparkline.
+- Query external data connections via progressive connector tools. Start with listConnections; property/schema/query tools become available after earlier connector steps complete.
+- If a user asks for external connection data and only listConnections is available, call listConnections. Do not apologize that downstream connector tools are unavailable; the app will expose them after the connector flow starts.
 
-Rules:
-- Never assume cell values or column types. Inspect with describeSheet or querySheet first.
-- Resolve relative dates (e.g. "last quarter") to absolute date ranges in your tool arguments.
+Connector query workflow:
+1. Call listConnections to see available connections.
+2. Before querying, state "Using {connector name} because {reason}." If 2+ connectors plausibly match and descriptions do not disambiguate, ASK the user instead of guessing.
+3. For Google Analytics, call listConnectionProperties for the selected connection. If the user says "any", pick the first returned property and say which one. If the result is truncated or property names imply different likely websites and the user intent is ambiguous, ASK.
+4. Call describeConnection to learn the schema and get schemaToken (CH: tables first, then columns for the table you will query; GA: bounded dims/metrics catalog for a propertyId, use search for the task).
+5. Call createQuerySheet with schemaToken and a one-line plain-English derivation of what the data shows.
+6. Optionally call createChart on the resulting sheet.
+
+Query rules:
+- ClickHouse: compute absolute YYYY-MM-DD dates from dateAnchors in context. Require GROUP BY + LIMIT for chartable results.
+- Google Analytics: native relative dates (e.g. 30daysAgo). Only use dims/metrics from describeConnection.
+- Always provide derivation. On createQuerySheet error, surface it and stop.
+
+General rules:
+- Never assume cell values or column types. Inspect first.
+- Resolve relative dates to absolute using dateAnchors from context for sheet and ClickHouse workflows; use native relative dates for Google Analytics.
 - Prefer one well-formed tool call over many probes.
-- For filter/sort/format requests against the user's current selection, call getSelection first if no sheetId is implied.
-- If a request requires a data connector that does not exist, say so plainly — do not attempt connector creation in this version.
-- Pivot and sparkline sheets are *derived* from a source sheet and recompute automatically. Never call setCells or applyFormat on a derived sheet — operate on the source. For inline mini-charts on a column, use applyFormat with visual="sparkline" instead of creating a sparkline sheet.
+- For selection-based requests, call getSelection first if sheetId not implied.
+- Never setCells or applyFormat on pivot/sparkline sheets.
 - After mutating, briefly tell the user what changed.
 
-Tool results are returned as JSON. If a tool returns { ok: false, error }, surface the error to the user and stop.`;
+Tool results are JSON. If {ok:false,error}, surface the error and stop.`;
+
+function valueHasToolName(value: unknown, toolName: ToolName): boolean {
+  if (!value || typeof value !== 'object') return false;
+  if (Array.isArray(value)) return value.some((item) => valueHasToolName(item, toolName));
+  const record = value as Record<string, unknown>;
+  return Object.entries(record).some(([key, child]) => {
+    if ((key === 'toolName' || key === 'tool') && child === toolName) return true;
+    if (key === 'type' && child === `tool-${toolName}`) return true;
+    return valueHasToolName(child, toolName);
+  });
+}
+
+function toolHistoryContains(messages: UIMessage[], toolName: ToolName): boolean {
+  return messages.some((message) => valueHasToolName(message, toolName));
+}
+
+function currentTurnMessages(messages: UIMessage[]): UIMessage[] {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i]?.role === 'user') return messages.slice(i);
+  }
+  return messages;
+}
+
+function selectToolNames(messages: UIMessage[]): ToolName[] {
+  const selected = new Set<ToolName>(BASE_TOOL_NAMES);
+  const activeMessages = currentTurnMessages(messages);
+  const connectorFlowActive =
+    toolHistoryContains(activeMessages, 'listConnections') ||
+    toolHistoryContains(activeMessages, 'listConnectionProperties') ||
+    toolHistoryContains(activeMessages, 'describeConnection');
+
+  if (connectorFlowActive) {
+    SCHEMA_TOOL_NAMES.forEach((name) => selected.add(name));
+    QUERY_TOOL_NAMES.forEach((name) => selected.add(name));
+  }
+  return [...selected];
+}
+
+function shouldLogAgentFlow(env: Env): boolean {
+  if (env.AGENT_FLOW_DEBUG?.trim() === '1') return true;
+  return env.ENVIRONMENT?.trim() !== 'production';
+}
+
+function summarizeAgentFlow(messages: UIMessage[], selectedToolNames: ToolName[]) {
+  const activeMessages = currentTurnMessages(messages);
+  const detectedConnectorTools = Object.fromEntries(
+    CONNECTOR_FLOW_TOOL_NAMES.map((name) => [name, toolHistoryContains(activeMessages, name)]),
+  );
+  return {
+    messageCount: messages.length,
+    currentTurnMessageCount: activeMessages.length,
+    lastMessageRole: messages.at(-1)?.role ?? null,
+    detectedConnectorTools,
+    selectedToolNames,
+    createQuerySheetAvailable: selectedToolNames.includes('createQuerySheet'),
+  };
+}
 
 function getSessionId(c: Context<{ Bindings: Env }>): string {
   const raw = c.req.header('x-session-id')?.trim();
@@ -69,11 +165,18 @@ export async function handleAgentRequest(c: Context<{ Bindings: Env }>) {
 
   // Build client tools: schemas only, no execute. Cast schemas to any to bridge
   // zod-version drift between root and backend installs (runtime is unaffected).
+  const selectedToolNames = selectToolNames(body.messages);
+  if (shouldLogAgentFlow(c.env)) {
+    console.log('[agent-flow] selected tools', summarizeAgentFlow(body.messages, selectedToolNames));
+  }
   const tools = Object.fromEntries(
-    (Object.entries(toolDefs) as [ToolName, (typeof toolDefs)[ToolName]][]).map(([name, def]) => [
+    selectedToolNames.map((name) => {
+      const def = toolDefs[name];
+      return [
       name,
       tool({ description: def.description, inputSchema: def.inputSchema as any }),
-    ]),
+      ];
+    }),
   );
 
   const modelMessages = await convertToModelMessages(body.messages);
@@ -87,7 +190,7 @@ export async function handleAgentRequest(c: Context<{ Bindings: Env }>) {
     system: systemPrompt,
     messages: modelMessages,
     tools,
-    stopWhen: stepCountIs(8),
+    stopWhen: stepCountIs(12),
   });
 
   return result.toUIMessageStreamResponse({
