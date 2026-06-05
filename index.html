@@ -4,12 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SheetCanvas - Local-first spreadsheet canvas for analysis</title>
-    <meta name="description" content="SheetCanvas is a local-first spreadsheet canvas for tables, charts, pivots, and notes. Built by theindie.app, a founder-led indie studio.">
+    <meta name="description" content="Open SheetCanvas to explore local files and connected data as tables, charts, pivots, and notes on one fast spreadsheet canvas.">
     <link rel="canonical" href="https://sheetcanvas.com/">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="SheetCanvas">
     <meta property="og:title" content="SheetCanvas - Local-first spreadsheet canvas for analysis">
-    <meta property="og:description" content="Open SheetCanvas to work with tables, charts, pivots, and notes on a fast local-first spreadsheet canvas.">
+    <meta property="og:description" content="Open SheetCanvas to explore local files and connected data as tables, charts, pivots, and notes on one fast spreadsheet canvas.">
     <meta property="og:url" content="https://sheetcanvas.com/">
     <meta property="og:image" content="https://sheetcanvas.com/brand/sheetcanvas-og.png">
     <meta property="og:image:width" content="1200">
@@ -17,7 +17,7 @@
     <meta property="og:image:alt" content="SheetCanvas spreadsheet canvas preview">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="SheetCanvas - Local-first spreadsheet canvas for analysis">
-    <meta name="twitter:description" content="Open SheetCanvas to work with tables, charts, pivots, and notes on a fast local-first spreadsheet canvas.">
+    <meta name="twitter:description" content="Open SheetCanvas to explore local files and connected data as tables, charts, pivots, and notes on one fast spreadsheet canvas.">
     <meta name="twitter:image" content="https://sheetcanvas.com/brand/sheetcanvas-og.png">
     <meta name="theme-color" content="#0f766e">
     <link rel="alternate" type="application/rss+xml" title="SheetCanvas Blog RSS" href="https://sheetcanvas.com/rss.xml">
@@ -58,9 +58,17 @@
           {
             "@type": "SoftwareApplication",
             "name": "SheetCanvas",
+            "description": "SheetCanvas is a local-first spreadsheet canvas for exploring local files and connected data with tables, charts, pivots, and notes.",
             "applicationCategory": "BusinessApplication",
+            "applicationSubCategory": "Spreadsheet",
             "operatingSystem": "Web",
-            "url": "https://sheetcanvas.com",
+            "url": "https://sheetcanvas.com/",
+            "screenshot": "https://sheetcanvas.com/brand/sheetcanvas-og.png",
+            "featureList": [
+              "Local CSV and spreadsheet file analysis",
+              "Canvas-based tables, charts, pivots, and notes",
+              "Connected-sheet workflows for ClickHouse and Google Analytics"
+            ],
             "publisher": {
               "@type": "Organization",
               "name": "theindie.app",
@@ -72,7 +80,7 @@
             "name": "SheetCanvas app",
             "url": "https://sheetcanvas.com/",
             "description": "SheetCanvas is the live spreadsheet canvas app for local-first table, chart, pivot, and note analysis.",
-            "dateModified": "2026-05-27",
+            "dateModified": "2026-05-31",
             "mainEntity": {
               "@type": "SoftwareApplication",
               "name": "SheetCanvas",
@@ -80,6 +88,7 @@
             },
             "isPartOf": {
               "@type": "WebSite",
+              "@id": "https://sheetcanvas.com/#website",
               "name": "SheetCanvas",
               "url": "https://sheetcanvas.com/"
             }
@@ -92,7 +101,22 @@
       window.dataLayer = window.dataLayer || [];
       window.gtag = function gtag(){window.dataLayer.push(arguments);}
       window.gtag('js', new Date());
-      window.gtag('config', 'G-FDXZ468S02');
+      var sheetCanvasGaConfig = {};
+      try {
+        var sheetCanvasSupportEntryRaw = window.sessionStorage && window.sessionStorage.getItem('sheetcanvas:support-entry');
+        if (sheetCanvasSupportEntryRaw) {
+          var sheetCanvasSupportEntry = JSON.parse(sheetCanvasSupportEntryRaw);
+          var sheetCanvasSupportEntryAgeMs = Date.now() - Number(sheetCanvasSupportEntry.timestamp || 0);
+          if (sheetCanvasSupportEntryAgeMs >= 0 && sheetCanvasSupportEntryAgeMs < 30 * 60 * 1000) {
+            sheetCanvasGaConfig.support_entry_path = sheetCanvasSupportEntry.path;
+            sheetCanvasGaConfig.support_entry_title = sheetCanvasSupportEntry.title;
+          }
+          window.sessionStorage.removeItem('sheetcanvas:support-entry');
+        }
+      } catch (error) {
+        sheetCanvasGaConfig = {};
+      }
+      window.gtag('config', 'G-FDXZ468S02', sheetCanvasGaConfig);
     </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>

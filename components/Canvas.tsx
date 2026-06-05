@@ -9,9 +9,10 @@ interface CanvasProps {
   darkMode: boolean;
   onDoubleClick?: (e: React.MouseEvent) => void;
   onMouseDown?: (e: React.MouseEvent) => void;
+  onViewportTransformChange?: (transform: CanvasTransform) => void;
 }
 
-export const Canvas: React.FC<CanvasProps> = ({ children, darkMode, onDoubleClick, onMouseDown }) => {
+export const Canvas: React.FC<CanvasProps> = ({ children, darkMode, onDoubleClick, onMouseDown, onViewportTransformChange }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -25,9 +26,31 @@ export const Canvas: React.FC<CanvasProps> = ({ children, darkMode, onDoubleClic
   
   // Internal ref to track current visual state (which might be ahead of store during gestures)
   const transformRef = useRef<CanvasTransform>(transform);
+  const pendingViewportTransformRef = useRef<CanvasTransform>(transform);
+  const viewportTransformFrameRef = useRef<number | null>(null);
   
   // Flag to ignore the next store update if it was triggered by our own interaction
   const ignoreNextUpdate = useRef(false);
+
+  const notifyViewportTransformChange = useCallback((nextTransform: CanvasTransform) => {
+      if (!onViewportTransformChange) return;
+
+      pendingViewportTransformRef.current = nextTransform;
+      if (viewportTransformFrameRef.current !== null) return;
+
+      viewportTransformFrameRef.current = window.requestAnimationFrame(() => {
+          viewportTransformFrameRef.current = null;
+          onViewportTransformChange(pendingViewportTransformRef.current);
+      });
+  }, [onViewportTransformChange]);
+
+  useEffect(() => {
+      return () => {
+          if (viewportTransformFrameRef.current !== null) {
+              window.cancelAnimationFrame(viewportTransformFrameRef.current);
+          }
+      };
+  }, []);
 
   // Sync Store -> DOM (Programmatic Updates)
   useEffect(() => {
@@ -60,9 +83,10 @@ export const Canvas: React.FC<CanvasProps> = ({ children, darkMode, onDoubleClic
               gridRef.current.style.backgroundSize = `${24 * transform.scale}px ${24 * transform.scale}px`;
           }
       }
-      
+
       transformRef.current = transform;
-  }, [transform]);
+      notifyViewportTransformChange(transform);
+  }, [notifyViewportTransformChange, transform]);
 
   const palette = darkMode ? COLOR_PALETTE.dark : COLOR_PALETTE.light;
 
@@ -127,6 +151,7 @@ export const Canvas: React.FC<CanvasProps> = ({ children, darkMode, onDoubleClic
 
     // Flag to ignore the incoming store update since we are already there
     ignoreNextUpdate.current = true;
+    notifyViewportTransformChange(transformRef.current);
     updateStoreTransform(transformRef.current);
   };
 
@@ -168,8 +193,9 @@ export const Canvas: React.FC<CanvasProps> = ({ children, darkMode, onDoubleClic
         gridRef.current.style.transition = 'none';
         gridRef.current.style.backgroundPosition = `${newOffset.x}px ${newOffset.y}px`;
     }
-    
+
     lastMousePos.current = { x: e.clientX, y: e.clientY };
+    notifyViewportTransformChange(transformRef.current);
   };
 
   const handleMouseUp = () => {
@@ -177,6 +203,7 @@ export const Canvas: React.FC<CanvasProps> = ({ children, darkMode, onDoubleClic
       setIsPanning(false);
       // Flag ignore, because store update will just confirm where we already are
       ignoreNextUpdate.current = true;
+      notifyViewportTransformChange(transformRef.current);
       setTransform(transformRef.current);
     }
   };

@@ -274,13 +274,12 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
 
         const config: ConnectorConfig = {
           type: 'clickhouse',
-          name: 'ClickHouse',
-          params: {
-            connectorId,
-            sql: chSql.trim(),
-            lastRefreshedAt: Date.now(),
-            truncated: !!result.truncated
-          }
+          name: connector ? `ClickHouse: ${connector.name}` : 'ClickHouse',
+          connectionId: connectorId,
+          query: { sql: chSql.trim() },
+          lastRefreshedAt: Date.now(),
+          truncated: !!result.truncated,
+          lastError: '',
         };
 
         setStatus('success');
@@ -365,10 +364,9 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
             }
         }
 
-        config.params.propertyId = propertyId.trim();
-        config.params.connectorId = gaConnectorId.trim();
-        config.params.lastRefreshedAt = Date.now();
-        if (Object.keys(report).length > 0) config.params.report = report;
+        config.connectionId = gaConnectorId.trim();
+        config.query = { propertyId: propertyId.trim(), report: Object.keys(report).length > 0 ? report : {} };
+        config.lastRefreshedAt = Date.now();
     }
     if (selectedType === 'csv-url') config.params.url = url;
 

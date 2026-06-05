@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Canvas } from './components/Canvas';
 import { SheetNode } from './components/SheetNode';
 import { ChartNode } from './components/ChartNode';
@@ -20,7 +20,9 @@ import { Upload, Moon, Sun, Table, StickyNote, Undo2, Redo2, Grid3X3, BarChart3,
 import { useStore, AppState } from './store';
 import { useChartPalette } from './hooks/useChartPalette';
 import AgentChatPanel from './src/components/AgentChatPanel';
+import { AgentEvalBridge } from './src/agent/AgentEvalBridge';
 import { Sparkles } from 'lucide-react';
+import { getVisibleCanvasIds } from './utils/canvasVirtualization';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 const ONBOARDING_DISMISSED_KEY = 'sheetcanvas:onboarding-dismissed:v4';
@@ -34,6 +36,9 @@ const App: React.FC = () => {
   const sheetIds = useStore((state: AppState) => state.sheetIds);
   const chartIds = useStore((state: AppState) => state.chartIds);
   const noteIds = useStore((state: AppState) => state.noteIds);
+  const sheets = useStore((state: AppState) => state.sheets);
+  const charts = useStore((state: AppState) => state.charts);
+  const notes = useStore((state: AppState) => state.notes);
   
   const selectedIds = useStore((state: AppState) => state.selectedIds);
   const transform = useStore((state: AppState) => state.transform);
@@ -70,12 +75,25 @@ const App: React.FC = () => {
 
   // Track ID of note that should start in edit mode
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [viewportSize, setViewportSize] = useState(() => ({
+    width: typeof window === 'undefined' ? 1280 : window.innerWidth,
+    height: typeof window === 'undefined' ? 720 : window.innerHeight,
+  }));
+  const [viewportTransform, setViewportTransform] = useState<CanvasTransform>(transform);
   
   // Selection Context
   const [activeSelection, setActiveSelection] = useState<SelectionContext>({ sheetId: null, cellId: null, range: null });
   const activeSelectionRef = useRef(activeSelection);
   useEffect(() => { activeSelectionRef.current = activeSelection; }, [activeSelection]);
   const [agentPanelOpen, setAgentPanelOpen] = useState(false);
+  const isLocalAgentEvalHost =
+    typeof window !== 'undefined' &&
+    ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+  const agentEvalEnabled =
+    typeof window !== 'undefined' &&
+    isLocalAgentEvalHost &&
+    ((import.meta as any).env?.DEV || (import.meta as any).env?.VITE_ENABLE_AGENT_EVAL === 'true') &&
+    new URLSearchParams(window.location.search).has('agent_eval');
 
   // Delete Confirmation State
   const [deleteConfirmPending, setDeleteConfirmPending] = useState(false);
@@ -113,6 +131,52 @@ const App: React.FC = () => {
     mediaQuery.addEventListener('change', handleChange);
     return () => mediaQuery.removeEventListener('change', handleChange);
   }, []);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setViewportSize({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    setViewportTransform(transform);
+  }, [transform]);
+
+  const visibleCanvasIds = useMemo(() => {
+    return getVisibleCanvasIds({
+      sheetIds,
+      chartIds,
+      noteIds,
+      sheets,
+      charts,
+      notes,
+      transform: viewportTransform,
+      viewportSize,
+      selectedIds,
+      draggingId,
+      activeSelection,
+      editingNoteId,
+    });
+  }, [
+    activeSelection,
+    chartIds,
+    charts,
+    draggingId,
+    editingNoteId,
+    noteIds,
+    notes,
+    selectedIds,
+    sheetIds,
+    sheets,
+    viewportTransform,
+    viewportSize,
+  ]);
 
   const showToast = (message: string) => {
       setToast({ message, visible: true });
@@ -1045,8 +1109,12 @@ const App: React.FC = () => {
             getSelection={() => activeSelectionRef.current}
             darkMode={darkMode}
         />
+        <AgentEvalBridge
+            enabled={agentEvalEnabled}
+            getSelection={() => activeSelectionRef.current}
+        />
 
-        <GlobalCommandBar 
+        <GlobalCommandBar
             isOpen={isCommandBarOpen} 
             onClose={() => setIsCommandBarOpen(false)} 
             darkMode={darkMode}
@@ -1076,12 +1144,13 @@ const App: React.FC = () => {
             darkMode={darkMode}
         />
 
-        <Canvas 
-            darkMode={darkMode} 
+        <Canvas
+            darkMode={darkMode}
             onDoubleClick={handleCanvasDoubleClick}
             onMouseDown={handleCanvasMouseDown}
+            onViewportTransformChange={setViewportTransform}
         >
-          {sheetIds.map(id => (
+          {visibleCanvasIds.sheetIds.map(id => (
               <SheetNode
                 key={id}
                 id={id}
@@ -1094,7 +1163,7 @@ const App: React.FC = () => {
                 onMouseDown={(e) => handleItemMouseDown(e, id, 'sheet')}
               />
           ))}
-          {chartIds.map(id => (
+          {visibleCanvasIds.chartIds.map(id => (
               <ChartNode 
                   key={id}
                   id={id}
@@ -1105,7 +1174,7 @@ const App: React.FC = () => {
                   onMouseDown={(e) => handleItemMouseDown(e, id, 'chart')}
               />
           ))}
-          {noteIds.map(id => (
+          {visibleCanvasIds.noteIds.map(id => (
               <NoteNode
                   key={id}
                   id={id}

@@ -18,6 +18,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { useStore } from '../store';
 import { clickhouseResultToMatrix, queryClickhouse } from '../utils/clickhouseBackend';
 import { googleAnalyticsResultToMatrix, queryGoogleAnalytics, type GoogleAnalyticsReport } from '../utils/googleAnalyticsBackend';
+import { applyMatrixToSheet } from '../utils/connectorSheet';
 import { INITIAL_COLS, INITIAL_ROWS, MAX_IMPORT_COLS, MAX_IMPORT_ROWS } from '../constants';
 
 interface SheetNodeProps {
@@ -140,57 +141,20 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
   const isClickhouseConnected = data.connectorConfig?.type === 'clickhouse';
   const isGoogleAnalyticsConnected = data.connectorConfig?.type === 'google-analytics';
   const isGoogleAnalyticsSimulated =
-    isGoogleAnalyticsConnected && data.connectorConfig?.params?.simulate !== false;
+    isGoogleAnalyticsConnected &&
+    !data.connectorConfig?.connectionId &&
+    data.connectorConfig?.params?.simulate !== false;
 
   const lastRefreshedAt =
-    (isClickhouseConnected || isGoogleAnalyticsConnected) &&
-    typeof data.connectorConfig?.params?.lastRefreshedAt === 'number'
-      ? (data.connectorConfig?.params?.lastRefreshedAt as number)
+    (isClickhouseConnected || isGoogleAnalyticsConnected)
+      ? (data.connectorConfig?.lastRefreshedAt ?? null)
       : null;
 
-  const applyMatrixToSheet = (matrix: string[][]) => {
-    let finalMatrix = matrix;
-    let truncated = false;
-
-    if (finalMatrix.length > MAX_IMPORT_ROWS) {
-      finalMatrix = finalMatrix.slice(0, MAX_IMPORT_ROWS);
-      truncated = true;
-    }
-    if (finalMatrix.length > 0 && finalMatrix[0].length > MAX_IMPORT_COLS) {
-      finalMatrix = finalMatrix.map(row => row.slice(0, MAX_IMPORT_COLS));
-      truncated = true;
-    }
-
-    const rows = finalMatrix.length;
-    const cols = finalMatrix.reduce((max, row) => Math.max(max, row.length), 0);
-    const finalCols = Math.max(cols, INITIAL_COLS);
-    const finalRows = Math.max(rows, INITIAL_ROWS);
-    const maxViewportRows = Math.floor((window.innerHeight - 200) / CELL_HEIGHT);
-    const maxViewportCols = Math.floor((window.innerWidth - 200) / CELL_WIDTH);
-    const constrainedRows = Math.min(finalRows, Math.max(INITIAL_ROWS, maxViewportRows));
-    const constrainedCols = Math.min(finalCols, Math.max(INITIAL_COLS, maxViewportCols));
-
-    const newCells: Record<string, CellData> = {};
-    finalMatrix.forEach((rowVals, r) => {
-      rowVals.forEach((val, c) => {
-        const strVal = String(val);
-        if (strVal.trim()) {
-          const id = getCellId(c, r);
-          newCells[id] = { raw: strVal.trim(), value: null };
-        }
-      });
-    });
-    return {
-      cells: newCells,
-      size: { width: constrainedCols, height: constrainedRows },
-      truncated
-    };
-  };
 
   const refreshClickhouse = async (opts?: { sqlOverride?: string; showToasts?: boolean }) => {
     if (!isClickhouseConnected) return;
-    const connectorId = String(data.connectorConfig?.params?.connectorId || '');
-    const sql = (opts?.sqlOverride ?? String(data.connectorConfig?.params?.sql || '')).trim();
+    const connectorId = data.connectorConfig?.connectionId ?? '';
+    const sql = (opts?.sqlOverride ?? ((data.connectorConfig?.query as any)?.sql ?? '')).trim();
     if (!connectorId || !sql) {
       if (onToast) onToast('Missing ClickHouse connector or SQL');
       return;
@@ -203,14 +167,11 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
       const matrix = clickhouseResultToMatrix(result);
       const next = applyMatrixToSheet(matrix);
       const nextConfig = {
-          ...data.connectorConfig!,
-          params: {
-              ...data.connectorConfig!.params,
-              sql,
-              lastRefreshedAt: Date.now(),
-              truncated: !!result.truncated,
-              lastError: ''
-          }
+        ...data.connectorConfig!,
+        query: { sql },
+        lastRefreshedAt: Date.now(),
+        truncated: !!result.truncated,
+        lastError: '',
       };
 
       updateSheet(data.id, { size: next.size, cells: next.cells, connectorConfig: nextConfig });
@@ -221,11 +182,8 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
       updateSheet(data.id, {
         connectorConfig: {
           ...data.connectorConfig!,
-          params: {
-            ...data.connectorConfig!.params,
-            sql,
-            lastError: msg
-          }
+          query: { sql },
+          lastError: msg,
         }
       });
       if (onToast) onToast(msg);
@@ -236,9 +194,9 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
 
   const refreshGoogleAnalytics = async (opts?: { showToasts?: boolean }) => {
     if (!isGoogleAnalyticsConnected || isGoogleAnalyticsSimulated) return;
-    const connectorId = String(data.connectorConfig?.params?.connectorId || '');
-    const propertyId = String(data.connectorConfig?.params?.propertyId || '');
-    const report = data.connectorConfig?.params?.report as GoogleAnalyticsReport | undefined;
+    const connectorId = data.connectorConfig?.connectionId ?? '';
+    const propertyId = (data.connectorConfig?.query as any)?.propertyId ?? '';
+    const report = (data.connectorConfig?.query as any)?.report as GoogleAnalyticsReport | undefined;
     if (!connectorId || !propertyId) {
       if (onToast) onToast('Missing Google Analytics connector or property ID');
       return;
@@ -252,12 +210,9 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
       const next = applyMatrixToSheet(matrix);
       const nextConfig = {
         ...data.connectorConfig!,
-        params: {
-          ...data.connectorConfig!.params,
-          lastRefreshedAt: Date.now(),
-          truncated: !!result.truncated,
-          lastError: ''
-        }
+        lastRefreshedAt: Date.now(),
+        truncated: !!result.truncated,
+        lastError: '',
       };
 
       updateSheet(data.id, { size: next.size, cells: next.cells, connectorConfig: nextConfig });
@@ -268,10 +223,7 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
       updateSheet(data.id, {
         connectorConfig: {
           ...data.connectorConfig!,
-          params: {
-            ...data.connectorConfig!.params,
-            lastError: msg
-          }
+          lastError: msg,
         }
       });
       if (onToast) onToast(msg);
@@ -1262,7 +1214,17 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                 {isPivot && <div className="p-0.5 rounded text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30 mr-1" title="Pivot Table"><Table size={12} /></div>}
                 {isSparkline && <div className="p-0.5 rounded text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30 mr-1" title="Sparkline Table"><TrendingUp size={12} /></div>}
                 {isConnected && <div className="p-0.5 rounded text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30 mr-1" title={`Connected Source: ${data.connectorConfig?.type}`}><Link size={12} /></div>}
-                
+                {isConnected && data.connectorConfig?.derivation && (
+                  <div className="text-xs text-gray-400 dark:text-gray-500 truncate max-w-[180px]" title={data.connectorConfig.derivation}>
+                    {data.connectorConfig.derivation}
+                  </div>
+                )}
+                {isConnected && data.connectorConfig?.lastError && (
+                  <div className="text-xs text-red-500 dark:text-red-400 truncate max-w-[180px]" title={data.connectorConfig.lastError}>
+                    {data.connectorConfig.lastError}
+                  </div>
+                )}
+
                 {isEditingTitle ? (
                     <input
                         type="text"
@@ -1287,6 +1249,12 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                 <button onClick={handleCopyImage} className="group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors" disabled={isExporting}>
                     {isExporting ? <Loader2 size={14} className="animate-spin" /> : <ImageIcon size={14} />}
                 </button>
+                {lastRefreshedAt && (isGoogleAnalyticsConnected && !isGoogleAnalyticsSimulated) && (() => {
+                  const diffMs = Date.now() - lastRefreshedAt;
+                  const m = Math.floor(diffMs / 60000);
+                  const label = m < 1 ? 'just now' : m < 60 ? `${m}m ago` : Math.floor(m / 60) < 24 ? `${Math.floor(m / 60)}h ago` : `${Math.floor(m / 1440)}d ago`;
+                  return <span className="text-xs text-gray-400 dark:text-gray-500 mr-1 select-none">{label}</span>;
+                })()}
                 {isGoogleAnalyticsConnected && !isGoogleAnalyticsSimulated && (
                     <button
                         onClick={() => refreshGoogleAnalytics({ showToasts: true })}
@@ -1299,6 +1267,12 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                         {isGoogleAnalyticsRefreshing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCcw size={14} />}
                     </button>
                 )}
+                {lastRefreshedAt && isClickhouseConnected && (() => {
+                  const diffMs = Date.now() - lastRefreshedAt;
+                  const m = Math.floor(diffMs / 60000);
+                  const label = m < 1 ? 'just now' : m < 60 ? `${m}m ago` : Math.floor(m / 60) < 24 ? `${Math.floor(m / 60)}h ago` : `${Math.floor(m / 1440)}d ago`;
+                  return <span className="text-xs text-gray-400 dark:text-gray-500 mr-1 select-none">{label}</span>;
+                })()}
                 {isClickhouseConnected && (
                     <>
                         <button
@@ -1315,7 +1289,7 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                             onClick={() => {
                                 const next = !showClickhouseSql;
                                 setShowClickhouseSql(next);
-                                if (next) setClickhouseSqlDraft(String(data.connectorConfig?.params?.sql || ''));
+                                if (next) setClickhouseSqlDraft((data.connectorConfig?.query as any)?.sql ?? '');
                             }}
                             className={`group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md transition-colors ${
                                 showClickhouseSql ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
@@ -1389,7 +1363,7 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                             updateSheet(data.id, {
                                 connectorConfig: {
                                     ...data.connectorConfig!,
-                                    params: { ...data.connectorConfig!.params, sql }
+                                    query: { sql },
                                 }
                             });
                             setShowClickhouseSql(false);
@@ -1466,7 +1440,7 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
 
                 {/* 2. Col Headers (Sticky Top) */}
                 <div 
-                    className="sticky top-0 z-40 bg-white/95 dark:bg-neutral-850/95 border-b border-neutral-100 dark:border-neutral-800 flex"
+                    className="sticky top-0 z-40 bg-white dark:bg-neutral-850 border-b border-neutral-100 dark:border-neutral-800 flex"
                     style={{ 
                         width: '100%', 
                         height: HEADER_ROW_HEIGHT, 
@@ -1533,7 +1507,7 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
 
                 {/* 3. Row Headers (Sticky Left) */}
                 <div 
-                    className="sticky left-0 z-30 bg-white/95 dark:bg-neutral-850/95 border-r border-neutral-100 dark:border-neutral-800"
+                    className="sticky left-0 z-30 bg-white dark:bg-neutral-850 border-r border-neutral-100 dark:border-neutral-800"
                     style={{ 
                         width: HEADER_COL_WIDTH, 
                         height: rowVirtualizer.getTotalSize(),
