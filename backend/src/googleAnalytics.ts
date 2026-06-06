@@ -1,29 +1,12 @@
 import { HttpError } from "./errors";
+import {
+  exchangeGoogleOAuthCode,
+  refreshGoogleOAuthAccessToken,
+  type GoogleOAuthTokenResponse
+} from "./googleOAuth";
 
-const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const REPORT_URL_BASE = "https://analyticsdata.googleapis.com/v1beta";
 const ADMIN_URL_BASE = "https://analyticsadmin.googleapis.com/v1beta";
-
-type TokenResponse = {
-  access_token: string;
-  expires_in?: number;
-  refresh_token?: string;
-  token_type?: string;
-  scope?: string;
-};
-
-type OAuthErrorResponse = {
-  error?: string;
-  error_description?: string;
-};
-
-const CLIENT_OAUTH_ERRORS = new Set([
-  "invalid_request",
-  "invalid_client",
-  "invalid_scope",
-  "unauthorized_client",
-  "unsupported_grant_type"
-]);
 
 export type GoogleAnalyticsReport = {
   dateRanges?: Array<{ startDate: string; endDate: string }>;
@@ -54,74 +37,22 @@ export type GoogleAnalyticsPropertiesResult = {
   truncated: boolean;
 };
 
-function buildTokenParams(params: Record<string, string>) {
-  const body = new URLSearchParams();
-  Object.entries(params).forEach(([key, value]) => {
-    if (value) body.set(key, value);
-  });
-  return body.toString();
-}
-
-async function fetchToken(params: Record<string, string>) {
-  const res = await fetch(TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: buildTokenParams(params)
-  });
-
-  const json = (await res.json().catch(() => null)) as (TokenResponse & OAuthErrorResponse) | null;
-  if (!res.ok || !json?.access_token) {
-    const msg =
-      json?.error_description ||
-      json?.error ||
-      `Token exchange failed (${res.status})`;
-    const status = getTokenErrorStatus(res.status, json?.error);
-    throw new HttpError(status, "oauth_error", msg);
-  }
-  return json;
-}
-
-function getTokenErrorStatus(upstreamStatus: number, oauthError: string | undefined) {
-  if (oauthError === "invalid_grant") {
-    return 401;
-  }
-  if (oauthError && CLIENT_OAUTH_ERRORS.has(oauthError)) {
-    return 400;
-  }
-  if (upstreamStatus >= 400 && upstreamStatus < 500) {
-    return 400;
-  }
-  return 502;
-}
-
 export async function exchangeGoogleAnalyticsCode(args: {
   code: string;
   codeVerifier: string;
   redirectUri: string;
   clientId: string;
   clientSecret?: string;
-}): Promise<TokenResponse> {
-  return fetchToken({
-    code: args.code,
-    code_verifier: args.codeVerifier,
-    redirect_uri: args.redirectUri,
-    client_id: args.clientId,
-    client_secret: args.clientSecret || "",
-    grant_type: "authorization_code"
-  });
+}): Promise<GoogleOAuthTokenResponse> {
+  return exchangeGoogleOAuthCode(args);
 }
 
 export async function refreshGoogleAnalyticsAccessToken(args: {
   refreshToken: string;
   clientId: string;
   clientSecret?: string;
-}): Promise<TokenResponse> {
-  return fetchToken({
-    refresh_token: args.refreshToken,
-    client_id: args.clientId,
-    client_secret: args.clientSecret || "",
-    grant_type: "refresh_token"
-  });
+}): Promise<GoogleOAuthTokenResponse> {
+  return refreshGoogleOAuthAccessToken(args);
 }
 
 function normalizeReport(report: GoogleAnalyticsReport | undefined, maxRows: number) {

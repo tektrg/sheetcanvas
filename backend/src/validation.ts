@@ -28,6 +28,8 @@ export const googleAnalyticsAuthExchangeSchema = z.object({
   redirectUri: z.string().trim().url()
 });
 
+export const googleSheetsAuthExchangeSchema = googleAnalyticsAuthExchangeSchema;
+
 const gaNameSchema = z.object({ name: z.string().trim().min(1) });
 const gaDateRangeSchema = z.object({
   startDate: z.string().trim().min(1),
@@ -48,6 +50,12 @@ export const googleAnalyticsQuerySchema = z.object({
   connectorId: z.string().trim().min(1),
   propertyId: z.string().trim().min(1),
   report: googleAnalyticsReportSchema.optional()
+});
+
+export const googleSheetsQuerySchema = z.object({
+  connectorId: z.string().trim().min(1),
+  spreadsheetIdOrUrl: z.string().trim().min(1),
+  range: z.string().trim().min(1).optional()
 });
 
 export const googleAnalyticsPropertiesSchema = z.object({

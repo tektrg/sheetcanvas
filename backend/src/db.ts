@@ -1,7 +1,7 @@
 import { HttpError } from "./errors";
 import type { Env } from "./env";
 
-export type ConnectorType = "clickhouse" | "google-analytics";
+export type ConnectorType = "clickhouse" | "google-analytics" | "google-sheets";
 
 export type ConnectorRow = {
   id: string;
@@ -149,6 +149,61 @@ export async function insertGoogleAnalyticsConnector(
     // Some dev databases may have older NOT NULL constraints from early schema
     // versions (e.g. url/username/password fields for ClickHouse-only support).
     // Store harmless placeholders so inserts don't fail across schema variants.
+    url: "",
+    username: "",
+    password_ciphertext_b64: "",
+    password_iv_b64: "",
+    created_at_ms: row.created_at_ms ?? now,
+    updated_at_ms: row.updated_at_ms ?? now
+  };
+
+  await env.DB.prepare(
+    "INSERT INTO connectors (id, type, name, url, username, password_ciphertext_b64, password_iv_b64, config_json, secret_ciphertext_b64, secret_iv_b64, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  )
+    .bind(
+      toInsert.id,
+      toInsert.type,
+      toInsert.name,
+      toInsert.url,
+      toInsert.username,
+      toInsert.password_ciphertext_b64,
+      toInsert.password_iv_b64,
+      toInsert.config_json,
+      toInsert.secret_ciphertext_b64,
+      toInsert.secret_iv_b64,
+      toInsert.created_at_ms,
+      toInsert.updated_at_ms
+    )
+    .run();
+
+  return {
+    id: toInsert.id,
+    type: toInsert.type,
+    name: toInsert.name,
+    url: toInsert.url,
+    username: toInsert.username,
+    config_json: toInsert.config_json,
+    created_at_ms: toInsert.created_at_ms,
+    updated_at_ms: toInsert.updated_at_ms
+  };
+}
+
+export async function insertGoogleSheetsConnector(
+  env: Env,
+  row: Omit<
+    ConnectorRow,
+    | "type"
+    | "url"
+    | "username"
+    | "password_ciphertext_b64"
+    | "password_iv_b64"
+  > & { type?: ConnectorType }
+): Promise<PublicConnector> {
+  await ensureConnectorsSchema(env);
+  const now = Date.now();
+  const toInsert: ConnectorRow = {
+    ...row,
+    type: "google-sheets",
     url: "",
     username: "",
     password_ciphertext_b64: "",

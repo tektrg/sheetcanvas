@@ -12,7 +12,19 @@ import {
   refreshGoogleAnalyticsAccessToken,
   runGoogleAnalyticsReport
 } from "./googleAnalytics";
-import { getConnectorById, insertClickhouseConnector, insertGoogleAnalyticsConnector, listConnectors } from "./db";
+import {
+  GOOGLE_SHEETS_READONLY_SCOPE,
+  exchangeGoogleSheetsCode,
+  getGoogleSheetsValues,
+  refreshGoogleSheetsAccessToken
+} from "./googleSheets";
+import {
+  getConnectorById,
+  insertClickhouseConnector,
+  insertGoogleAnalyticsConnector,
+  insertGoogleSheetsConnector,
+  listConnectors
+} from "./db";
 import {
   clickhouseCreateSchema,
   clickhouseDescribeSchema,
@@ -22,7 +34,9 @@ import {
   googleAnalyticsAuthExchangeSchema,
   googleAnalyticsMetadataSchema,
   googleAnalyticsPropertiesSchema,
-  googleAnalyticsQuerySchema
+  googleAnalyticsQuerySchema,
+  googleSheetsAuthExchangeSchema,
+  googleSheetsQuerySchema
 } from "./validation";
 import { handleAgentRequest, handleQuotaRead } from "./agent/route";
 
@@ -251,6 +265,46 @@ app.post("/api/connectors/google-analytics/properties", async (c) => {
   return c.json(propertiesResult);
 });
 
+app.post("/api/connectors/google-sheets/auth/exchange", async (c) => {
+  requireBearerToken(c.req.raw, c.env);
+  const parsed = googleSheetsAuthExchangeSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: { code: "bad_request", message: parsed.error.message } }, 400);
+
+  const clientId = c.env.GOOGLE_CLIENT_ID?.trim();
+  if (!clientId) throw new HttpError(500, "missing_config", "GOOGLE_CLIENT_ID is not set");
+
+  const token = await exchangeGoogleSheetsCode({
+    code: parsed.data.code,
+    codeVerifier: parsed.data.codeVerifier,
+    redirectUri: parsed.data.redirectUri,
+    clientId,
+    clientSecret: c.env.GOOGLE_CLIENT_SECRET?.trim()
+  });
+
+  if (!token.refresh_token) {
+    throw new HttpError(400, "missing_refresh_token", "No refresh token returned. Re-consent is required.");
+  }
+  const grantedScopes = new Set((token.scope ?? "").split(/\s+/).filter(Boolean));
+  if (!grantedScopes.has(GOOGLE_SHEETS_READONLY_SCOPE)) {
+    throw new HttpError(400, "invalid_scope", "Google Sheets read-only scope was not granted.");
+  }
+
+  const { ciphertextB64, ivB64 } = await encryptString(token.refresh_token, c.env.ENCRYPTION_KEY_B64);
+  const configJson = JSON.stringify({ scope: token.scope ?? null });
+
+  const connector = await insertGoogleSheetsConnector(c.env, {
+    id: crypto.randomUUID(),
+    name: "Google Sheets",
+    config_json: configJson,
+    secret_ciphertext_b64: ciphertextB64,
+    secret_iv_b64: ivB64,
+    created_at_ms: Date.now(),
+    updated_at_ms: Date.now()
+  });
+
+  return c.json({ connector }, 201);
+});
+
 app.post("/api/query/google-analytics", async (c) => {
   requireBearerToken(c.req.raw, c.env);
   const body = await c.req.json().catch(() => null);
@@ -295,6 +349,45 @@ app.post("/api/query/google-analytics", async (c) => {
     rowCount: result.rowCount,
     truncated: result.truncated
   });
+});
+
+app.post("/api/query/google-sheets", async (c) => {
+  requireBearerToken(c.req.raw, c.env);
+  const body = await c.req.json().catch(() => null);
+  const parsed = googleSheetsQuerySchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: { code: "bad_request", message: parsed.error.message } }, 400);
+
+  const connector = await getConnectorById(c.env, parsed.data.connectorId);
+  if (connector.type !== "google-sheets") {
+    throw new HttpError(400, "unsupported_connector", "Unsupported connector type");
+  }
+
+  const clientId = c.env.GOOGLE_CLIENT_ID?.trim();
+  if (!clientId) throw new HttpError(500, "missing_config", "GOOGLE_CLIENT_ID is not set");
+  if (!connector.secret_ciphertext_b64 || !connector.secret_iv_b64) {
+    throw new HttpError(400, "missing_secret", "Connector is missing credentials");
+  }
+
+  const refreshToken = await decryptString(
+    connector.secret_ciphertext_b64,
+    connector.secret_iv_b64,
+    c.env.ENCRYPTION_KEY_B64
+  );
+
+  const access = await refreshGoogleSheetsAccessToken({
+    refreshToken,
+    clientId,
+    clientSecret: c.env.GOOGLE_CLIENT_SECRET?.trim()
+  });
+
+  const result = await getGoogleSheetsValues({
+    accessToken: access.access_token,
+    spreadsheetIdOrUrl: parsed.data.spreadsheetIdOrUrl,
+    range: parsed.data.range,
+    maxRows: getMaxRows(c.env)
+  });
+
+  return c.json(result);
 });
 
 app.post('/api/connectors/clickhouse/schema', async (c) => {
