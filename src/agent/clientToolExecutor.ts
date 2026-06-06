@@ -1,7 +1,7 @@
 import { useStore } from '../../store';
 import type { CellData, CellFormat, ChartData, ChartConfig, SheetData, FilterCondition, SortConfig, SelectionContext, ChartType, PivotConfig, SparklineConfig, ConnectorConfig } from '../../types';
 import { parseCellId, getCellId } from '../../utils/formulas';
-import { CELL_WIDTH, DEFAULT_CHART_SIZE, ACCENT_COLOR } from '../../constants';
+import { CELL_WIDTH, DEFAULT_CHART_SIZE, ACCENT_COLOR, MAX_CONNECTED_IMPORT_COLS } from '../../constants';
 import { runSheetQuery, sheetTableSchema } from './alasqlAdapter';
 import { requestJson } from '../../utils/backendApi';
 import { clickhouseResultToMatrix, queryClickhouse, getClickhouseSchema, describeClickhouseTable } from '../../utils/clickhouseBackend';
@@ -605,11 +605,12 @@ export async function executeClientTool(
           setupRequired: false,
         };
         store.addSheet(newSheet);
-        const headers = matrix[0].map((h, i) => ({
+        const importedHeaders = matrix[0].slice(0, MAX_CONNECTED_IMPORT_COLS);
+        const headers = importedHeaders.map((h, i) => ({
           columnId: getCellId(i, 0).replace(/\d+$/, ''),
           header: h,
         }));
-        const inferredTypes = matrix[0].map((_, i) => {
+        const inferredTypes = importedHeaders.map((_, i) => {
           const s = matrix[1]?.[i] ?? '';
           if (s !== '' && !isNaN(Number(s))) return 'number';
           if (/\d{4}-\d{2}-\d{2}/.test(s) && !isNaN(Date.parse(s))) return 'date';

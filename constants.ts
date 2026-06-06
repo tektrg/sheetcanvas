@@ -12,6 +12,7 @@ export const INITIAL_COLS = 6;
 // Limits to prevent performance issues
 export const MAX_IMPORT_ROWS = 50000; // Keep high to allow full data storage
 export const MAX_IMPORT_COLS = 50;
+export const MAX_CONNECTED_IMPORT_COLS = 200;
 export const MAX_RENDER_ROWS = 100; // Strict UI rendering limit for performance
 
 // Max fraction of viewport each new sheet can occupy (per dimension) so there's

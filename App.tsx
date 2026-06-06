@@ -10,7 +10,7 @@ import { GlobalCommandBar } from './components/GlobalCommandBar';
 import { DataConnectorDialog } from './components/DataConnectorDialog';
 import { OnboardingGuide } from './components/OnboardingGuide';
 import { SheetData, ChartData, NoteData, CanvasTransform, Position, CellData, ChartConfig, PivotConfig, ToolMode, SparklineConfig, Command, SelectionContext, CellFormat, ConnectorConfig, ConnectorType, TimeGranularity, ChartType } from './types';
-import { INITIAL_COLS, INITIAL_ROWS, CELL_WIDTH, CELL_HEIGHT, HEADER_COL_WIDTH, HEADER_ROW_HEIGHT, DEFAULT_CHART_SIZE, CHART_COLORS, MAX_IMPORT_ROWS, MAX_IMPORT_COLS, MAX_INITIAL_VIEWPORT_COVERAGE } from './constants';
+import { INITIAL_COLS, INITIAL_ROWS, CELL_WIDTH, CELL_HEIGHT, HEADER_COL_WIDTH, HEADER_ROW_HEIGHT, DEFAULT_CHART_SIZE, CHART_COLORS, MAX_IMPORT_ROWS, MAX_IMPORT_COLS, MAX_CONNECTED_IMPORT_COLS, MAX_INITIAL_VIEWPORT_COVERAGE } from './constants';
 import { parseClipboardData } from './utils/clipboard';
 import { parseFile } from './utils/fileParser';
 import { getCellId, parseCellId, computeSheet } from './utils/formulas';
@@ -851,12 +851,19 @@ const App: React.FC = () => {
           truncated = true;
       }
       
-      if (finalMatrix.length > 0 && finalMatrix[0].length > MAX_IMPORT_COLS) {
-          finalMatrix = finalMatrix.map(row => row.slice(0, MAX_IMPORT_COLS));
+      const widestColumnCount = finalMatrix.reduce((max, row) => Math.max(max, row.length), 0);
+      if (widestColumnCount > MAX_CONNECTED_IMPORT_COLS) {
+          finalMatrix = finalMatrix.map(row => row.slice(0, MAX_CONNECTED_IMPORT_COLS));
           truncated = true;
       }
-      
-      if (truncated) showToast(`Large dataset truncated to ${MAX_IMPORT_ROWS} rows / ${MAX_IMPORT_COLS} cols`);
+
+      const sourceTruncated = !!config.truncated;
+      const connectorTruncated = sourceTruncated || truncated;
+      if (truncated) {
+          showToast(`Large dataset truncated to ${MAX_IMPORT_ROWS} rows / ${MAX_CONNECTED_IMPORT_COLS} cols`);
+      } else if (sourceTruncated) {
+          showToast('Connector returned truncated data');
+      }
 
       const rows = finalMatrix.length;
       const cols = finalMatrix.reduce((max, row) => Math.max(max, row.length), 0);
@@ -888,7 +895,7 @@ const App: React.FC = () => {
           position: pos,
           size: { width: constrainedCols, height: constrainedRows },
           cells,
-          connectorConfig: config 
+          connectorConfig: { ...config, truncated: connectorTruncated }
       };
 
       addSheet(newSheet);

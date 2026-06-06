@@ -1,6 +1,6 @@
 import { CellData } from '../types';
 import { getCellId } from './formulas';
-import { CELL_WIDTH, CELL_HEIGHT, INITIAL_COLS, INITIAL_ROWS, MAX_IMPORT_COLS, MAX_IMPORT_ROWS } from '../constants';
+import { CELL_WIDTH, CELL_HEIGHT, INITIAL_COLS, INITIAL_ROWS, MAX_CONNECTED_IMPORT_COLS, MAX_IMPORT_ROWS } from '../constants';
 
 export interface MatrixResult {
   cells: Record<string, CellData>;
@@ -15,8 +15,9 @@ export function applyMatrixToSheet(matrix: string[][]): MatrixResult {
     finalMatrix = finalMatrix.slice(0, MAX_IMPORT_ROWS);
     truncated = true;
   }
-  if (finalMatrix.length > 0 && finalMatrix[0].length > MAX_IMPORT_COLS) {
-    finalMatrix = finalMatrix.map(row => row.slice(0, MAX_IMPORT_COLS));
+  const widestColumnCount = finalMatrix.reduce((max, row) => Math.max(max, row.length), 0);
+  if (widestColumnCount > MAX_CONNECTED_IMPORT_COLS) {
+    finalMatrix = finalMatrix.map(row => row.slice(0, MAX_CONNECTED_IMPORT_COLS));
     truncated = true;
   }
   const rows = finalMatrix.length;

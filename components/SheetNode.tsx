@@ -20,7 +20,7 @@ import { clickhouseResultToMatrix, queryClickhouse } from '../utils/clickhouseBa
 import { googleAnalyticsResultToMatrix, queryGoogleAnalytics, type GoogleAnalyticsReport } from '../utils/googleAnalyticsBackend';
 import { googleSheetsResultToMatrix, queryGoogleSheets } from '../utils/googleSheetsBackend';
 import { applyMatrixToSheet } from '../utils/connectorSheet';
-import { INITIAL_COLS, INITIAL_ROWS, MAX_IMPORT_COLS, MAX_IMPORT_ROWS } from '../constants';
+import { INITIAL_COLS, INITIAL_ROWS, MAX_CONNECTED_IMPORT_COLS, MAX_IMPORT_ROWS } from '../constants';
 
 interface SheetNodeProps {
   id: string;
@@ -34,6 +34,12 @@ interface SheetNodeProps {
 }
 
 const SUPPORTED_FORMULAS = ['SUM', 'AVG', 'AVERAGE', 'MIN', 'MAX', 'COUNT'];
+
+const getConnectorTruncationMessage = (sourceTruncated: boolean, localTruncated: boolean) => {
+  if (localTruncated) return `Dataset truncated to ${MAX_IMPORT_ROWS} rows / ${MAX_CONNECTED_IMPORT_COLS} cols`;
+  if (sourceTruncated) return 'Connector returned truncated data';
+  return '';
+};
 
 export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot, onAddSparkline, onToast, isPendingDelete, onSelectionContextChange, onMouseDown }) => {
   const data = useStore(state => state.sheets[id]);
@@ -182,7 +188,8 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
       };
 
       updateSheet(data.id, { size: next.size, cells: next.cells, connectorConfig: nextConfig });
-      if (next.truncated && onToast) onToast(`Dataset truncated to ${MAX_IMPORT_ROWS} rows / ${MAX_IMPORT_COLS} cols`);
+      const truncationMessage = getConnectorTruncationMessage(!!result.truncated, next.truncated);
+      if (truncationMessage && onToast) onToast(truncationMessage);
       if (opts?.showToasts !== false && onToast) onToast('Refreshed');
     } catch (e: any) {
       const msg = e?.message || 'Refresh failed';
@@ -223,7 +230,8 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
       };
 
       updateSheet(data.id, { size: next.size, cells: next.cells, connectorConfig: nextConfig });
-      if (next.truncated && onToast) onToast(`Dataset truncated to ${MAX_IMPORT_ROWS} rows / ${MAX_IMPORT_COLS} cols`);
+      const truncationMessage = getConnectorTruncationMessage(!!result.truncated, next.truncated);
+      if (truncationMessage && onToast) onToast(truncationMessage);
       if (opts?.showToasts !== false && onToast) onToast('Refreshed');
     } catch (e: any) {
       const msg = e?.message || 'Refresh failed';
@@ -265,7 +273,8 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
       };
 
       updateSheet(data.id, { size: next.size, cells: next.cells, connectorConfig: nextConfig });
-      if (next.truncated && onToast) onToast(`Dataset truncated to ${MAX_IMPORT_ROWS} rows / ${MAX_IMPORT_COLS} cols`);
+      const truncationMessage = getConnectorTruncationMessage(!!result.truncated, next.truncated);
+      if (truncationMessage && onToast) onToast(truncationMessage);
       if (opts?.showToasts !== false && onToast) onToast('Refreshed');
     } catch (e: any) {
       const msg = e?.message || 'Refresh failed';
