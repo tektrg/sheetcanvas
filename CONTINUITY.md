@@ -862,3 +862,10 @@ Latest SEO automation run (2026-06-01T07:05:21+07:00):
 - Cleanup: no tmux sessions were killed because tmux access was blocked. Active or ambiguous dev/watch sessions should be preserved next time they are inspectable.
 - Self-improvement: the first mocked fixture failed due temporary harness issues (newline escaping, relative imports, and import timing). Future one-off ESM harnesses should either use the existing smoke-test pattern or construct dynamic imports after mocks are installed.
 - Next: isolate or intentionally include the dirty app/backend/root work, then run `npm run deploy:pages` from a network-enabled shell. After deploy, rerun `npm run seo:live:root`; it should now verify root metadata plus `WebSite`, `SoftwareApplication`, and `WebPage` schema parity.
+
+Current SheetCanvas turn:
+- Goal: commit the current Google Sheets connector work in logical chunks.
+- Done: committed the connector code changes as `feat(connectors): widen connected import column cap`.
+- Now: stage the docs/memory follow-up commit.
+- Next: leave the tracked `AGENTS.md` deletion uncommitted unless the user confirms it is intentional.
+- Open questions: whether the tracked `AGENTS.md` deletion is intentional.
