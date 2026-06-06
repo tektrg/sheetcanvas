@@ -48,11 +48,11 @@ export interface AppState {
 
   connections: Array<{ connectionId: string; type: string; name: string }>;
   gaMetadataCache: Record<string, { dimensions: Array<{ apiName: string; displayName: string; description?: string }>; metrics: Array<{ apiName: string; displayName: string; description?: string }> }>;
-  connectionSchemaTokens: Record<string, { connectionId: string; type: 'clickhouse' | 'google-analytics'; table?: string; propertyId?: string; createdAt: number }>;
+  connectionSchemaTokens: Record<string, { connectionId: string; type: 'clickhouse' | 'google-analytics' | 'google-sheets'; table?: string; propertyId?: string; createdAt: number }>;
   getNextSheetPosition: () => { x: number; y: number };
   setConnections: (connections: Array<{ connectionId: string; type: string; name: string }>) => void;
   setGaMetadata: (cacheKey: string, metadata: { dimensions: Array<{ apiName: string; displayName: string; description?: string }>; metrics: Array<{ apiName: string; displayName: string; description?: string }> }) => void;
-  setConnectionSchemaToken: (token: string, scope: { connectionId: string; type: 'clickhouse' | 'google-analytics'; table?: string; propertyId?: string; createdAt: number }) => void;
+  setConnectionSchemaToken: (token: string, scope: { connectionId: string; type: 'clickhouse' | 'google-analytics' | 'google-sheets'; table?: string; propertyId?: string; createdAt: number }) => void;
 }
 
 const MAX_HISTORY = 50;
@@ -103,6 +103,29 @@ const markFullSync = () => {
     dirtyFlags.colors = false;
 };
 
+const materializeDerivedSheet = (
+    sheet: SheetData,
+    sheets: Record<string, SheetData>
+): SheetData => {
+    let materializedSheet = sheet;
+
+    if (!materializedSheet.setupRequired && materializedSheet.pivotConfig) {
+        const sourceSheet = sheets[materializedSheet.pivotConfig.sourceSheetId];
+        if (sourceSheet) {
+            materializedSheet = refreshPivotTable(materializedSheet, sourceSheet);
+        }
+    }
+
+    if (!materializedSheet.setupRequired && materializedSheet.sparklineConfig) {
+        const sourceSheet = sheets[materializedSheet.sparklineConfig.sourceSheetId];
+        if (sourceSheet) {
+            materializedSheet = refreshSparklineTable(materializedSheet, sourceSheet);
+        }
+    }
+
+    return materializedSheet;
+};
+
 export const useStore = create<AppState>((set, get) => ({
   sheets: {},
   charts: {},
@@ -129,11 +152,15 @@ export const useStore = create<AppState>((set, get) => ({
           const sheets: Record<string, SheetData> = {};
           const sheetIds: string[] = [];
           
-          loaded.sheets.forEach(s => { 
+          loaded.sheets.forEach(s => {
               const calculatedCells = initSheetCalculation(s);
               const mergedSheet = { ...s, cells: { ...s.cells, ...calculatedCells } };
-              sheets[s.id] = mergedSheet; 
+              sheets[s.id] = mergedSheet;
               sheetIds.push(s.id);
+          });
+
+          sheetIds.forEach(id => {
+              sheets[id] = materializeDerivedSheet(sheets[id], sheets);
           });
 
           const charts: Record<string, ChartData> = {};
@@ -302,9 +329,10 @@ export const useStore = create<AppState>((set, get) => ({
       get().saveSnapshot();
       markDirty('sheet', sheet.id);
       set(state => {
-          const calculatedCells = initSheetCalculation(sheet);
-          const computed = { ...sheet, cells: { ...sheet.cells, ...calculatedCells } };
-          
+          const sheetToStore = materializeDerivedSheet(sheet, state.sheets);
+          const calculatedCells = initSheetCalculation(sheetToStore);
+          const computed = { ...sheetToStore, cells: { ...sheetToStore.cells, ...calculatedCells } };
+
           return {
               sheets: { ...state.sheets, [computed.id]: computed },
               sheetIds: [...state.sheetIds, computed.id],

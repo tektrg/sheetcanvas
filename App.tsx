@@ -21,6 +21,7 @@ import { useStore, AppState } from './store';
 import { useChartPalette } from './hooks/useChartPalette';
 import AgentChatPanel from './src/components/AgentChatPanel';
 import { AgentEvalBridge } from './src/agent/AgentEvalBridge';
+import { loadGoogleSheetsAuth } from './utils/googleAnalyticsAuth';
 import { Sparkles } from 'lucide-react';
 import { getVisibleCanvasIds } from './utils/canvasVirtualization';
 
@@ -121,7 +122,12 @@ const App: React.FC = () => {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('code') || params.get('error')) {
-      setDataConnectorState({ isOpen: true, initialType: 'google-analytics' });
+      const callbackState = params.get('state');
+      const sheetsAuth = loadGoogleSheetsAuth();
+      setDataConnectorState({
+        isOpen: true,
+        initialType: sheetsAuth?.state === callbackState ? 'google-sheets' : 'google-analytics'
+      });
     }
   }, []);
 

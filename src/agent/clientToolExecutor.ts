@@ -6,6 +6,7 @@ import { runSheetQuery, sheetTableSchema } from './alasqlAdapter';
 import { requestJson } from '../../utils/backendApi';
 import { clickhouseResultToMatrix, queryClickhouse, getClickhouseSchema, describeClickhouseTable } from '../../utils/clickhouseBackend';
 import { googleAnalyticsResultToMatrix, queryGoogleAnalytics, getGoogleAnalyticsMetadata, listGoogleAnalyticsPropertiesPage, type GoogleAnalyticsMetadataItem } from '../../utils/googleAnalyticsBackend';
+import { DEFAULT_GOOGLE_SHEETS_RANGE, googleSheetsResultToMatrix, queryGoogleSheets } from '../../utils/googleSheetsBackend';
 import { applyMatrixToSheet } from '../../utils/connectorSheet';
 
 const generateId = () => Math.random().toString(36).slice(2, 11);
@@ -509,17 +510,33 @@ export async function executeClientTool(
             metricsTotal: fullMetadata.metrics.length,
           };
         }
+        if (conn.type === 'google-sheets') {
+          const schemaToken = makeSchemaToken();
+          store.setConnectionSchemaToken(schemaToken, { connectionId, type: 'google-sheets', createdAt: Date.now() });
+          return {
+            ok: true,
+            connectionId,
+            type: 'google-sheets',
+            schemaToken,
+            spreadsheetIdOrUrlRequired: true,
+            rangeOptional: true,
+            defaultRange: DEFAULT_GOOGLE_SHEETS_RANGE,
+            readOnly: true,
+          };
+        }
         return { ok: false, error: 'Unsupported connection type: ' + conn.type };
       }
 
       case 'createQuerySheet': {
-        const { connectionId, schemaToken, type: connType, sql, propertyId, report, derivation, title } = input as {
+        const { connectionId, schemaToken, type: connType, sql, propertyId, report, spreadsheetIdOrUrl, range, derivation, title } = input as {
           connectionId: string;
           schemaToken: string;
-          type: 'clickhouse' | 'google-analytics';
+          type: 'clickhouse' | 'google-analytics' | 'google-sheets';
           sql?: string;
           propertyId?: string;
           report?: Record<string, unknown>;
+          spreadsheetIdOrUrl?: string;
+          range?: string;
           derivation: string;
           title?: string;
         };
@@ -533,16 +550,25 @@ export async function executeClientTool(
         }
         let matrix: string[][];
         let sheetTitle: string;
+        let sourceTruncated = false;
         if (connType === 'clickhouse') {
           if (!sql) return { ok: false, error: 'sql is required for ClickHouse queries' };
           const result = await queryClickhouse({ connectorId: connectionId, sql });
           matrix = clickhouseResultToMatrix(result);
+          sourceTruncated = !!result.truncated;
           sheetTitle = title ?? 'ClickHouse Query';
         } else if (connType === 'google-analytics') {
           if (!propertyId) return { ok: false, error: 'propertyId is required for Google Analytics queries' };
           const result = await queryGoogleAnalytics({ connectorId: connectionId, propertyId, report: report as any });
           matrix = googleAnalyticsResultToMatrix(result);
+          sourceTruncated = !!result.truncated;
           sheetTitle = title ?? ('Analytics: ' + propertyId);
+        } else if (connType === 'google-sheets') {
+          if (!spreadsheetIdOrUrl) return { ok: false, error: 'spreadsheetIdOrUrl is required for Google Sheets queries' };
+          const result = await queryGoogleSheets({ connectorId: connectionId, spreadsheetIdOrUrl, range });
+          matrix = googleSheetsResultToMatrix(result);
+          sourceTruncated = !!result.truncated;
+          sheetTitle = title ?? 'Google Sheets';
         } else {
           return { ok: false, error: 'Unsupported connection type: ' + connType };
         }
@@ -558,10 +584,15 @@ export async function executeClientTool(
           type: connType,
           name: sheetTitle,
           connectionId,
-          query: connType === 'clickhouse' ? { sql: sql! } : { propertyId: propertyId!, report: (report ?? {}) as any },
+          query:
+            connType === 'clickhouse'
+              ? { sql: sql! }
+              : connType === 'google-analytics'
+                ? { propertyId: propertyId!, report: (report ?? {}) as any }
+                : { spreadsheetIdOrUrl: spreadsheetIdOrUrl!, range: range || DEFAULT_GOOGLE_SHEETS_RANGE },
           derivation,
           lastRefreshedAt: Date.now(),
-          truncated: applied.truncated,
+          truncated: sourceTruncated || applied.truncated,
           lastError: '',
         };
         const newSheet: SheetData = {

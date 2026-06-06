@@ -18,6 +18,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { useStore } from '../store';
 import { clickhouseResultToMatrix, queryClickhouse } from '../utils/clickhouseBackend';
 import { googleAnalyticsResultToMatrix, queryGoogleAnalytics, type GoogleAnalyticsReport } from '../utils/googleAnalyticsBackend';
+import { googleSheetsResultToMatrix, queryGoogleSheets } from '../utils/googleSheetsBackend';
 import { applyMatrixToSheet } from '../utils/connectorSheet';
 import { INITIAL_COLS, INITIAL_ROWS, MAX_IMPORT_COLS, MAX_IMPORT_ROWS } from '../constants';
 
@@ -83,6 +84,7 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
   const [clickhouseSqlDraft, setClickhouseSqlDraft] = useState<string>('');
   const [isClickhouseRefreshing, setIsClickhouseRefreshing] = useState(false);
   const [isGoogleAnalyticsRefreshing, setIsGoogleAnalyticsRefreshing] = useState(false);
+  const [isGoogleSheetsRefreshing, setIsGoogleSheetsRefreshing] = useState(false);
   
   const showFilterPanel = !!data?.showFilterPanel;
   const [preselectedFilterCol, setPreselectedFilterCol] = useState<string | null>(null);
@@ -140,13 +142,18 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
   const isReadOnly = isPivot || isSparkline || isConnected;
   const isClickhouseConnected = data.connectorConfig?.type === 'clickhouse';
   const isGoogleAnalyticsConnected = data.connectorConfig?.type === 'google-analytics';
+  const isGoogleSheetsConnected = data.connectorConfig?.type === 'google-sheets';
+  const isGoogleSheetsSimulated =
+    isGoogleSheetsConnected &&
+    !data.connectorConfig?.connectionId &&
+    data.connectorConfig?.params?.simulate !== false;
   const isGoogleAnalyticsSimulated =
     isGoogleAnalyticsConnected &&
     !data.connectorConfig?.connectionId &&
     data.connectorConfig?.params?.simulate !== false;
 
   const lastRefreshedAt =
-    (isClickhouseConnected || isGoogleAnalyticsConnected)
+    (isClickhouseConnected || isGoogleAnalyticsConnected || (isGoogleSheetsConnected && !isGoogleSheetsSimulated))
       ? (data.connectorConfig?.lastRefreshedAt ?? null)
       : null;
 
@@ -170,7 +177,7 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
         ...data.connectorConfig!,
         query: { sql },
         lastRefreshedAt: Date.now(),
-        truncated: !!result.truncated,
+        truncated: !!result.truncated || next.truncated,
         lastError: '',
       };
 
@@ -211,7 +218,7 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
       const nextConfig = {
         ...data.connectorConfig!,
         lastRefreshedAt: Date.now(),
-        truncated: !!result.truncated,
+        truncated: !!result.truncated || next.truncated,
         lastError: '',
       };
 
@@ -229,6 +236,48 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
       if (onToast) onToast(msg);
     } finally {
       setIsGoogleAnalyticsRefreshing(false);
+    }
+  };
+
+  const refreshGoogleSheets = async (opts?: { showToasts?: boolean }) => {
+    if (!isGoogleSheetsConnected || isGoogleSheetsSimulated) return;
+    const connectorId = data.connectorConfig?.connectionId ?? '';
+    const query = data.connectorConfig?.query as any;
+    const spreadsheetIdOrUrl = query?.spreadsheetIdOrUrl ?? data.connectorConfig?.params?.spreadsheetIdOrUrl ?? data.connectorConfig?.params?.sheetId ?? '';
+    const range = query?.range ?? data.connectorConfig?.params?.range;
+    if (!connectorId || !spreadsheetIdOrUrl) {
+      if (onToast) onToast('Missing Google Sheets connector or spreadsheet');
+      return;
+    }
+
+    setIsGoogleSheetsRefreshing(true);
+    saveSnapshot();
+    try {
+      const result = await queryGoogleSheets({ connectorId, spreadsheetIdOrUrl, range });
+      const matrix = googleSheetsResultToMatrix(result);
+      const next = applyMatrixToSheet(matrix);
+      const nextConfig = {
+        ...data.connectorConfig!,
+        query: { spreadsheetIdOrUrl, range },
+        lastRefreshedAt: Date.now(),
+        truncated: !!result.truncated || next.truncated,
+        lastError: '',
+      };
+
+      updateSheet(data.id, { size: next.size, cells: next.cells, connectorConfig: nextConfig });
+      if (next.truncated && onToast) onToast(`Dataset truncated to ${MAX_IMPORT_ROWS} rows / ${MAX_IMPORT_COLS} cols`);
+      if (opts?.showToasts !== false && onToast) onToast('Refreshed');
+    } catch (e: any) {
+      const msg = e?.message || 'Refresh failed';
+      updateSheet(data.id, {
+        connectorConfig: {
+          ...data.connectorConfig!,
+          lastError: msg,
+        }
+      });
+      if (onToast) onToast(msg);
+    } finally {
+      setIsGoogleSheetsRefreshing(false);
     }
   };
 
@@ -1249,12 +1298,24 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                 <button onClick={handleCopyImage} className="group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors" disabled={isExporting}>
                     {isExporting ? <Loader2 size={14} className="animate-spin" /> : <ImageIcon size={14} />}
                 </button>
-                {lastRefreshedAt && (isGoogleAnalyticsConnected && !isGoogleAnalyticsSimulated) && (() => {
+                {lastRefreshedAt && ((isGoogleAnalyticsConnected && !isGoogleAnalyticsSimulated) || (isGoogleSheetsConnected && !isGoogleSheetsSimulated)) && (() => {
                   const diffMs = Date.now() - lastRefreshedAt;
                   const m = Math.floor(diffMs / 60000);
                   const label = m < 1 ? 'just now' : m < 60 ? `${m}m ago` : Math.floor(m / 60) < 24 ? `${Math.floor(m / 60)}h ago` : `${Math.floor(m / 1440)}d ago`;
                   return <span className="text-xs text-gray-400 dark:text-gray-500 mr-1 select-none">{label}</span>;
                 })()}
+                {isGoogleSheetsConnected && !isGoogleSheetsSimulated && (
+                    <button
+                        onClick={() => refreshGoogleSheets({ showToasts: true })}
+                        disabled={isGoogleSheetsRefreshing}
+                        className={`group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md transition-colors ${
+                            isGoogleSheetsRefreshing ? 'bg-neutral-100 dark:bg-neutral-800 cursor-not-allowed' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                        }`}
+                        title={lastRefreshedAt ? `Refresh (last: ${new Date(lastRefreshedAt).toLocaleString()})` : 'Refresh'}
+                    >
+                        {isGoogleSheetsRefreshing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCcw size={14} />}
+                    </button>
+                )}
                 {isGoogleAnalyticsConnected && !isGoogleAnalyticsSimulated && (
                     <button
                         onClick={() => refreshGoogleAnalytics({ showToasts: true })}

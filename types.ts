@@ -91,6 +91,7 @@ export type ConnectorType = 'google-sheets' | 'google-analytics' | 'csv-url' | '
 
 export type ClickhouseQuery = { sql: string };
 export type GaQuery = { propertyId: string; report: GoogleAnalyticsReport };
+export type GoogleSheetsQuery = { spreadsheetIdOrUrl: string; range?: string };
 
 export type GoogleAnalyticsReport = {
   dateRanges?: Array<{ startDate: string; endDate: string }>;
@@ -106,7 +107,7 @@ export interface ConnectorConfig {
   type: ConnectorType;
   name: string;
   connectionId?: string;
-  query?: ClickhouseQuery | GaQuery;
+  query?: ClickhouseQuery | GaQuery | GoogleSheetsQuery;
   derivation?: string;
   lastRefreshedAt?: number;
   truncated?: boolean;
@@ -117,6 +118,7 @@ export interface ConnectorConfig {
 export interface ConnectorResult {
   title: string;
   data: string[][]; // Matrix of data [rows][cols]
+  truncated?: boolean;
 }
 
 export interface SheetData {

@@ -210,7 +210,7 @@ export const toolDefs = {
   },
   listConnections: {
     description:
-      'List all configured data connections (ClickHouse, Google Analytics). Returns connectionId, type, name. Call first before querying external data.',
+      'List all configured data connections (ClickHouse, Google Analytics, Google Sheets). Returns connectionId, type, name. Call first before querying external data.',
     inputSchema: z.object({}),
   },
 
@@ -226,7 +226,7 @@ export const toolDefs = {
 
   describeConnection: {
     description:
-      'Describe a data connection and return a schemaToken required by createQuerySheet. ClickHouse without table returns tables[] only; with table returns columns[] and schemaToken. Google Analytics requires propertyId and returns a bounded dimensions[]/metrics[] catalog. Pass search for task-specific GA fields, e.g. "traffic source".',
+      'Describe a data connection and return a schemaToken required by createQuerySheet. ClickHouse without table returns tables[] only; with table returns columns[] and schemaToken. Google Analytics requires propertyId and returns a bounded dimensions[]/metrics[] catalog. Google Sheets returns read-only URL/ID and range requirements.',
     inputSchema: z.object({
       connectionId: z.string().min(1),
       table: z.string().min(1).optional(),
@@ -239,14 +239,16 @@ export const toolDefs = {
 
   createQuerySheet: {
     description:
-      'Create a new sheet by querying a previously described data connection. Pass schemaToken from describeConnection. ClickHouse: provide sql. Google Analytics: provide propertyId and report (GA Data API report: dateRanges, dimensions, metrics). Always provide derivation. Returns sheetId + headers for immediate createChart use.',
+      'Create a new sheet by querying a previously described data connection. Pass schemaToken from describeConnection. ClickHouse: provide sql. Google Analytics: provide propertyId and report. Google Sheets: provide spreadsheetIdOrUrl and optional A1 range. Always provide derivation. Returns sheetId + headers for immediate createChart use.',
     inputSchema: z.object({
       connectionId: z.string().min(1),
       schemaToken: z.string().min(8),
-      type: z.enum(['clickhouse', 'google-analytics']),
+      type: z.enum(['clickhouse', 'google-analytics', 'google-sheets']),
       sql: z.string().min(1).optional(),
       propertyId: z.string().min(1).optional(),
       report: z.record(z.string(), z.unknown()).optional(),
+      spreadsheetIdOrUrl: z.string().min(1).optional(),
+      range: z.string().min(1).optional(),
       derivation: z.string().min(1),
       title: z.string().optional(),
     }),

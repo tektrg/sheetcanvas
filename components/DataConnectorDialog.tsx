@@ -4,7 +4,15 @@ import { ConnectorConfig, ConnectorType } from '../types';
 import { X, Database, FileSpreadsheet, BarChart2, Globe, Loader2, CheckCircle2, AlertCircle, KeyRound, RefreshCcw, Code2 } from 'lucide-react';
 import { fetchDataFromConnector } from '../utils/dataConnectors';
 import { ClickHousePublicConnector, clickhouseResultToMatrix, createClickhouseConnector, listClickhouseConnectors, queryClickhouse, testClickhouseConnector } from '../utils/clickhouseBackend';
-import { buildGoogleAnalyticsAuthUrl, clearGoogleAnalyticsAuth, clearGoogleAnalyticsAuthParams, loadGoogleAnalyticsAuth } from '../utils/googleAnalyticsAuth';
+import {
+  buildGoogleAnalyticsAuthUrl,
+  buildGoogleSheetsAuthUrl,
+  clearGoogleAuthParams,
+  clearGoogleAnalyticsAuth,
+  clearGoogleSheetsAuth,
+  loadGoogleAnalyticsAuth,
+  loadGoogleSheetsAuth
+} from '../utils/googleAnalyticsAuth';
 import {
   exchangeGoogleAnalyticsAuthCode,
   listGoogleAnalyticsConnectors,
@@ -13,6 +21,12 @@ import {
   type GoogleAnalyticsPublicConnector,
   type GoogleAnalyticsReport
 } from '../utils/googleAnalyticsBackend';
+import {
+  DEFAULT_GOOGLE_SHEETS_RANGE,
+  exchangeGoogleSheetsAuthCode,
+  listGoogleSheetsConnectors,
+  type GoogleSheetsPublicConnector
+} from '../utils/googleSheetsBackend';
 
 interface DataConnectorDialogProps {
   onClose: () => void;
@@ -50,9 +64,15 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
   
   // Form States
   const [sheetId, setSheetId] = useState('');
+  const [sheetRange, setSheetRange] = useState(DEFAULT_GOOGLE_SHEETS_RANGE);
   const [propertyId, setPropertyId] = useState('');
   const [url, setUrl] = useState('');
-  const [simulate, setSimulate] = useState(() => (initialType === 'google-analytics' ? false : true));
+  const [simulate, setSimulate] = useState(() => (initialType === 'google-analytics' || initialType === 'google-sheets' ? false : true));
+  const [gsConnectorId, setGsConnectorId] = useState('');
+  const [gsConnectors, setGsConnectors] = useState<GoogleSheetsPublicConnector[]>([]);
+  const [gsLoadingConnectors, setGsLoadingConnectors] = useState(false);
+  const [gsAuthLoading, setGsAuthLoading] = useState(false);
+  const [gsAuthError, setGsAuthError] = useState('');
   const [gaConnectorId, setGaConnectorId] = useState('');
   const [gaUseManualConnectorId, setGaUseManualConnectorId] = useState(false);
   const [gaConnectors, setGaConnectors] = useState<GoogleAnalyticsPublicConnector[]>([]);
@@ -125,6 +145,22 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
     }
   };
 
+  const loadGoogleSheetsConnectors = async () => {
+    setGsLoadingConnectors(true);
+    setGsAuthError('');
+    try {
+      const connectors = await listGoogleSheetsConnectors();
+      setGsConnectors(connectors);
+      if (!gsConnectorId && connectors.length > 0) {
+        setGsConnectorId(connectors[0].id);
+      }
+    } catch (e: any) {
+      setGsAuthError(e.message || 'Failed to load Google Sheets connectors');
+    } finally {
+      setGsLoadingConnectors(false);
+    }
+  };
+
   const loadGoogleAnalyticsProperties = async (connectorId: string) => {
     if (!connectorId) return;
     setGaLoadingProperties(true);
@@ -149,9 +185,9 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
     setSelectedType(type);
     setStatus('idle');
     setErrorMsg('');
-    // GA flow relies on backend OAuth + connector selection; default to real mode.
+    // Google OAuth-backed connectors rely on backend connector selection; default to real mode.
     // Other connectors default to simulated mode for the demo experience.
-    setSimulate(type === 'google-analytics' ? false : true);
+    setSimulate(type === 'google-analytics' || type === 'google-sheets' ? false : true);
     if (type === 'clickhouse') {
       try {
         await loadClickhouseConnectors();
@@ -162,6 +198,9 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
     }
     if (type === 'google-analytics') {
       await loadGoogleAnalyticsConnectors();
+    }
+    if (type === 'google-sheets') {
+      await loadGoogleSheetsConnectors();
     }
   };
 
@@ -174,6 +213,9 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
     }
     if (selectedType === 'google-analytics') {
       loadGoogleAnalyticsConnectors();
+    }
+    if (selectedType === 'google-sheets') {
+      loadGoogleSheetsConnectors();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -196,7 +238,7 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
     if (!code && !error) return;
 
     const stored = loadGoogleAnalyticsAuth();
-    clearGoogleAnalyticsAuthParams();
+    clearGoogleAuthParams();
 
     if (error) {
       setGaAuthError(errorDescription || error);
@@ -233,6 +275,52 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedType]);
 
+  useEffect(() => {
+    if (selectedType !== 'google-sheets') return;
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const state = params.get('state');
+    const error = params.get('error');
+    const errorDescription = params.get('error_description');
+    if (!code && !error) return;
+
+    const stored = loadGoogleSheetsAuth();
+    clearGoogleAuthParams();
+
+    if (error) {
+      setGsAuthError(errorDescription || error);
+      clearGoogleSheetsAuth();
+      return;
+    }
+
+    if (!stored || !state || stored.state !== state) {
+      setGsAuthError('OAuth state mismatch. Please retry connection.');
+      clearGoogleSheetsAuth();
+      return;
+    }
+
+    setGsAuthLoading(true);
+    exchangeGoogleSheetsAuthCode({
+      code,
+      codeVerifier: stored.codeVerifier,
+      redirectUri: stored.redirectUri
+    })
+      .then(({ connector }) => {
+        setGsAuthError('');
+        setGsConnectorId(connector.id);
+        setSimulate(false);
+        loadGoogleSheetsConnectors();
+      })
+      .catch((e: any) => {
+        setGsAuthError(e.message || 'Failed to exchange authorization code');
+      })
+      .finally(() => {
+        setGsAuthLoading(false);
+        clearGoogleSheetsAuth();
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedType]);
+
   const startGoogleAnalyticsAuth = async () => {
     const clientId = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID as string | undefined;
     if (!clientId || !clientId.trim()) {
@@ -252,6 +340,27 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
     } catch (e: any) {
       setGaAuthError(e.message || 'Failed to start OAuth');
       setGaAuthLoading(false);
+    }
+  };
+
+  const startGoogleSheetsAuth = async () => {
+    const clientId = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID as string | undefined;
+    if (!clientId || !clientId.trim()) {
+      setGsAuthError('Missing VITE_GOOGLE_CLIENT_ID');
+      return;
+    }
+    const redirectUri = `${window.location.origin}/`;
+    setGsAuthLoading(true);
+    setGsAuthError('');
+    try {
+      const url = await buildGoogleSheetsAuthUrl({
+        clientId: clientId.trim(),
+        redirectUri
+      });
+      window.location.assign(url);
+    } catch (e: any) {
+      setGsAuthError(e.message || 'Failed to start OAuth');
+      setGsAuthLoading(false);
     }
   };
 
@@ -303,7 +412,27 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
         }
     };
 
-    if (selectedType === 'google-sheets') config.params.sheetId = sheetId;
+    if (selectedType === 'google-sheets') {
+        if (!sheetId.trim()) {
+            setStatus('error');
+            setErrorMsg('Google Sheets URL or ID is required');
+            return;
+        }
+        if (!simulate && !gsConnectorId.trim()) {
+            setStatus('error');
+            setErrorMsg('Select a Google Sheets connector');
+            return;
+        }
+        config.name = 'Google Sheets';
+        config.connectionId = gsConnectorId.trim();
+        config.query = {
+            spreadsheetIdOrUrl: sheetId.trim(),
+            range: sheetRange.trim() || DEFAULT_GOOGLE_SHEETS_RANGE
+        };
+        config.lastRefreshedAt = Date.now();
+        config.params.spreadsheetIdOrUrl = sheetId.trim();
+        config.params.range = sheetRange.trim() || DEFAULT_GOOGLE_SHEETS_RANGE;
+    }
     if (selectedType === 'google-analytics') {
         if (!propertyId.trim()) {
             setStatus('error');
@@ -372,6 +501,7 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
 
     try {
         const result = await fetchDataFromConnector(config);
+        config.truncated = !!result.truncated;
         setStatus('success');
         setTimeout(() => {
             onImport(result.title, result.data, config);
@@ -566,16 +696,71 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
         case 'google-sheets':
             return (
                 <div className="space-y-4 animate-scale-in">
+                    {!simulate && (
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                                <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">Google Sheets connector</label>
+                                <button
+                                    onClick={startGoogleSheetsAuth}
+                                    className="text-xs font-medium text-teal-700 dark:text-teal-300 hover:underline flex items-center gap-2"
+                                >
+                                    <KeyRound size={14} />
+                                    {gsAuthLoading ? 'Connecting...' : 'Connect Google'}
+                                </button>
+                            </div>
+                            {gsAuthError && (
+                                <div className="text-[11px] text-red-500 dark:text-red-400 flex items-center gap-2">
+                                    <AlertCircle size={12} />
+                                    {gsAuthError}
+                                </div>
+                            )}
+                            <div className="flex gap-2">
+                                <select
+                                    className="flex-1 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:ring-2 focus:ring-teal-500/50 disabled:opacity-60"
+                                    value={gsConnectorId}
+                                    onChange={e => setGsConnectorId(e.target.value)}
+                                    disabled={gsLoadingConnectors}
+                                >
+                                    <option value="" disabled>
+                                        {gsLoadingConnectors ? 'Loading connectors...' : 'Select connector'}
+                                    </option>
+                                    {gsConnectors.map(c => (
+                                        <option key={c.id} value={c.id}>
+                                            {c.name} ({c.id.slice(0, 6)}...)
+                                        </option>
+                                    ))}
+                                </select>
+                                <button
+                                    onClick={loadGoogleSheetsConnectors}
+                                    className="px-3 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-200 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors flex items-center gap-2"
+                                    title="Refresh list"
+                                >
+                                    <RefreshCcw size={14} />
+                                </button>
+                            </div>
+                        </div>
+                    )}
                     <div>
-                        <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1.5 uppercase">Google Sheet ID</label>
-                        <input 
-                            type="text" 
+                        <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1.5 uppercase">Google Sheets URL or ID</label>
+                        <input
+                            type="text"
                             className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:ring-2 focus:ring-teal-500/50"
-                            placeholder="e.g. 1BxiMVs0XRA5nFMdKvBdBkJ..."
+                            placeholder="https://docs.google.com/spreadsheets/d/... or spreadsheet ID"
                             value={sheetId}
                             onChange={e => setSheetId(e.target.value)}
                         />
-                        <p className="mt-1 text-[10px] text-neutral-400">Found in the URL of your spreadsheet.</p>
+                        <p className="mt-1 text-[10px] text-neutral-400">Use a sheet you can access with the connected Google account.</p>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1.5 uppercase">A1 range</label>
+                        <input
+                            type="text"
+                            className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:ring-2 focus:ring-teal-500/50"
+                            placeholder={DEFAULT_GOOGLE_SHEETS_RANGE}
+                            value={sheetRange}
+                            onChange={e => setSheetRange(e.target.value)}
+                        />
+                        <p className="mt-1 text-[10px] text-neutral-400">Defaults to {DEFAULT_GOOGLE_SHEETS_RANGE}.</p>
                     </div>
                 </div>
             );

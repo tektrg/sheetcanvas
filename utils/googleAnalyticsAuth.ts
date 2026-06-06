@@ -1,6 +1,7 @@
-const STORAGE_KEY = 'ga-oauth-pkce';
+const GA_STORAGE_KEY = 'ga-oauth-pkce';
+const GOOGLE_SHEETS_STORAGE_KEY = 'google-sheets-oauth-pkce';
 
-type StoredGoogleAnalyticsAuth = {
+type StoredGoogleAuth = {
   codeVerifier: string;
   state: string;
   redirectUri: string;
@@ -27,35 +28,35 @@ const createCodeChallenge = async (verifier: string) => {
   return base64UrlEncode(new Uint8Array(digest));
 };
 
-export const storeGoogleAnalyticsAuth = (payload: StoredGoogleAnalyticsAuth) => {
-  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+const storeGoogleAuth = (storageKey: string, payload: StoredGoogleAuth) => {
+  sessionStorage.setItem(storageKey, JSON.stringify(payload));
 };
 
-export const loadGoogleAnalyticsAuth = (): StoredGoogleAnalyticsAuth | null => {
-  const raw = sessionStorage.getItem(STORAGE_KEY);
+const loadGoogleAuth = (storageKey: string): StoredGoogleAuth | null => {
+  const raw = sessionStorage.getItem(storageKey);
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as StoredGoogleAnalyticsAuth;
+    return JSON.parse(raw) as StoredGoogleAuth;
   } catch {
     return null;
   }
 };
 
-export const clearGoogleAnalyticsAuth = () => {
-  sessionStorage.removeItem(STORAGE_KEY);
+const clearGoogleAuth = (storageKey: string) => {
+  sessionStorage.removeItem(storageKey);
 };
 
-export const buildGoogleAnalyticsAuthUrl = async (args: {
+const buildGoogleAuthUrl = async (args: {
   clientId: string;
   redirectUri: string;
-  scopes?: string[];
+  scopes: string[];
+  storageKey: string;
 }) => {
   const codeVerifier = createCodeVerifier();
   const codeChallenge = await createCodeChallenge(codeVerifier);
   const state = crypto.randomUUID();
-  const scopes = args.scopes?.length ? args.scopes : ['https://www.googleapis.com/auth/analytics.readonly'];
 
-  storeGoogleAnalyticsAuth({
+  storeGoogleAuth(args.storageKey, {
     codeVerifier,
     state,
     redirectUri: args.redirectUri,
@@ -66,7 +67,7 @@ export const buildGoogleAnalyticsAuthUrl = async (args: {
     client_id: args.clientId,
     redirect_uri: args.redirectUri,
     response_type: 'code',
-    scope: scopes.join(' '),
+    scope: args.scopes.join(' '),
     state,
     code_challenge: codeChallenge,
     code_challenge_method: 'S256',
@@ -78,6 +79,36 @@ export const buildGoogleAnalyticsAuthUrl = async (args: {
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 };
 
+export const storeGoogleAnalyticsAuth = (payload: StoredGoogleAuth) => storeGoogleAuth(GA_STORAGE_KEY, payload);
+export const loadGoogleAnalyticsAuth = (): StoredGoogleAuth | null => loadGoogleAuth(GA_STORAGE_KEY);
+export const clearGoogleAnalyticsAuth = () => clearGoogleAuth(GA_STORAGE_KEY);
+
+export const buildGoogleAnalyticsAuthUrl = async (args: {
+  clientId: string;
+  redirectUri: string;
+  scopes?: string[];
+}) =>
+  buildGoogleAuthUrl({
+    clientId: args.clientId,
+    redirectUri: args.redirectUri,
+    scopes: args.scopes?.length ? args.scopes : ['https://www.googleapis.com/auth/analytics.readonly'],
+    storageKey: GA_STORAGE_KEY,
+  });
+
+export const loadGoogleSheetsAuth = (): StoredGoogleAuth | null => loadGoogleAuth(GOOGLE_SHEETS_STORAGE_KEY);
+export const clearGoogleSheetsAuth = () => clearGoogleAuth(GOOGLE_SHEETS_STORAGE_KEY);
+
+export const buildGoogleSheetsAuthUrl = async (args: {
+  clientId: string;
+  redirectUri: string;
+}) =>
+  buildGoogleAuthUrl({
+    clientId: args.clientId,
+    redirectUri: args.redirectUri,
+    scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+    storageKey: GOOGLE_SHEETS_STORAGE_KEY,
+  });
+
 export const clearGoogleAnalyticsAuthParams = () => {
   const url = new URL(window.location.href);
   ['code', 'state', 'scope', 'authuser', 'prompt', 'error', 'error_description'].forEach((key) => {
@@ -85,3 +116,5 @@ export const clearGoogleAnalyticsAuthParams = () => {
   });
   window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
 };
+
+export const clearGoogleAuthParams = clearGoogleAnalyticsAuthParams;

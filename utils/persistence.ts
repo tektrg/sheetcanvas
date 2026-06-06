@@ -134,12 +134,33 @@ export const loadAppState = async (id: string = 'default'): Promise<AppState> =>
       } else if (cfg.type === 'google-analytics' && p.connectorId) {
         migrated.connectionId = String(p.connectorId);
         if (p.propertyId) migrated.query = { propertyId: String(p.propertyId), report: p.report ?? {} };
+      } else if (cfg.type === 'google-sheets' && p.connectorId) {
+        migrated.connectionId = String(p.connectorId);
+        const spreadsheetIdOrUrl = p.spreadsheetIdOrUrl ?? p.sheetId;
+        if (spreadsheetIdOrUrl) {
+          migrated.query = {
+            spreadsheetIdOrUrl: String(spreadsheetIdOrUrl),
+            ...(p.range ? { range: String(p.range) } : {}),
+          };
+        }
       }
       if (typeof p.lastRefreshedAt === 'number') migrated.lastRefreshedAt = p.lastRefreshedAt;
       if (typeof p.truncated === 'boolean') migrated.truncated = p.truncated;
       if (typeof p.lastError === 'string') migrated.lastError = p.lastError;
       // Drop connector-specific keys from params; keep anything else (e.g. simulate for csv/sheets)
-      const { connectorId: _c, sql: _s, propertyId: _p, report: _r, lastRefreshedAt: _lr, truncated: _tr, lastError: _le, ...remainingParams } = p;
+      const {
+        connectorId: _c,
+        sql: _s,
+        propertyId: _p,
+        report: _r,
+        spreadsheetIdOrUrl: _si,
+        sheetId: _sid,
+        range: _range,
+        lastRefreshedAt: _lr,
+        truncated: _tr,
+        lastError: _le,
+        ...remainingParams
+      } = p;
       migrated.params = Object.keys(remainingParams).length > 0 ? remainingParams : undefined;
       return { ...sheet, connectorConfig: migrated };
     });

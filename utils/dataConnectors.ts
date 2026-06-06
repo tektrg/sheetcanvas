@@ -1,6 +1,7 @@
 
 import { ConnectorConfig, ConnectorResult } from '../types';
 import { googleAnalyticsResultToMatrix, queryGoogleAnalytics, type GoogleAnalyticsReport } from './googleAnalyticsBackend';
+import { googleSheetsResultToMatrix, queryGoogleSheets } from './googleSheetsBackend';
 
 /**
  * Simulator function to mimic Google Sheets API response
@@ -57,22 +58,24 @@ export const fetchDataFromConnector = async (config: ConnectorConfig): Promise<C
 
   try {
     if (config.type === 'google-sheets') {
-      const sheetId = String(params.sheetId || '');
-      
+      const query = config.query && 'spreadsheetIdOrUrl' in config.query ? config.query : null;
+      const spreadsheetIdOrUrl = String(query?.spreadsheetIdOrUrl || params.spreadsheetIdOrUrl || params.sheetId || '');
+      const range = String(query?.range || params.range || '').trim() || undefined;
+
       if (!isSimulation) {
-        // REAL IMPLEMENTATION STUB:
-        // 1. Ensure gapi client is loaded and authenticated
-        // 2. const response = await gapi.client.sheets.spreadsheets.values.get({
-        //      spreadsheetId: sheetId,
-        //      range: config.params.range || 'Sheet1!A1:Z100',
-        //    });
-        // 3. return { title: 'Imported Sheet', data: response.result.values };
-        throw new Error("Real API connection requires OAuth configuration. Using simulation.");
+        const connectorId = String(config.connectionId || params.connectorId || '');
+        if (!connectorId) throw new Error('Missing Google Sheets connector');
+        const result = await queryGoogleSheets({ connectorId, spreadsheetIdOrUrl, range });
+        return {
+          title: 'Google Sheets',
+          data: googleSheetsResultToMatrix(result),
+          truncated: !!result.truncated
+        };
       }
 
-      const data = await mockGoogleSheetsFetch(sheetId);
+      const data = await mockGoogleSheetsFetch(spreadsheetIdOrUrl);
       return {
-        title: `G-Sheet Import (${sheetId.substring(0,6)}...)`,
+        title: `G-Sheet Import (${spreadsheetIdOrUrl.substring(0,6)}...)`,
         data
       };
 
@@ -87,7 +90,8 @@ export const fetchDataFromConnector = async (config: ConnectorConfig): Promise<C
         const result = await queryGoogleAnalytics({ connectorId, propertyId, report });
         return {
           title: `Analytics: Prop ${propertyId}`,
-          data: googleAnalyticsResultToMatrix(result)
+          data: googleAnalyticsResultToMatrix(result),
+          truncated: !!result.truncated
         };
       }
 
