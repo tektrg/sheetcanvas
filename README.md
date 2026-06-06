@@ -38,9 +38,9 @@ More detail: `docs/clickhouse-connector.md`
 - Enter SQL → “Run & Create Sheet”
 - Use the sheet header buttons to “Refresh” and “Edit SQL”
 
-## Google Analytics (GA4) connector (OAuth + backend proxy)
+## Google OAuth connectors (GA4 + Google Sheets)
 
-The GA4 connector uses the Cloudflare Worker backend (under `backend/`) to exchange OAuth codes and store refresh tokens securely (encrypted in D1). The browser never sees the client secret.
+The GA4 and Google Sheets connectors use the Cloudflare Worker backend (under `backend/`) to exchange OAuth codes and store refresh tokens securely (encrypted in D1). The browser never sees the client secret.
 
 ### Fixing `Error 403: access_denied` (add Test users)
 
@@ -64,6 +64,7 @@ Before running locally, configure the OAuth client in Google Cloud Console (APIs
 - Enable APIs:
   - Google Analytics Data API
   - Google Analytics Admin API
+  - Google Sheets API
  - Quick checks:
    - Frontend runs on `http://localhost:3000` (see `vite.config.ts`).
    - `VITE_GOOGLE_CLIENT_ID` in `.env.local` matches `GOOGLE_CLIENT_ID` in `backend/.dev.vars`.
@@ -81,3 +82,5 @@ Before running locally, configure the OAuth client in Google Cloud Console (APIs
 4) In the app:
 - Click “Connect Data” → “Google Analytics”
 - Click “Connect Google” to authorize, then select a connector + GA4 property and import a report
+- Or click “Connect Data” → “Google Sheets”
+- Click “Connect Google” to authorize, then select a connector, enter a spreadsheet URL or ID, and import a read-only A1 range
