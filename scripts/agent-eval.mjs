@@ -621,6 +621,13 @@ function evaluateCaseExpectations({ evalCase, beforeState, afterState, messages,
   for (const fragment of expectations.assistantIncludes ?? []) {
     assertExpectation(includesIgnoreCase(assistantText, fragment), `Assistant response did not include "${fragment}".`, failures);
   }
+  for (const fragment of expectations.assistantExcludes ?? []) {
+    assertExpectation(
+      !includesIgnoreCase(assistantText, fragment),
+      `Assistant response included forbidden text "${fragment}".`,
+      failures,
+    );
+  }
   if (expectations.connectorSheetCreated) {
     assertExpectation(afterState.sheets.some((sheet) => !!sheet.connector), 'Expected at least one connector-backed sheet.', failures);
   }
@@ -663,6 +670,18 @@ function runLogPath(evalCase, startedAt) {
 }
 
 async function runCase({ page, evalCase, args, startedAt }) {
+  if (evalCase.fixture) {
+    const fixtureState = await evaluate(page, pageFunctionCall((fixture) => {
+      window.__sheetCanvasAgentEval.loadFixture(fixture);
+      return window.__sheetCanvasAgentEval.getCanvasState();
+    }, evalCase.fixture), 5000);
+    const expectedSheetIds = (evalCase.fixture.sheets ?? []).map((sheet) => sheet.id);
+    for (const sheetId of expectedSheetIds) {
+      if (!fixtureState.sheets?.some((sheet) => sheet.id === sheetId)) {
+        throw new Error(`Fixture failed to load sheet "${sheetId}". Loaded sheets: ${JSON.stringify(fixtureState.sheets?.map((sheet) => sheet.id) ?? [])}`);
+      }
+    }
+  }
   const beforeState = await evaluate(page, 'window.__sheetCanvasAgentEval.getCanvasState()');
   const timeoutMs = evalCase.timeoutMs ?? args.timeoutMs;
   await startPromptRun(page, evalCase.prompt, {

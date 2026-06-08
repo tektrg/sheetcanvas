@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { UIMessage } from 'ai';
-import type { SelectionContext } from '../../types';
+import type { SelectionContext, SheetData } from '../../types';
 import { getCellId } from '../../utils/formulas';
 import { useStore } from '../../store';
 import { useAgentSession } from './useAgentSession';
+import { getSheetDataBounds } from './sheetBounds';
 
 type AgentEvalStatus = 'ready' | 'submitted' | 'streaming' | 'error';
 const MAX_LOG_ROWS = 50;
@@ -23,12 +24,17 @@ interface AgentEvalApi {
   getCanvasState: () => ReturnType<typeof summarizeCanvasState>;
   getMessages: () => UIMessage[];
   getStatus: () => AgentEvalStatus;
+  loadFixture: (fixture: AgentEvalFixture) => void;
   runPrompt: (prompt: string, options?: RunPromptOptions) => Promise<{
     canvasState: ReturnType<typeof summarizeCanvasState>;
     error?: string;
     messages: UIMessage[];
     status: AgentEvalStatus;
   }>;
+}
+
+interface AgentEvalFixture {
+  sheets?: SheetData[];
 }
 
 declare global {
@@ -71,19 +77,20 @@ function summarizeCanvasState() {
   return {
     sheets: state.sheetIds.map((sheetId) => {
       const sheet = state.sheets[sheetId];
+      const bounds = getSheetDataBounds(sheet);
       return {
         id: sheet.id,
         title: sheet.title,
-        rowCount: sheet.size.height,
-        columnCount: sheet.size.width,
-	        headers: Array.from({ length: sheet.size.width }, (_, colIndex) => ({
-	          columnId: getCellId(colIndex, 0).replace(/\d+$/, ''),
-	          header: cellValueForLog(sheet.id, colIndex, 0),
-	        })),
-	        cells: sampledCellsForLog(sheet.id, sheet.size.height, sheet.size.width),
-	        filters: sheet.filters ?? [],
-	        sort: sheet.sort ?? null,
-	        connector: sheet.connectorConfig
+        rowCount: bounds.height,
+        columnCount: bounds.width,
+        headers: Array.from({ length: bounds.width }, (_, colIndex) => ({
+          columnId: getCellId(colIndex, 0).replace(/\d+$/, ''),
+          header: cellValueForLog(sheet.id, colIndex, 0),
+        })),
+        cells: sampledCellsForLog(sheet.id, bounds.height, bounds.width),
+        filters: sheet.filters ?? [],
+        sort: sheet.sort ?? null,
+        connector: sheet.connectorConfig
           ? {
               type: sheet.connectorConfig.type,
               name: sheet.connectorConfig.name,
@@ -144,6 +151,21 @@ function waitForTurnCompletion(args: {
       window.setTimeout(poll, 100);
     };
     poll();
+  });
+}
+
+function loadFixture(fixture: AgentEvalFixture) {
+  const sheets = fixture.sheets ?? [];
+  useStore.setState({
+    sheets: Object.fromEntries(sheets.map((sheet) => [sheet.id, sheet])),
+    sheetIds: sheets.map((sheet) => sheet.id),
+    charts: {},
+    chartIds: [],
+    notes: {},
+    noteIds: [],
+    selectedIds: new Set(),
+    history: [],
+    future: [],
   });
 }
 
@@ -220,6 +242,7 @@ export function AgentEvalBridge({ enabled, getSelection }: AgentEvalBridgeProps)
       getCanvasState: summarizeCanvasState,
       getMessages: () => messagesRef.current,
       getStatus: () => statusRef.current,
+      loadFixture,
       runPrompt,
     };
     return () => {

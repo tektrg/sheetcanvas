@@ -1,6 +1,7 @@
 import alasql from 'alasql';
 import type { SheetData } from '../../types';
 import { getCellId } from '../../utils/formulas';
+import { getSheetDataBounds } from './sheetBounds';
 
 function sanitizeHeader(raw: unknown, fallback: string): string {
   const s = String(raw ?? '').trim();
@@ -33,7 +34,7 @@ export interface SheetTable {
 }
 
 export function buildSheetTable(sheet: SheetData): SheetTable {
-  const { width, height } = sheet.size;
+  const { width, height } = getSheetDataBounds(sheet);
   const columnLetters: string[] = [];
   const sqlColumns: string[] = [];
   const usedNames = new Set<string>();
@@ -103,12 +104,19 @@ export function runSheetQuery(sheet: SheetData, sql: string, limit = 200): Query
   };
 }
 
-export function sheetTableSchema(sheet: SheetData): { columnLetter: string; sqlName: string; sampleValue: unknown }[] {
+export function sheetTableSchema(
+  sheet: SheetData,
+): { columnLetter: string; headerCell: string; header: unknown; sqlName: string; sampleValue: unknown }[] {
   const table = buildSheetTable(sheet);
   const sample = table.rows[0] ?? {};
-  return table.columnLetters.map((letter, i) => ({
-    columnLetter: letter,
-    sqlName: table.sqlColumns[i],
-    sampleValue: sample[table.sqlColumns[i]] ?? null,
-  }));
+  return table.columnLetters.map((letter, i) => {
+    const headerCell = sheet.cells[getCellId(i, 0)];
+    return {
+      columnLetter: letter,
+      headerCell: `${letter}1`,
+      header: headerCell?.value ?? headerCell?.raw ?? null,
+      sqlName: table.sqlColumns[i],
+      sampleValue: sample[table.sqlColumns[i]] ?? null,
+    };
+  });
 }

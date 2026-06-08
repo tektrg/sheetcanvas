@@ -1,0 +1,71 @@
+{
+  "cases": [
+    {
+      "id": "hr-wide-column-ids-line-chart",
+      "prompt": "create line chart 2 series, 1) count number of applicants that has BB is \"[1] Trúng tuyển\", and 2) AU is \"[1] Đã hẹn phỏng vấn\"",
+      "fixture": {
+        "sheets": [
+          {
+            "id": "hr-base",
+            "title": "HR base",
+            "position": { "x": 100, "y": 100 },
+            "size": { "width": 8, "height": 1 },
+            "cells": {
+              "A1": { "raw": "Date", "value": "Date" },
+              "AU1": { "raw": "Interview Status", "value": "Interview Status" },
+              "BB1": { "raw": "Admission Status", "value": "Admission Status" },
+              "A2": { "raw": "2026-06-01", "value": "2026-06-01" },
+              "AU2": { "raw": "[1] Đã hẹn phỏng vấn", "value": "[1] Đã hẹn phỏng vấn" },
+              "BB2": { "raw": "[1] Trúng tuyển", "value": "[1] Trúng tuyển" },
+              "A3": { "raw": "2026-06-01", "value": "2026-06-01" },
+              "AU3": { "raw": "[0] Chưa hẹn", "value": "[0] Chưa hẹn" },
+              "BB3": { "raw": "[1] Trúng tuyển", "value": "[1] Trúng tuyển" },
+              "A4": { "raw": "2026-06-02", "value": "2026-06-02" },
+              "AU4": { "raw": "[1] Đã hẹn phỏng vấn", "value": "[1] Đã hẹn phỏng vấn" },
+              "BB4": { "raw": "[0] Chưa trúng tuyển", "value": "[0] Chưa trúng tuyển" },
+              "A5": { "raw": "2026-06-02", "value": "2026-06-02" },
+              "AU5": { "raw": "[1] Đã hẹn phỏng vấn", "value": "[1] Đã hẹn phỏng vấn" },
+              "BB5": { "raw": "[1] Trúng tuyển", "value": "[1] Trúng tuyển" }
+            }
+          }
+        ]
+      },
+      "expect": {
+        "minSheetsDelta": 1,
+        "minChartsDelta": 1,
+        "newSheets": [
+          {
+            "titleIncludes": "Pivot",
+            "headersInclude": ["Admitted", "Interviewed"],
+            "cellEquals": [
+              { "cell": "A2", "value": "2026-06-01" },
+              { "cell": "B2", "value": 2 },
+              { "cell": "C2", "value": 1 },
+              { "cell": "A3", "value": "2026-06-02" },
+              { "cell": "B3", "value": 1 },
+              { "cell": "C3", "value": 2 }
+            ]
+          }
+        ],
+        "newCharts": [
+          {
+            "type": "line",
+            "sourceSheetTitleIncludes": "Pivot",
+            "labelColumn": "A",
+            "dataColumnsInclude": ["B", "C"]
+          }
+        ],
+        "assistantExcludes": [
+          "what do BB",
+          "what does BB",
+          "what do AU",
+          "what does AU",
+          "I don't see columns",
+          "I do not see columns",
+          "which columns do",
+          "clarify which sheet"
+        ]
+      }
+    }
+  ]
+}

@@ -46,27 +46,47 @@ export const CellFormatSchema = z.discriminatedUnion('type', [
 
 const ColumnIdSchema = z.string().regex(/^[A-Z]+$/, 'columnId must be a column letter like "A"');
 
-export const FilterConditionSchema = z.discriminatedUnion('type', [
+const TextFilterConditionSchema = z.object({
+  columnId: ColumnIdSchema,
+  type: z.literal('text'),
+  operator: z.enum(['contains', 'equals', 'startsWith', 'endsWith']),
+  value: z.string(),
+});
+
+const NumberFilterConditionSchema = z.discriminatedUnion('operator', [
   z.object({
     columnId: ColumnIdSchema,
-    type: z.literal('text'),
-    operator: z.enum(['contains', 'equals', 'startsWith', 'endsWith']),
-    value: z.string(),
+    type: z.literal('number'),
+    operator: z.enum(['gt', 'lt', 'eq', 'neq']),
+    value: z.number(),
   }),
   z.object({
     columnId: ColumnIdSchema,
     type: z.literal('number'),
-    operator: z.enum(['gt', 'lt', 'eq', 'neq', 'range']),
-    // For 'range': pass [min, max] as a 2-element array. For others: a 1-element array.
-    value: z.array(z.number()).min(1).max(2),
+    operator: z.literal('range'),
+    value: z.array(z.number()).length(2),
+  }),
+]);
+
+const DateFilterConditionSchema = z.discriminatedUnion('operator', [
+  z.object({
+    columnId: ColumnIdSchema,
+    type: z.literal('date'),
+    operator: z.enum(['before', 'after', 'on']),
+    value: z.string(),
   }),
   z.object({
     columnId: ColumnIdSchema,
     type: z.literal('date'),
-    operator: z.enum(['before', 'after', 'on', 'range']),
-    // ISO date strings. For 'range': [start, end]. For others: 1-element array.
-    value: z.array(z.string()).min(1).max(2),
+    operator: z.literal('range'),
+    value: z.array(z.string()).length(2),
   }),
+]);
+
+export const FilterConditionSchema = z.union([
+  TextFilterConditionSchema,
+  NumberFilterConditionSchema,
+  DateFilterConditionSchema,
 ]);
 
 export const SortConfigSchema = z.object({
@@ -77,19 +97,34 @@ export const SortConfigSchema = z.object({
 export const ChartTypeEnum = z.enum(['line', 'bar', 'pie', 'area', 'scatter', 'treemap']);
 export const PivotOpEnum = z.enum(['SUM', 'COUNT', 'AVG', 'MIN', 'MAX']);
 
+const PivotValueSchema = z
+  .object({
+    column: ColumnIdSchema.optional(),
+    operation: PivotOpEnum,
+    label: z.string().min(1).max(80).optional(),
+    conditions: z.array(FilterConditionSchema).optional(),
+    countRows: z.boolean().optional(),
+  })
+  .refine(
+    value => value.operation === 'COUNT' ? true : !!value.column,
+    {
+      message: 'column is required unless operation="COUNT"',
+    }
+  );
+
 // ── Tool definitions ────────────────────────────────────────────────────────
 
 export const toolDefs = {
   listSheets: {
     description:
-      'List all sheets on the canvas with id, title, dimensions, and column headers. Call this first if you do not know what sheets exist.',
+      'List all sheets on the canvas with id, title, dimensions, compact columnIdSpan (for example A:BB), row-numbering convention, and column headers. Column ids like A, AU, or BB are spreadsheet column letters and may be used directly in tool inputs.',
     inputSchema: z.object({}),
   },
 
   describeSheet: {
     description:
-      'Return the schema and a small sample of a sheet: column headers, inferred types, row count, current filters and sort, and up to 5 sample rows.',
-    inputSchema: z.object({ sheetId: z.string() }),
+      'Return the schema and a small sample of a sheet: compact columnIdSpan (for example A:BB), column ids/letters, header cells, data ranges, column headers, inferred types, row count, row-numbering convention, current filters and sort, and up to 5 sample rows with row numbers. If the user named specific column letters such as AU or BB, pass them in columnIds so they are echoed in requestedColumns even on wide sheets.',
+    inputSchema: z.object({ sheetId: z.string(), columnIds: z.array(ColumnIdSchema).optional() }),
   },
 
   getSelection: {
@@ -104,7 +139,7 @@ export const toolDefs = {
 
   querySheet: {
     description:
-      'Run a read-only SQL SELECT against a sheet. The sheet is exposed as a table named "t" with columns named by header (sanitized to snake_case). Use this to filter, aggregate, or inspect data before writing. Only SELECT is allowed.',
+      'Run a read-only SQL SELECT against a sheet. The sheet is exposed as table "t" with columns named by header (sanitized to snake_case); use the returned schema to map user-mentioned column letters such as AU or BB to schema.sqlName before querying. Use this to filter, aggregate, or inspect data before writing. Only SELECT is allowed.',
     inputSchema: z.object({
       sheetId: z.string(),
       sql: z.string().min(6, 'SQL too short'),
@@ -163,18 +198,13 @@ export const toolDefs = {
 
   createPivot: {
     description:
-      'Create a pivot-table sheet derived from a source sheet. The new sheet recomputes automatically when the source changes. `rowLabelCol` is the row-grouping column letter; `colLabelCol` (optional) splits into columns for a true 2-D pivot; `values` is one or more aggregations (column + op). Use when the user wants a persistent, reactive tabular summary — for one-off aggregates prefer `querySheet`.',
+      'Create a pivot-table sheet derived from a source sheet. The new sheet recomputes automatically when the source changes. `rowLabelCol` is the row-grouping column letter; `colLabelCol` (optional) splits into columns for a true 2-D pivot; `values` is one or more metric cards. Each metric supports operation, optional label, optional row-count semantics for COUNT, and optional AND-only conditions for SUMIF/COUNTIF-style metrics. Use when the user wants a persistent, reactive tabular summary — for one-off aggregates prefer `querySheet`.',
     inputSchema: z.object({
       sheetId: z.string(),
       rowLabelCol: z.string().regex(/^[A-Z]+$/),
       colLabelCol: z.string().regex(/^[A-Z]+$/).optional(),
       values: z
-        .array(
-          z.object({
-            column: z.string().regex(/^[A-Z]+$/),
-            operation: PivotOpEnum,
-          })
-        )
+        .array(PivotValueSchema)
         .min(1),
       showRowTotals: z.boolean().optional(),
       showColTotals: z.boolean().optional(),

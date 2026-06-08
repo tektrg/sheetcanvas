@@ -1,13 +1,15 @@
 import { useStore } from '../../store';
-import type { CellData, CellFormat, ChartData, ChartConfig, SheetData, FilterCondition, SortConfig, SelectionContext, ChartType, PivotConfig, SparklineConfig, ConnectorConfig } from '../../types';
+import type { CellData, CellFormat, ChartData, ChartConfig, SheetData, FilterCondition, SortConfig, SelectionContext, ChartType, PivotConfig, PivotValue, SparklineConfig, ConnectorConfig } from '../../types';
 import { parseCellId, getCellId } from '../../utils/formulas';
-import { CELL_WIDTH, DEFAULT_CHART_SIZE, ACCENT_COLOR, MAX_CONNECTED_IMPORT_COLS } from '../../constants';
+import { CELL_WIDTH, DEFAULT_CHART_SIZE, MAX_CONNECTED_IMPORT_COLS } from '../../constants';
 import { runSheetQuery, sheetTableSchema } from './alasqlAdapter';
 import { requestJson } from '../../utils/backendApi';
 import { clickhouseResultToMatrix, queryClickhouse, getClickhouseSchema, describeClickhouseTable } from '../../utils/clickhouseBackend';
 import { googleAnalyticsResultToMatrix, queryGoogleAnalytics, getGoogleAnalyticsMetadata, listGoogleAnalyticsPropertiesPage, type GoogleAnalyticsMetadataItem } from '../../utils/googleAnalyticsBackend';
 import { DEFAULT_GOOGLE_SHEETS_RANGE, googleSheetsResultToMatrix, queryGoogleSheets } from '../../utils/googleSheetsBackend';
 import { applyMatrixToSheet } from '../../utils/connectorSheet';
+import { getChartPalette, readStoredChartColorSettings } from '../../utils/chartColorSchemes';
+import { getColumnIdForIndex, getColumnIdSpan, getSheetDataBounds } from './sheetBounds';
 
 const generateId = () => Math.random().toString(36).slice(2, 11);
 
@@ -76,11 +78,12 @@ export interface SelectionResolver {
   getSelection: () => SelectionContext;
 }
 
-function describeColumn(sheet: SheetData, colIndex: number) {
-  const letter = getCellId(colIndex, 0).replace(/\d+$/, '');
+function describeColumn(sheet: SheetData, colIndex: number, rowCount: number) {
+  const letter = getColumnIdForIndex(colIndex);
+  const headerCellId = `${letter}1`;
   const header = sheet.cells[getCellId(colIndex, 0)];
   const samples: unknown[] = [];
-  for (let r = 1; r < sheet.size.height && samples.length < 3; r++) {
+  for (let r = 1; r < rowCount && samples.length < 3; r++) {
     const cell = sheet.cells[getCellId(colIndex, r)];
     const v = cell?.value ?? cell?.raw;
     if (v !== null && v !== undefined && v !== '') samples.push(v);
@@ -93,6 +96,8 @@ function describeColumn(sheet: SheetData, colIndex: number) {
   }
   return {
     columnId: letter,
+    headerCell: headerCellId,
+    dataRange: `${letter}2:${letter}${rowCount}`,
     header: header?.value ?? header?.raw ?? null,
     inferredType,
     samples,
@@ -101,12 +106,15 @@ function describeColumn(sheet: SheetData, colIndex: number) {
 
 function summarizeSheet(sheet: SheetData) {
   const columns: ReturnType<typeof describeColumn>[] = [];
-  for (let c = 0; c < sheet.size.width; c++) columns.push(describeColumn(sheet, c));
+  const bounds = getSheetDataBounds(sheet);
+  for (let c = 0; c < bounds.width; c++) columns.push(describeColumn(sheet, c, bounds.height));
   return {
     sheetId: sheet.id,
     title: sheet.title,
-    rowCount: sheet.size.height,
-    columnCount: sheet.size.width,
+    rowCount: bounds.height,
+    columnCount: bounds.width,
+    columnIdSpan: getColumnIdSpan(bounds.width),
+    rowNumbering: '1-based; row 1 is headers, data starts at row 2',
     columns,
     filters: sheet.filters ?? [],
     sort: sheet.sort ?? null,
@@ -141,6 +149,17 @@ function colLetterToIndex(letter: string): number {
   return col - 1;
 }
 
+function normalizeColumnId(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim().toUpperCase();
+  return /^[A-Z]+$/.test(trimmed) ? trimmed : null;
+}
+
+function columnExistsInBounds(letter: string, columnCount: number): boolean {
+  const idx = colLetterToIndex(letter);
+  return idx >= 0 && idx < columnCount;
+}
+
 export async function executeClientTool(
   name: string,
   input: any,
@@ -153,14 +172,22 @@ export async function executeClientTool(
       case 'listSheets': {
         const sheets = store.sheetIds.map((id) => {
           const s = store.sheets[id];
+          const bounds = getSheetDataBounds(s);
           return {
             sheetId: s.id,
             title: s.title,
-            rowCount: s.size.height,
-            columnCount: s.size.width,
-            headers: Array.from({ length: s.size.width }, (_, c) => {
-              const h = s.cells[getCellId(c, 0)];
-              return { columnId: getCellId(c, 0).replace(/\d+$/, ''), header: h?.value ?? h?.raw ?? null };
+            rowCount: bounds.height,
+            columnCount: bounds.width,
+            columnIdSpan: getColumnIdSpan(bounds.width),
+            rowNumbering: '1-based; row 1 is headers, data starts at row 2',
+            headers: Array.from({ length: bounds.width }, (_, c) => {
+              const columnId = getColumnIdForIndex(c);
+              const h = s.cells[`${columnId}1`];
+              return {
+                columnId,
+                headerCell: `${columnId}1`,
+                header: h?.value ?? h?.raw ?? null,
+              };
             }),
           };
         });
@@ -171,12 +198,34 @@ export async function executeClientTool(
         const sheet = store.sheets[input.sheetId];
         if (!sheet) return { ok: false, error: `Unknown sheetId: ${input.sheetId}` };
         const summary = summarizeSheet(sheet);
+        const requestedColumnIds = Array.isArray(input.columnIds)
+          ? input.columnIds
+              .map(normalizeColumnId)
+              .filter((columnId): columnId is string => !!columnId)
+          : [];
+        const requestedColumns = requestedColumnIds.map((columnId) => {
+          const colIndex = colLetterToIndex(columnId);
+          if (!columnExistsInBounds(columnId, summary.columnCount)) {
+            return {
+              columnId,
+              exists: false,
+              columnIdSpan: summary.columnIdSpan,
+              message: `Column ${columnId} is outside occupied column span ${summary.columnIdSpan ?? '(empty)'}`,
+            };
+          }
+          return {
+            exists: true,
+            ...describeColumn(sheet, colIndex, summary.rowCount),
+          };
+        });
         const sampleRows: Record<string, unknown>[] = [];
-        for (let r = 1; r < sheet.size.height && sampleRows.length < 5; r++) {
+        const bounds = getSheetDataBounds(sheet);
+        for (let r = 1; r < bounds.height && sampleRows.length < 5; r++) {
           const row: Record<string, unknown> = {};
+          row.rowNumber = r + 1;
           let hasAny = false;
-          for (let c = 0; c < sheet.size.width; c++) {
-            const letter = getCellId(c, 0).replace(/\d+$/, '');
+          for (let c = 0; c < bounds.width; c++) {
+            const letter = getColumnIdForIndex(c);
             const cell = sheet.cells[getCellId(c, r)];
             const v = cell?.value ?? cell?.raw ?? null;
             if (v !== null && v !== '') hasAny = true;
@@ -184,7 +233,7 @@ export async function executeClientTool(
           }
           if (hasAny) sampleRows.push(row);
         }
-        return { ok: true, ...summary, sampleRows };
+        return { ok: true, ...summary, requestedColumns, sampleRows };
       }
 
       case 'getSelection': {
@@ -300,22 +349,25 @@ export async function executeClientTool(
       case 'createChart': {
         const sheet = store.sheets[input.sheetId];
         if (!sheet) return { ok: false, error: `Unknown sheetId: ${input.sheetId}` };
-        const labelColIdx = colLetterToIndex(input.labelColumn);
-        if (labelColIdx < 0 || labelColIdx >= sheet.size.width) {
+        const bounds = getSheetDataBounds(sheet);
+        if (!columnExistsInBounds(input.labelColumn, bounds.width)) {
           return { ok: false, error: `labelColumn ${input.labelColumn} not in sheet` };
         }
         for (const dc of input.dataColumns as string[]) {
-          const idx = colLetterToIndex(dc);
-          if (idx < 0 || idx >= sheet.size.width) {
+          if (!columnExistsInBounds(dc, bounds.width)) {
             return { ok: false, error: `dataColumn ${dc} not in sheet` };
           }
         }
+        const colorSettings = readStoredChartColorSettings();
+        const defaultPalette = getChartPalette(colorSettings, false);
         const config: ChartConfig = {
           type: input.type as ChartType,
           mode: 'metrics',
           labelColumn: input.labelColumn,
           dataColumns: input.dataColumns,
-          color: ACCENT_COLOR,
+          color: defaultPalette[0],
+          colorScheme: 'workspace',
+          colorOverride: false,
           highlightIndex: -1,
           animation: true,
           showLabels: true,
@@ -339,9 +391,9 @@ export async function executeClientTool(
       case 'createPivot': {
         const source = store.sheets[input.sheetId];
         if (!source) return { ok: false, error: `Unknown sheetId: ${input.sheetId}` };
+        const bounds = getSheetDataBounds(source);
         const colsInSource = (letter: string) => {
-          const idx = colLetterToIndex(letter);
-          return idx >= 0 && idx < source.size.width;
+          return columnExistsInBounds(letter, bounds.width);
         };
         if (!colsInSource(input.rowLabelCol)) {
           return { ok: false, error: `rowLabelCol ${input.rowLabelCol} not in sheet` };
@@ -349,16 +401,25 @@ export async function executeClientTool(
         if (input.colLabelCol && !colsInSource(input.colLabelCol)) {
           return { ok: false, error: `colLabelCol ${input.colLabelCol} not in sheet` };
         }
-        for (const v of input.values as { column: string; operation: string }[]) {
-          if (!colsInSource(v.column)) {
-            return { ok: false, error: `value column ${v.column} not in sheet` };
+        const pivotValues: PivotValue[] = (input.values as PivotValue[]).map(value => ({
+          ...value,
+          countRows: value.operation === 'COUNT' && (value.countRows || !value.column)
+        }));
+        for (const v of pivotValues) {
+          if (!(v.operation === 'COUNT' && v.countRows) && (!v.column || !colsInSource(v.column))) {
+            return { ok: false, error: `value column ${v.column ?? '(missing)'} not in sheet` };
+          }
+          for (const condition of v.conditions ?? []) {
+            if (!colsInSource(condition.columnId)) {
+              return { ok: false, error: `condition column ${condition.columnId} not in sheet` };
+            }
           }
         }
         const config: PivotConfig = {
           sourceSheetId: source.id,
           rowLabelCol: input.rowLabelCol,
           colLabelCol: input.colLabelCol,
-          values: input.values,
+          values: pivotValues,
           showRowTotals: input.showRowTotals ?? true,
           showColTotals: input.showColTotals ?? true,
         };
@@ -381,9 +442,9 @@ export async function executeClientTool(
       case 'createSparkline': {
         const source = store.sheets[input.sheetId];
         if (!source) return { ok: false, error: `Unknown sheetId: ${input.sheetId}` };
+        const bounds = getSheetDataBounds(source);
         const colsInSource = (letter: string) => {
-          const idx = colLetterToIndex(letter);
-          return idx >= 0 && idx < source.size.width;
+          return columnExistsInBounds(letter, bounds.width);
         };
         if (!colsInSource(input.dateCol)) {
           return { ok: false, error: `dateCol ${input.dateCol} not in sheet` };

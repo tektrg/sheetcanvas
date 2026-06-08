@@ -63,6 +63,8 @@ Query rules:
 
 General rules:
 - Never assume cell values or column types. Inspect first.
+- Treat bare spreadsheet references in the user's message as valid app coordinates: A, AU, BB are column letters/column ids; A1 or BB12 are cells; row numbers are 1-based sheet rows. If the user names column letters, pass them to describeSheet as columnIds. A compact columnIdSpan such as A:BB means every column from A through BB exists, including AU and BB. Do not ask what a column letter means when it is inside columnIdSpan or returned in requestedColumns. For querySheet, map the column letter to the returned schema.sqlName.
+- If a requested chart needs an X-axis/date column and the user did not specify one, inspect available date-like columns. Ask only for the axis column if it is genuinely ambiguous; do not also ask the user to clarify already valid column letters or the already selected/current sheet.
 - Resolve relative dates to absolute using dateAnchors from context for sheet and ClickHouse workflows; use native relative dates for Google Analytics.
 - Prefer one well-formed tool call over many probes.
 - For selection-based requests, call getSelection first if sheetId not implied.
