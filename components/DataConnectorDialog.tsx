@@ -57,6 +57,15 @@ const GA_METRIC_PRESETS = [
   'engagementRate'
 ];
 
+const DialogErrorMessage = ({ message }: { message: string }) => (
+  <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
+    <div className="flex items-start gap-2">
+      <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+      <div className="min-w-0 flex-1 whitespace-pre-wrap break-words">{message}</div>
+    </div>
+  </div>
+);
+
 export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClose, onImport, initialType }) => {
   const [selectedType, setSelectedType] = useState<ConnectorType | null>(initialType || null);
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
@@ -1157,12 +1166,7 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
             <div className="flex-1 p-6 overflow-y-auto">
                 {renderConfigForm()}
 
-                {status === 'error' && (
-                    <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm flex items-center gap-2">
-                        <AlertCircle size={16} />
-                        {errorMsg}
-                    </div>
-                )}
+                {status === 'error' && errorMsg && <DialogErrorMessage message={errorMsg} />}
             </div>
 
             <div className="p-6 border-t border-neutral-200 dark:border-neutral-700 bg-neutral-50/50 dark:bg-neutral-900/50 flex justify-end gap-3">

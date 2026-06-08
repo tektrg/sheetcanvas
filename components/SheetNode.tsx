@@ -41,6 +41,15 @@ const getConnectorTruncationMessage = (sourceTruncated: boolean, localTruncated:
   return '';
 };
 
+const ConnectedSheetError = ({ message }: { message: string }) => (
+  <div className="border-b border-red-200/70 bg-red-50/90 px-3 py-2 dark:border-red-900/60 dark:bg-red-950/25">
+    <div className="flex items-start gap-2 text-xs text-red-700 dark:text-red-300">
+      <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
+      <div className="min-w-0 flex-1 whitespace-pre-wrap break-words">{message}</div>
+    </div>
+  </div>
+);
+
 export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot, onAddSparkline, onToast, isPendingDelete, onSelectionContextChange, onMouseDown }) => {
   const data = useStore(state => state.sheets[id]);
   const selected = useStore(state => state.selectedIds.has(id));
@@ -1396,9 +1405,13 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                 <button onClick={() => deleteSheet(data.id)} className="group/btn relative text-neutral-400 hover:text-neutral-600 p-1.5 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"><Trash2 size={14} /></button>
             </div>
         </div>
-        
+
+        {isConnected && data.connectorConfig?.lastError && (
+          <ConnectedSheetError message={data.connectorConfig.lastError} />
+        )}
+
         {showFilterPanel && (
-            <FilterPanel 
+            <FilterPanel
                 sheet={data} 
                 onChange={(newFilters) => { saveSnapshot(); updateSheet(data.id, { filters: newFilters }); }} 
                 onClose={() => updateSheet(data.id, { showFilterPanel: false })} 
@@ -1476,8 +1489,14 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
         style={{ height: windowHeight }}
       >
         {(isSetup || showPivotConfig) && isPivot && (
-            <div className="absolute inset-0 z-50 bg-white dark:bg-neutral-850 flex flex-col">
-                <PivotConfigPanel 
+            <div
+                className={`absolute z-50 bg-white dark:bg-neutral-850 flex flex-col ${
+                    isSetup
+                        ? 'inset-0'
+                        : 'top-0 right-0 bottom-0 w-72 max-w-full shadow-2xl border-l border-neutral-200 dark:border-neutral-700'
+                }`}
+            >
+                <PivotConfigPanel
                     sourceSheet={sourceSheet}
                     initialConfig={data.pivotConfig}
                     isSetupMode={isSetup}
