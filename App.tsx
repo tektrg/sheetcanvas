@@ -10,7 +10,7 @@ import { GlobalCommandBar } from './components/GlobalCommandBar';
 import { DataConnectorDialog } from './components/DataConnectorDialog';
 import { OnboardingGuide } from './components/OnboardingGuide';
 import { SheetData, ChartData, NoteData, CanvasTransform, Position, CellData, ChartConfig, PivotConfig, ToolMode, SparklineConfig, Command, SelectionContext, CellFormat, ConnectorConfig, ConnectorType, TimeGranularity, ChartType } from './types';
-import { INITIAL_COLS, INITIAL_ROWS, CELL_WIDTH, CELL_HEIGHT, HEADER_COL_WIDTH, HEADER_ROW_HEIGHT, DEFAULT_CHART_SIZE, CHART_COLORS, MAX_IMPORT_ROWS, MAX_IMPORT_COLS, MAX_CONNECTED_IMPORT_COLS, MAX_INITIAL_VIEWPORT_COVERAGE } from './constants';
+import { INITIAL_COLS, INITIAL_ROWS, CELL_WIDTH, CELL_HEIGHT, HEADER_COL_WIDTH, HEADER_ROW_HEIGHT, DEFAULT_CHART_SIZE, MAX_IMPORT_ROWS, MAX_IMPORT_COLS, MAX_CONNECTED_IMPORT_COLS, MAX_INITIAL_VIEWPORT_COVERAGE } from './constants';
 import { parseClipboardData } from './utils/clipboard';
 import { parseFile } from './utils/fileParser';
 import { getCellId, parseCellId, computeSheet } from './utils/formulas';
@@ -19,6 +19,7 @@ import { inferColumnType, getFilteredRows, getValidDataCount, suggestGranularity
 import { Upload, Moon, Sun, Table, StickyNote, Undo2, Redo2, Grid3X3, BarChart3, TrendingUp, Palette, AlignLeft, Trash2, ArrowDownAZ, ArrowUpAZ, Filter, MousePointer2, Hand, Hash, Percent, Image as ImageIcon, Database, FileSpreadsheet, BarChart2, Globe, Calendar, Minimize2, Maximize2, DollarSign, ArrowLeft, ArrowRight, Eraser, Type } from 'lucide-react';
 import { useStore, AppState } from './store';
 import { useChartPalette } from './hooks/useChartPalette';
+import { getChartPalette } from './utils/chartColorSchemes';
 import AgentChatPanel from './src/components/AgentChatPanel';
 import { AgentEvalBridge } from './src/agent/AgentEvalBridge';
 import { loadGoogleSheetsAuth } from './utils/googleAnalyticsAuth';
@@ -72,7 +73,12 @@ const App: React.FC = () => {
   const [dataConnectorState, setDataConnectorState] = useState<{ isOpen: boolean; initialType?: ConnectorType }>({ isOpen: false });
 
   // Chart Colors State with localStorage persistence
-  const { palette: chartPalette, addColor: addChartColor } = useChartPalette();
+  const {
+    recentColors: chartRecentColors,
+    addColor: addChartColor,
+    settings: chartColorSettings,
+    updateSettings: updateChartColorSettings,
+  } = useChartPalette();
 
   // Track ID of note that should start in edit mode
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
@@ -442,6 +448,8 @@ const App: React.FC = () => {
 
     const initialChartType = initialType || 'bar';
 
+    const defaultPalette = getChartPalette(chartColorSettings, darkMode);
+
     const newChart: ChartData = {
         id: generateId(),
         sourceSheetId: sheetId,
@@ -459,7 +467,9 @@ const App: React.FC = () => {
             labelColumn: groupColId,
             dataColumns: [valueColId],
             
-            color: chartPalette[0],
+            color: defaultPalette[0],
+            colorScheme: 'workspace',
+            colorOverride: false,
             highlightIndex: -1,
             animation: true,
             showLabels: true
@@ -474,7 +484,7 @@ const App: React.FC = () => {
         width: newChart.size.width,
         height: newChart.size.height
     });
-  }, [chartPalette, addChart, ensureVisible]);
+  }, [chartColorSettings, darkMode, addChart, ensureVisible]);
 
   const handleInitPivot = useCallback((sheetId: string, defaultColIndex?: number) => {
       const sourceSheet = (useStore.getState() as AppState).sheets[sheetId];
@@ -1182,7 +1192,9 @@ const App: React.FC = () => {
                   id={id}
                   darkMode={darkMode}
                   isPendingDelete={selectedIds.has(id) && deleteConfirmPending}
-                  palette={chartPalette}
+                  recentColors={chartRecentColors}
+                  colorSettings={chartColorSettings}
+                  onColorSettingsChange={updateChartColorSettings}
                   onAddCustomColor={handleAddColor}
                   onMouseDown={(e) => handleItemMouseDown(e, id, 'chart')}
               />

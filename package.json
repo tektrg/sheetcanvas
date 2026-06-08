@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:local": "node scripts/dev-local.mjs",
+    "test": "vitest --run",
     "tmux:capture": "node scripts/tmux-run-capture.mjs",
     "agent:eval": "node scripts/agent-eval.mjs",
     "build": "vite build",
@@ -46,6 +47,7 @@
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0",
+    "vitest": "^4.1.8",
     "wrangler": "^4.73.0"
   }
 }

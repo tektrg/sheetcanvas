@@ -7,7 +7,8 @@ import { ChartData, SheetData, ChartType, ChartConfig, CellFormat } from '../typ
 import { extractChartData, getSheetHeaders } from '../utils/chartHelpers';
 import { formatValue } from '../utils/formatting';
 import { getCellId } from '../utils/formulas';
-import { CHART_COLORS } from '../constants';
+import { ChartColorSettings } from '../types';
+import { buildSeriesPalette, getChartPrimaryColor, getEffectiveChartPalette } from '../utils/chartColorSchemes';
 import { GripHorizontal, Trash2, Settings2, X, Download, Video, Play, Copy, Image as ImageIcon, Loader2 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { ChartConfigPanel } from './ChartConfigPanel';
@@ -17,7 +18,9 @@ interface ChartNodeProps {
   id: string;
   darkMode?: boolean;
   isPendingDelete?: boolean;
-  palette?: string[];
+  recentColors: string[];
+  colorSettings: ChartColorSettings;
+  onColorSettingsChange: (updates: Partial<ChartColorSettings>) => void;
   onAddCustomColor?: (color: string) => void;
   onMouseDown: (e: React.MouseEvent) => void;
 }
@@ -80,7 +83,16 @@ const CustomXAxisTick = ({ x, y, payload, fill, chartId }: any) => {
     );
 };
 
-export const ChartNode: React.FC<ChartNodeProps> = ({ id, darkMode, isPendingDelete, palette, onAddCustomColor, onMouseDown }) => {
+export const ChartNode: React.FC<ChartNodeProps> = ({
+  id,
+  darkMode,
+  isPendingDelete,
+  recentColors,
+  colorSettings,
+  onColorSettingsChange,
+  onAddCustomColor,
+  onMouseDown,
+}) => {
   const data = useStore(state => state.charts[id]);
   const selected = useStore(state => state.selectedIds.has(id));
   const scale = useStore(state => state.transform.scale);
@@ -286,10 +298,17 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ id, darkMode, isPendingDel
   const activeData = overrideData || processedData;
   const isAnimationActive = !overrideData && data.config.animation;
 
+  const activePalette = useMemo(
+      () => getEffectiveChartPalette(data.config, colorSettings, !!darkMode),
+      [data.config, colorSettings, darkMode],
+  );
+  const primaryColor = useMemo(
+      () => getChartPrimaryColor(data.config, activePalette),
+      [data.config, activePalette],
+  );
   const seriesPalette = useMemo(() => {
-      const basePool = palette || CHART_COLORS;
-      return [data.config.color, ...basePool.filter(c => c !== data.config.color)];
-  }, [data.config.color, palette]);
+      return buildSeriesPalette(primaryColor, activePalette);
+  }, [primaryColor, activePalette]);
 
   useEffect(() => {
     if (!resizing) return;
@@ -630,7 +649,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ id, darkMode, isPendingDel
               cx="50%"
               cy="50%"
               outerRadius={data.size.height / 3}
-              fill={data.config.color}
+              fill={primaryColor}
               label={data.config.showLabels}
               {...animProps}
            >
@@ -828,7 +847,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ id, darkMode, isPendingDel
             });
         } else {
             // Group Mode - Single Series (e.g. Sum of Value)
-            const color = data.config.color;
+            const color = primaryColor;
             const key = "value_0";
             const name = getSeriesLabel(data.config.valueCol || '');
 
@@ -1195,11 +1214,14 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ id, darkMode, isPendingDel
                     headers={headers}
                     onChange={handleConfigChange}
                     isSetupMode={true}
-                    onConfirm={handleSetupConfirm}
-                    onCancel={() => deleteChart(data.id)}
-                    palette={palette}
-                    onAddCustomColor={onAddCustomColor}
-                />
+	                    onConfirm={handleSetupConfirm}
+	                    onCancel={() => deleteChart(data.id)}
+	                    recentColors={recentColors}
+	                    colorSettings={colorSettings}
+	                    darkMode={!!darkMode}
+	                    onColorSettingsChange={onColorSettingsChange}
+	                    onAddCustomColor={onAddCustomColor}
+	                />
              </div>
          )}
 
@@ -1227,12 +1249,15 @@ export const ChartNode: React.FC<ChartNodeProps> = ({ id, darkMode, isPendingDel
                  <ChartConfigPanel 
                     config={data.config}
                     headers={headers}
-                    onChange={handleConfigChange}
-                    onClose={() => setShowConfig(false)}
-                    isSetupMode={false}
-                    palette={palette}
-                    onAddCustomColor={onAddCustomColor}
-                 />
+	                    onChange={handleConfigChange}
+	                    onClose={() => setShowConfig(false)}
+	                    isSetupMode={false}
+	                    recentColors={recentColors}
+	                    colorSettings={colorSettings}
+	                    darkMode={!!darkMode}
+	                    onColorSettingsChange={onColorSettingsChange}
+	                    onAddCustomColor={onAddCustomColor}
+	                 />
              </div>
          )}
       </div>

@@ -2,8 +2,14 @@
 
 
 import React, { useState, useEffect } from 'react';
-import { ChartConfig, ChartType, PivotOperation, ChartMode, TimeGranularity } from '../types';
-import { CHART_COLORS } from '../constants';
+import { ChartColorSchemeId, ChartColorSchemeOverride, ChartColorSettings, ChartConfig, ChartType, PivotOperation, ChartMode, TimeGranularity } from '../types';
+import {
+  CHART_SCHEME_OPTIONS,
+  getChartPrimaryColor,
+  getChartPalette,
+  getEffectiveChartScheme,
+  normalizeHexColor,
+} from '../utils/chartColorSchemes';
 import { Trash2, ChevronDown, Plus, X, BarChart3, LineChart, PieChart, AreaChart, ScatterChart, LayoutGrid } from 'lucide-react';
 
 interface Header {
@@ -20,7 +26,10 @@ interface ChartConfigPanelProps {
   isSetupMode?: boolean;
   onConfirm?: () => void;
   onCancel?: () => void;
-  palette?: string[];
+  recentColors: string[];
+  colorSettings: ChartColorSettings;
+  darkMode: boolean;
+  onColorSettingsChange: (updates: Partial<ChartColorSettings>) => void;
   onAddCustomColor?: (color: string) => void;
 }
 
@@ -32,10 +41,19 @@ export const ChartConfigPanel: React.FC<ChartConfigPanelProps> = ({
   isSetupMode = false,
   onConfirm,
   onCancel,
-  palette,
+  recentColors,
+  colorSettings,
+  darkMode,
+  onColorSettingsChange,
   onAddCustomColor
 }) => {
-  const activePalette = palette || CHART_COLORS;
+  const activeScheme = getEffectiveChartScheme(config, colorSettings);
+  const activePalette = getChartPalette(colorSettings, darkMode, activeScheme);
+  const workspacePalette = getChartPalette(colorSettings, darkMode);
+  const activePrimaryColor = getChartPrimaryColor(config, activePalette);
+  const visibleRecentColors = recentColors.filter(color => (
+    !activePalette.some(activeColor => activeColor.toLowerCase() === color.toLowerCase())
+  ));
   
   // Local state for Group inputs, synced with config
   const [mode, setMode] = useState<ChartMode>(config.mode || 'metrics');
@@ -68,6 +86,51 @@ export const ChartConfigPanel: React.FC<ChartConfigPanelProps> = ({
   const updateConfig = (updates: Partial<ChartConfig>) => {
     onChange({ ...config, ...updates });
   };
+
+  const updateWorkspaceScheme = (schemeId: ChartColorSchemeId) => {
+    const nextPalette = getChartPalette({ ...colorSettings, schemeId }, darkMode, schemeId);
+    onColorSettingsChange({ schemeId });
+    if (!config.colorScheme || config.colorScheme === 'workspace') {
+      updateConfig({ color: nextPalette[0], colorScheme: 'workspace', colorOverride: false });
+    }
+  };
+
+  const updateMonoBaseColor = (color: string) => {
+    const monoBaseColor = normalizeHexColor(color) || color;
+    onColorSettingsChange({ monoBaseColor });
+    if (activeScheme === 'mono') {
+      const nextPalette = getChartPalette({ ...colorSettings, monoBaseColor }, darkMode, 'mono');
+      updateConfig({ color: nextPalette[0], colorOverride: false });
+    }
+  };
+
+  const updateCustomPresetInput = (customPresetInput: string) => {
+    onColorSettingsChange({ customPresetInput });
+    if (activeScheme === 'custom') {
+      const nextPalette = getChartPalette({ ...colorSettings, customPresetInput }, darkMode, 'custom');
+      updateConfig({ color: nextPalette[0], colorOverride: false });
+    }
+  };
+
+  const updateChartScheme = (colorScheme: ChartColorSchemeOverride) => {
+    if (colorScheme === 'workspace') {
+      updateConfig({ colorScheme: 'workspace', color: workspacePalette[0], colorOverride: false });
+      return;
+    }
+
+    const nextPalette = getChartPalette(colorSettings, darkMode, colorScheme);
+    updateConfig({ colorScheme, color: nextPalette[0], colorOverride: false });
+  };
+
+  const renderColorButton = (color: string) => (
+    <button
+      key={color}
+      className={`w-6 h-6 rounded-full border-2 transition-transform hover:scale-105 ${activePrimaryColor.toLowerCase() === color.toLowerCase() ? 'border-neutral-400 dark:border-neutral-200 ring-2 ring-offset-1 ring-teal-100 dark:ring-teal-900' : 'border-transparent'}`}
+      style={{ backgroundColor: color }}
+      onClick={() => updateConfig({ color, colorOverride: true })}
+      title={color}
+    />
+  );
 
   const updateGroupConfig = (key: 'groupCol' | 'seriesGroupCol' | 'valueCol' | 'operation' | 'timeGranularity', val: any) => {
       if (key === 'groupCol') setGroupCol(val);
@@ -399,48 +462,116 @@ export const ChartConfigPanel: React.FC<ChartConfigPanelProps> = ({
           )}
         </div>
 
-        {/* Appearance */}
-        <div>
-          <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-3 uppercase tracking-wide">Appearance</label>
-          <div className="space-y-4">
-             <div>
-                <span className="text-[10px] text-neutral-400 font-medium mb-2 block">Primary Color</span>
-                <div className="flex flex-wrap gap-2 items-center">
-                    {activePalette.map(c => (
-                        <button
-                           key={c}
-                           className={`w-6 h-6 rounded-full border-2 transition-transform hover:scale-105 ${config.color === c ? 'border-neutral-400 dark:border-neutral-200 ring-2 ring-offset-1 ring-teal-100 dark:ring-teal-900' : 'border-transparent'}`}
-                           style={{ backgroundColor: c }}
-                           onClick={() => updateConfig({ color: c })}
-                           title={c}
-                        />
-                    ))}
-                    {/* Custom Color Picker */}
-                    <label 
-                        className={`relative w-6 h-6 rounded-full border-2 transition-transform hover:scale-105 cursor-pointer flex items-center justify-center overflow-hidden
-                            ${!activePalette.includes(config.color) 
-                                ? 'border-neutral-400 dark:border-neutral-200 ring-2 ring-offset-1 ring-teal-100 dark:ring-teal-900' 
-                                : 'border-transparent'
-                            }`}
-                        style={{ 
-                             background: !activePalette.includes(config.color) 
-                                ? config.color 
-                                : 'conic-gradient(from 180deg at 50% 50%, #ef4444 0deg, #f97316 60deg, #eab308 120deg, #22c55e 180deg, #3b82f6 240deg, #a855f7 300deg, #ef4444 360deg)'
-                        }}
+	        {/* Appearance */}
+	        <div>
+	          <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-3 uppercase tracking-wide">Appearance</label>
+	          <div className="space-y-4">
+	             <div>
+	                <span className="text-[10px] text-neutral-400 font-medium mb-1.5 block">Workspace Default</span>
+	                <div className="relative">
+	                  <select
+	                    className="w-full appearance-none border rounded-lg px-3 py-2 text-xs bg-neutral-50 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-800 dark:text-neutral-200 outline-none focus:ring-1 focus:ring-teal-400"
+	                    value={colorSettings.schemeId}
+	                    onChange={(e) => updateWorkspaceScheme(e.target.value as ChartColorSchemeId)}
+	                  >
+	                    {CHART_SCHEME_OPTIONS.map(option => (
+	                      <option key={option.id} value={option.id}>{option.label}</option>
+	                    ))}
+	                  </select>
+	                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" size={14} />
+	                </div>
+	             </div>
+
+	             <div>
+	                <span className="text-[10px] text-neutral-400 font-medium mb-1.5 block">This Chart</span>
+	                <div className="relative">
+	                  <select
+	                    className="w-full appearance-none border rounded-lg px-3 py-2 text-xs bg-neutral-50 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-800 dark:text-neutral-200 outline-none focus:ring-1 focus:ring-teal-400"
+	                    value={config.colorScheme || 'workspace'}
+	                    onChange={(e) => updateChartScheme(e.target.value as ChartColorSchemeOverride)}
+	                  >
+	                    <option value="workspace">Workspace default</option>
+	                    {CHART_SCHEME_OPTIONS.map(option => (
+	                      <option key={option.id} value={option.id}>{option.label}</option>
+	                    ))}
+	                  </select>
+	                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" size={14} />
+	                </div>
+	             </div>
+
+	             {(colorSettings.schemeId === 'mono' || activeScheme === 'mono') && (
+	                <div>
+	                  <span className="text-[10px] text-neutral-400 font-medium mb-1.5 block">Mono Base</span>
+	                  <div className="flex items-center gap-2">
+	                    <input
+	                      type="color"
+	                      value={normalizeHexColor(colorSettings.monoBaseColor) || '#000000'}
+	                      onChange={(e) => updateMonoBaseColor(e.target.value)}
+	                      className="w-8 h-8 rounded-md border border-neutral-200 dark:border-neutral-700 bg-transparent"
+	                    />
+	                    <input
+	                      type="text"
+	                      value={colorSettings.monoBaseColor}
+	                      onChange={(e) => updateMonoBaseColor(e.target.value)}
+	                      className="min-w-0 flex-1 border rounded-lg px-3 py-2 text-xs bg-neutral-50 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-800 dark:text-neutral-200 outline-none focus:ring-1 focus:ring-teal-400"
+	                      placeholder="#000000"
+	                    />
+	                  </div>
+	                </div>
+	             )}
+
+	             {(colorSettings.schemeId === 'custom' || activeScheme === 'custom') && (
+	                <div>
+	                  <span className="text-[10px] text-neutral-400 font-medium mb-1.5 block">Custom Preset</span>
+	                  <input
+	                    type="text"
+	                    value={colorSettings.customPresetInput}
+	                    onChange={(e) => updateCustomPresetInput(e.target.value)}
+	                    className="w-full border rounded-lg px-3 py-2 text-xs bg-neutral-50 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-800 dark:text-neutral-200 outline-none focus:ring-1 focus:ring-teal-400"
+	                    placeholder="#0d9488, #eb5757, #f2c94c"
+	                  />
+	                </div>
+	             )}
+
+	             <div>
+	                <span className="text-[10px] text-neutral-400 font-medium mb-2 block">Scheme Colors</span>
+	                <div className="flex flex-wrap gap-2 items-center">
+	                    {activePalette.map(renderColorButton)}
+	                    {/* Custom Color Picker */}
+	                    <label
+	                        className={`relative w-6 h-6 rounded-full border-2 transition-transform hover:scale-105 cursor-pointer flex items-center justify-center overflow-hidden
+	                            ${!activePalette.some(color => color.toLowerCase() === activePrimaryColor.toLowerCase()) && !visibleRecentColors.some(color => color.toLowerCase() === activePrimaryColor.toLowerCase())
+	                                ? 'border-neutral-400 dark:border-neutral-200 ring-2 ring-offset-1 ring-teal-100 dark:ring-teal-900'
+	                                : 'border-transparent'
+	                            }`}
+	                        style={{
+	                             background: !activePalette.some(color => color.toLowerCase() === activePrimaryColor.toLowerCase()) && !visibleRecentColors.some(color => color.toLowerCase() === activePrimaryColor.toLowerCase())
+	                                ? activePrimaryColor
+	                                : 'conic-gradient(from 180deg at 50% 50%, #ef4444 0deg, #f97316 60deg, #eab308 120deg, #22c55e 180deg, #3b82f6 240deg, #a855f7 300deg, #ef4444 360deg)'
+	                        }}
                         title="Custom Color"
                     >
-                        <input 
-                            type="color"
-                            value={config.color}
-                            onChange={(e) => updateConfig({ color: e.target.value })}
-                            onBlur={(e) => onAddCustomColor && onAddCustomColor(e.target.value)}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
-                        />
-                    </label>
-                </div>
-             </div>
+	                        <input
+	                            type="color"
+	                            value={normalizeHexColor(activePrimaryColor) || '#000000'}
+	                            onChange={(e) => updateConfig({ color: e.target.value, colorOverride: true })}
+	                            onBlur={(e) => onAddCustomColor && onAddCustomColor(e.target.value)}
+	                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+	                        />
+	                    </label>
+	                </div>
+	             </div>
 
-             <div className="space-y-3 pt-2">
+	             {visibleRecentColors.length > 0 && (
+	                <div>
+	                  <span className="text-[10px] text-neutral-400 font-medium mb-2 block">Recent Colors</span>
+	                  <div className="flex flex-wrap gap-2 items-center">
+	                    {visibleRecentColors.map(renderColorButton)}
+	                  </div>
+	                </div>
+	             )}
+
+	             <div className="space-y-3 pt-2">
                  {(config.type === 'bar' || config.type === 'area') && (
                      <label className="flex items-center gap-3 cursor-pointer group">
                          <div className={`w-9 h-5 rounded-full relative transition-colors ${config.stacked ? 'bg-teal-500' : 'bg-neutral-200 dark:bg-neutral-700'}`}>
