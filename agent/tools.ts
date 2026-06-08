@@ -139,7 +139,7 @@ export const toolDefs = {
 
   querySheet: {
     description:
-      'Run a read-only SQL SELECT against a sheet. The sheet is exposed as table "t" with columns named by header (sanitized to snake_case); use the returned schema to map user-mentioned column letters such as AU or BB to schema.sqlName before querying. Use this to filter, aggregate, or inspect data before writing. Only SELECT is allowed.',
+      'Run a read-only SQL SELECT against a sheet. The sheet is exposed as table "t" with columns named by header (sanitized to snake_case); use the returned schema to map user-mentioned column letters such as AU or BB to schema.sqlName before querying. Use this to explore, validate, filter, or preview aggregates before writing. Results are temporary and cannot be charted directly; when the user wants an aggregated chart from an existing sheet, prefer creating a persistent summary with createPivot and then call createChart on that pivot. Only SELECT is allowed.',
     inputSchema: z.object({
       sheetId: z.string(),
       sql: z.string().min(6, 'SQL too short'),
@@ -186,7 +186,7 @@ export const toolDefs = {
 
   createChart: {
     description:
-      'Create a chart from a source sheet. labelColumn is the X-axis column letter; dataColumns is the array of Y series column letters.',
+      'Create a chart from a persistent source sheet. labelColumn is the X-axis column letter; dataColumns is the array of Y series column letters. If the chart needs grouped, counted, summed, or conditional series from row-level sheet data, prefer creating a persistent aggregation sheet, usually with createPivot, then chart the pivot output instead of temporary querySheet results.',
     inputSchema: z.object({
       sheetId: z.string(),
       type: ChartTypeEnum,
@@ -198,7 +198,7 @@ export const toolDefs = {
 
   createPivot: {
     description:
-      'Create a pivot-table sheet derived from a source sheet. The new sheet recomputes automatically when the source changes. `rowLabelCol` is the row-grouping column letter; `colLabelCol` (optional) splits into columns for a true 2-D pivot; `values` is one or more metric cards. Each metric supports operation, optional label, optional row-count semantics for COUNT, and optional AND-only conditions for SUMIF/COUNTIF-style metrics. Use when the user wants a persistent, reactive tabular summary — for one-off aggregates prefer `querySheet`.',
+      'Create a pivot-table sheet derived from a source sheet. The new sheet recomputes automatically when the source changes. `rowLabelCol` is the row-grouping column letter; `colLabelCol` (optional) splits into columns for a true 2-D pivot; `values` is one or more metric cards. Each metric supports operation, optional label, optional row-count semantics for COUNT, and optional AND-only conditions for SUMIF/COUNTIF-style metrics. As a data-analysis best practice, prefer this when the user wants a chartable aggregation from row-level sheet data: build the persistent pivot first, then call createChart on the pivot. For exploration or validation where no persistent output is needed, querySheet is fine.',
     inputSchema: z.object({
       sheetId: z.string(),
       rowLabelCol: z.string().regex(/^[A-Z]+$/),
