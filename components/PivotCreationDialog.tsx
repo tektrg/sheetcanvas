@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { SheetData, PivotConfig, PivotOperation, PivotValue } from '../types';
+import { SheetData, PivotConfig, PivotValue } from '../types';
 import { getSheetHeaders } from '../utils/chartHelpers';
-import { X, Table, Plus, Trash2 } from 'lucide-react';
+import { X, Table } from 'lucide-react';
+import { PivotValuesEditor, getPivotValuesValidationError } from './PivotValuesEditor';
 
 interface PivotCreationDialogProps {
   sheet: SheetData;
@@ -29,6 +30,8 @@ export const PivotCreationDialog: React.FC<PivotCreationDialogProps> = ({
   
   const [showRowTotals, setShowRowTotals] = useState(initialConfig?.showRowTotals !== false);
   const [showColTotals, setShowColTotals] = useState(initialConfig?.showColTotals !== false);
+  const validationError = getPivotValuesValidationError(values);
+  const canSubmit = values.length > 0 && !validationError;
 
   useEffect(() => {
     if (headers.length > 0 && values.length === 0) {
@@ -39,6 +42,8 @@ export const PivotCreationDialog: React.FC<PivotCreationDialogProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canSubmit) return;
+
     onConfirm({
       sourceSheetId: sheet.id,
       rowLabelCol: rowCol,
@@ -47,23 +52,6 @@ export const PivotCreationDialog: React.FC<PivotCreationDialogProps> = ({
       showRowTotals,
       showColTotals
     });
-  };
-
-  const addValue = () => {
-      const defaultCol = headers.length > 1 ? headers[1].id : headers[0].id;
-      setValues(prev => [...prev, { column: defaultCol, operation: 'SUM' }]);
-  };
-
-  const removeValue = (index: number) => {
-      setValues(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const updateValue = (index: number, updates: Partial<PivotValue>) => {
-      setValues(prev => {
-          const next = [...prev];
-          next[index] = { ...next[index], ...updates };
-          return next;
-      });
   };
 
   return (
@@ -121,61 +109,8 @@ export const PivotCreationDialog: React.FC<PivotCreationDialogProps> = ({
 
             <div className="h-px bg-neutral-100 dark:bg-neutral-800 col-span-2 my-1" />
 
-            {/* Values */}
             <div className="col-span-2">
-               <div className="flex items-center justify-between mb-2">
-                  <label className="block text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">Values</label>
-                  <button 
-                      onClick={addValue}
-                      className="flex items-center gap-1 text-[10px] font-medium text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 bg-teal-50 dark:bg-teal-900/20 px-2 py-1 rounded transition-colors"
-                  >
-                      <Plus size={10} /> Add Value
-                  </button>
-              </div>
-              
-              <div className="space-y-2">
-                  {values.map((v, idx) => (
-                      <div key={idx} className="flex gap-2 items-center">
-                           
-                           {/* Value Column */}
-                           <div className="flex-1 relative">
-                               <select 
-                                    value={v.column}
-                                    onChange={(e) => updateValue(idx, { column: e.target.value })}
-                                    className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-xs text-neutral-900 dark:text-neutral-100 outline-none focus:ring-1 focus:ring-teal-500/50"
-                                >
-                                    {headers.map(h => (
-                                    <option key={h.id} value={h.id}>{h.label}</option>
-                                    ))}
-                                </select>
-                           </div>
-
-                           {/* Operation Dropdown */}
-                           <div className="w-1/3 min-w-[80px]">
-                               <select 
-                                    value={v.operation}
-                                    onChange={(e) => updateValue(idx, { operation: e.target.value as PivotOperation })}
-                                    className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-2 py-2 text-xs text-neutral-900 dark:text-neutral-100 outline-none focus:ring-1 focus:ring-teal-500/50"
-                                >
-                                    <option value="SUM">SUM</option>
-                                    <option value="COUNT">COUNT</option>
-                                    <option value="AVG">AVG</option>
-                                    <option value="MIN">MIN</option>
-                                    <option value="MAX">MAX</option>
-                                </select>
-                           </div>
-
-                           {values.length > 1 && (
-                                <button 
-                                    onClick={() => removeValue(idx)}
-                                    className="p-2 text-neutral-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors flex-shrink-0"
-                                >
-                                    <Trash2 size={14} />
-                                </button>
-                           )}
-                      </div>
-                  ))}
-              </div>
+              <PivotValuesEditor sourceSheet={sheet} values={values} onChange={setValues} />
             </div>
 
             {/* Totals Options */}
@@ -201,15 +136,19 @@ export const PivotCreationDialog: React.FC<PivotCreationDialogProps> = ({
 
         {/* Footer */}
         <div className="px-6 py-4 border-t border-neutral-200 dark:border-neutral-700 flex justify-end gap-3 bg-neutral-50 dark:bg-neutral-900/50 rounded-b-xl flex-shrink-0">
-           <button 
+           {validationError && (
+             <p className="mr-auto self-center text-[11px] font-medium text-red-500">{validationError}</p>
+           )}
+           <button
              onClick={onCancel}
              className="px-4 py-2 text-sm font-medium text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors"
            >
              Cancel
            </button>
-           <button 
+           <button
              onClick={handleSubmit}
-             className="px-4 py-2 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-lg shadow-sm transition-colors"
+             disabled={!canSubmit}
+             className={`px-4 py-2 text-sm font-medium text-white rounded-lg shadow-sm transition-colors ${canSubmit ? 'bg-teal-600 hover:bg-teal-700' : 'bg-neutral-300 dark:bg-neutral-700 cursor-not-allowed'}`}
            >
              {initialConfig ? 'Update Table' : 'Generate Table'}
            </button>

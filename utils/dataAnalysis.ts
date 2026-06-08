@@ -59,7 +59,7 @@ const parseDateValue = (val: any): number | null => {
     return isNaN(d) ? null : d;
 };
 
-const checkCondition = (cellValue: any, filter: FilterCondition): boolean => {
+export const matchesFilterCondition = (cellValue: any, filter: FilterCondition): boolean => {
     const valStr = String(cellValue ?? '').toLowerCase();
     
     if (filter.type === 'text') {
@@ -191,7 +191,7 @@ export const getFilteredRows = (sheet: SheetData, explicitMaxRow?: number): numb
                 const cell = sheet.cells[cellId];
                 const val = cell?.value;
                 
-                if (!checkCondition(val, filter)) {
+                if (!matchesFilterCondition(val, filter)) {
                     match = false;
                     break;
                 }
@@ -264,7 +264,7 @@ export const getFilteredRows = (sheet: SheetData, explicitMaxRow?: number): numb
                 const colIdx = colIndexCache[filter.columnId];
                 if (colIdx === -1) continue;
                 const cell = sheet.cells[getCellId(colIdx, grandTotalRowIndex)];
-                if (!checkCondition(cell?.value, filter)) {
+                if (!matchesFilterCondition(cell?.value, filter)) {
                     showGT = false;
                     break;
                 }

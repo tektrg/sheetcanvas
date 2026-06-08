@@ -6,7 +6,7 @@ import { formatValue } from '../utils/formatting';
 import { parseClipboardData } from '../utils/clipboard';
 import { getFilteredRows } from '../utils/dataAnalysis';
 import { CELL_WIDTH, CELL_HEIGHT, HEADER_COL_WIDTH, HEADER_ROW_HEIGHT, MIN_COL_WIDTH, MAX_RENDER_ROWS } from '../constants';
-import { GripHorizontal, Trash2, BarChart3, ChevronDown, MoreVertical, Table, Settings2, X, Image as ImageIcon, Loader2, AlertCircle, Filter, TrendingUp, Link, RefreshCcw, Code2 } from 'lucide-react';
+import { GripHorizontal, Trash2, BarChart3, ChevronDown, MoreVertical, Table, Settings2, X, Image as ImageIcon, Loader2, AlertCircle, AlertTriangle, Filter, TrendingUp, Link, RefreshCcw, Code2 } from 'lucide-react';
 import { PivotConfigPanel } from './PivotConfigPanel';
 import { SparklineConfigPanel } from './SparklineConfigPanel';
 import { FilterPanel } from './FilterPanel';
@@ -1407,8 +1407,8 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                 totalCount={recordCounts.totalCount}
             />
         )}
-        {showClickhouseSql && isClickhouseConnected && (
-            <div className="border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50/60 dark:bg-neutral-900/40 p-3">
+	        {showClickhouseSql && isClickhouseConnected && (
+	            <div className="border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50/60 dark:bg-neutral-900/40 p-3">
                 <div className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mb-2">
                     SQL
                 </div>
@@ -1454,9 +1454,21 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                         Save & Refresh
                     </button>
                 </div>
-            </div>
-        )}
-      </div>
+	            </div>
+	        )}
+	        {isPivot && data.pivotWarnings && data.pivotWarnings.length > 0 && (
+	            <div className="border-t border-amber-200/70 dark:border-amber-900/60 bg-amber-50/80 dark:bg-amber-950/20 px-3 py-2">
+	                <div className="flex items-start gap-2 text-[11px] text-amber-800 dark:text-amber-300">
+	                    <AlertTriangle size={13} className="mt-0.5 flex-shrink-0" />
+	                    <div className="space-y-1">
+	                        {data.pivotWarnings.map((warning, index) => (
+	                            <div key={`${warning}-${index}`}>{warning}</div>
+	                        ))}
+	                    </div>
+	                </div>
+	            </div>
+	        )}
+	      </div>
 
       <div 
         ref={gridRef}

@@ -1,0 +1,28 @@
+{
+  "cases": [
+    {
+      "id": "monthly-budget-conditional-pivot",
+      "prompt": "Use the createPivot tool on the Monthly Budget sheet. Group rows by column A Category. Add two values: SUM column C Actual where column D Diff is greater than 0, label it Over budget actual; and COUNT rows where column D Diff is greater than 0, label it Over budget count. Do not create a chart.",
+      "expect": {
+        "minSheetsDelta": 1,
+        "noNewCharts": true,
+        "newSheets": [
+          {
+            "titleIncludes": "Pivot",
+            "headersInclude": ["Category", "Over budget actual", "Over budget count"],
+            "rangeIncludes": ["Groceries", "Entertainment"],
+            "cellEquals": [
+              { "cell": "A3", "value": "Entertainment" },
+              { "cell": "B3", "value": 120 },
+              { "cell": "C3", "value": 1 },
+              { "cell": "A4", "value": "Groceries" },
+              { "cell": "B4", "value": 450 },
+              { "cell": "C4", "value": 1 }
+            ]
+          }
+        ],
+        "assistantIncludes": ["pivot"]
+      }
+    }
+  ]
+}

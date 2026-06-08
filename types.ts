@@ -28,9 +28,20 @@ export interface CellData {
 
 export type PivotOperation = 'SUM' | 'COUNT' | 'AVG' | 'MIN' | 'MAX';
 
+export interface PivotCondition {
+  id?: string;
+  columnId: string; // "A", "B", etc.
+  type: FilterType;
+  operator: FilterOperator;
+  value: any; // string, number, [number, number], [string, string]
+}
+
 export interface PivotValue {
-  column: string;
+  column?: string;
   operation: PivotOperation;
+  label?: string;
+  conditions?: PivotCondition[];
+  countRows?: boolean;
 }
 
 export interface PivotConfig {
@@ -129,6 +140,7 @@ export interface SheetData {
   cells: Record<string, CellData>; // Keyed by "A1", "B2", etc.
   colWidths?: Record<string, number>; // Key: stringified index "0", "1"
   pivotConfig?: PivotConfig; // If present, this sheet is a pivot table linked to sourceSheetId
+  pivotWarnings?: string[]; // Scoped warnings from pivot materialization
   sparklineConfig?: SparklineConfig; // If present, this sheet is a sparkline table
   connectorConfig?: ConnectorConfig; // If present, this sheet is connected to external data
   setupRequired?: boolean; // If true, show setup UI
@@ -152,6 +164,14 @@ export enum ToolMode {
 export type ChartType = 'line' | 'bar' | 'pie' | 'area' | 'scatter' | 'treemap';
 export type ChartMode = 'metrics' | 'group';
 export type TimeGranularity = 'day' | 'week' | 'month' | 'quarter' | 'year';
+export type ChartColorSchemeId = 'neon' | 'pastel' | 'mono' | 'custom';
+export type ChartColorSchemeOverride = 'workspace' | ChartColorSchemeId;
+
+export interface ChartColorSettings {
+  schemeId: ChartColorSchemeId;
+  monoBaseColor: string;
+  customPresetInput: string;
+}
 
 export interface ChartConfig {
   mode?: ChartMode; // Default to 'metrics' if undefined
@@ -168,6 +188,8 @@ export interface ChartConfig {
   timeGranularity?: TimeGranularity; // If groupCol is a date
 
   color: string;
+  colorScheme?: ChartColorSchemeOverride;
+  colorOverride?: boolean;
   highlightIndex: number; // -1 for none
   animation: boolean;
   type: ChartType;
