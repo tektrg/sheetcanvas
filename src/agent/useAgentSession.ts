@@ -3,6 +3,7 @@ import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls, type UIMessage } from 'ai';
 import type { SelectionContext } from '../../types';
 import { executeClientTool } from './clientToolExecutor';
+import { flushAgentFocus } from './agentFocusAccumulator';
 import { buildAgentContextLine } from './contextBuilder';
 
 // Stored in localStorage so all conversations share a single quota bucket.
@@ -74,6 +75,9 @@ export function useAgentSession({ getSelection, getAttachSelection }: UseAgentSe
   const chat = useChat<UIMessage>({
     transport,
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
+    onFinish: () => {
+      flushAgentFocus();
+    },
     onToolCall: async ({ toolCall }) => {
       const c = chatRef.current;
       if (!c) return;

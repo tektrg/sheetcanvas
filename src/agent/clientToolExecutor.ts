@@ -1,7 +1,15 @@
 import { useStore } from '../../store';
 import type { CellData, CellFormat, ChartData, ChartConfig, SheetData, FilterCondition, SortConfig, SelectionContext, ChartType, PivotConfig, PivotValue, SparklineConfig, ConnectorConfig } from '../../types';
 import { parseCellId, getCellId } from '../../utils/formulas';
-import { CELL_WIDTH, DEFAULT_CHART_SIZE, MAX_CONNECTED_IMPORT_COLS } from '../../constants';
+import {
+  CELL_HEIGHT,
+  CELL_WIDTH,
+  DEFAULT_CHART_SIZE,
+  HEADER_COL_WIDTH,
+  HEADER_ROW_HEIGHT,
+  MAX_CONNECTED_IMPORT_COLS,
+} from '../../constants';
+import { accumulateChartFocus, accumulateSheetFocus } from './agentFocusAccumulator';
 import { runSheetQuery, sheetTableSchema } from './alasqlAdapter';
 import { requestJson } from '../../utils/backendApi';
 import { clickhouseResultToMatrix, queryClickhouse, getClickhouseSchema, describeClickhouseTable } from '../../utils/clickhouseBackend';
@@ -12,6 +20,29 @@ import { getChartPalette, readStoredChartColorSettings } from '../../utils/chart
 import { getColumnIdForIndex, getColumnIdSpan, getSheetDataBounds } from './sheetBounds';
 
 const generateId = () => Math.random().toString(36).slice(2, 11);
+
+export function centerCanvasOnSheet(
+  sheet: SheetData,
+  viewport: { innerWidth: number; innerHeight: number } | null =
+    typeof window === 'undefined' ? null : window,
+) {
+  if (!viewport) return;
+
+  const store = useStore.getState();
+  const scale = store.transform.scale;
+  const sheetWidth = sheet.size.width * CELL_WIDTH + HEADER_COL_WIDTH;
+  const sheetHeight = sheet.size.height * CELL_HEIGHT + HEADER_ROW_HEIGHT;
+  const sheetCenterX = sheet.position.x + sheetWidth / 2;
+  const sheetCenterY = sheet.position.y + sheetHeight / 2;
+
+  store.setTransform({
+    scale,
+    offset: {
+      x: viewport.innerWidth / 2 - sheetCenterX * scale,
+      y: viewport.innerHeight / 2 - sheetCenterY * scale,
+    },
+  });
+}
 
 const DEFAULT_GA_DIMENSIONS = new Set([
   'date',
@@ -72,7 +103,7 @@ function compactGaMetadata(
 
 export type ToolResult =
   | { ok: true; [k: string]: unknown }
-  | { ok: false; error: string };
+  | { ok: false; error: string; [k: string]: unknown };
 
 export interface SelectionResolver {
   getSelection: () => SelectionContext;
@@ -158,6 +189,139 @@ function normalizeColumnId(value: unknown): string | null {
 function columnExistsInBounds(letter: string, columnCount: number): boolean {
   const idx = colLetterToIndex(letter);
   return idx >= 0 && idx < columnCount;
+}
+
+type CreateChartInput = {
+  sheetId: string;
+  type: ChartType;
+  labelColumn: string;
+  dataColumns: string[];
+  title?: string;
+  timeRange?: string;
+  timeGranularity?: ChartConfig['timeGranularity'];
+  aggregation?: PivotConfig['values'][number]['operation'];
+  sourceGrain?: 'raw_rows' | 'already_aggregated' | 'pivot_summary' | 'unknown';
+  allowDuplicateLabels?: boolean;
+  analysisNotes?: string;
+};
+
+function getCellDisplayValue(cell: CellData | undefined): string | null {
+  const value = cell?.value ?? cell?.raw;
+  if (value === null || value === undefined || value === '') return null;
+  return String(value);
+}
+
+function isDateLikeCell(cell: CellData | undefined): boolean {
+  const value = cell?.value ?? cell?.raw;
+  if (value === null || value === undefined || value === '') return false;
+  if (cell?.format?.type === 'date') return true;
+  if (typeof value === 'number') return false;
+  const text = String(value).trim();
+  const hasDateShape =
+    /\b\d{4}[-/]\d{1,2}([-/]\d{1,2})?\b/.test(text) ||
+    /\b\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b/.test(text) ||
+    /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\b/i.test(text);
+  return hasDateShape && !Number.isNaN(Date.parse(text));
+}
+
+function summarizeChartLabels(sheet: SheetData, labelColumn: string, rowCount: number) {
+  const labelColIndex = colLetterToIndex(labelColumn);
+  const header = getCellDisplayValue(sheet.cells[`${labelColumn}1`]);
+  const labelCounts = new Map<string, number>();
+  let dateLikeCount = 0;
+  let labelCount = 0;
+  let minDateMs: number | null = null;
+  let maxDateMs: number | null = null;
+
+  for (let row = 1; row < rowCount; row += 1) {
+    const cell = sheet.cells[getCellId(labelColIndex, row)];
+    const label = getCellDisplayValue(cell);
+    if (!label) continue;
+    if (sheet.pivotConfig && label === 'Grand Total') continue;
+
+    labelCount += 1;
+    labelCounts.set(label, (labelCounts.get(label) ?? 0) + 1);
+
+    if (isDateLikeCell(cell)) {
+      dateLikeCount += 1;
+      const ts = Date.parse(label);
+      if (!Number.isNaN(ts)) {
+        minDateMs = minDateMs === null ? ts : Math.min(minDateMs, ts);
+        maxDateMs = maxDateMs === null ? ts : Math.max(maxDateMs, ts);
+      }
+    }
+  }
+
+  const duplicateLabels = Array.from(labelCounts.entries())
+    .filter(([, count]) => count > 1)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([label, count]) => ({ label, count }));
+
+  return {
+    columnId: labelColumn,
+    header,
+    labelCount,
+    uniqueLabelCount: labelCounts.size,
+    duplicateLabels,
+    dateLikeCount,
+    isDateLike: labelCount > 0 && dateLikeCount / labelCount >= 0.8,
+    availableTimeRange:
+      minDateMs !== null && maxDateMs !== null
+        ? {
+            startDate: new Date(minDateMs).toISOString().slice(0, 10),
+            endDate: new Date(maxDateMs).toISOString().slice(0, 10),
+          }
+        : null,
+  };
+}
+
+function validateChartAnalysisIntent(sheet: SheetData, input: CreateChartInput, rowCount: number): ToolResult | null {
+  const labelSummary = summarizeChartLabels(sheet, input.labelColumn, rowCount);
+  const missingParameters: string[] = [];
+  const guidance: string[] = [];
+  const suggestedNextTools: string[] = [];
+
+  if (labelSummary.isDateLike) {
+    if (!input.timeRange) missingParameters.push('timeRange');
+    if (!input.timeGranularity) missingParameters.push('timeGranularity');
+    if (missingParameters.length > 0) {
+      guidance.push(
+        `Column ${input.labelColumn}${labelSummary.header ? ` (${labelSummary.header})` : ''} is date-like, so ask the user for the intended date range and time granularity before charting.`,
+      );
+      guidance.push('If the user wants the full available range, pass timeRange="full available range" explicitly.');
+    }
+  }
+
+  const duplicateLabelsNeedAggregation =
+    labelSummary.duplicateLabels.length > 0 &&
+    (labelSummary.isDateLike || input.type === 'line' || input.type === 'area' || input.type === 'scatter');
+
+  if (duplicateLabelsNeedAggregation && !input.allowDuplicateLabels) {
+    guidance.push(
+      'The label column has repeated labels. For a trustworthy visualization, create a persistent pivot/summary at the requested chart grain, then chart that output.',
+    );
+    suggestedNextTools.push('createPivot');
+  }
+
+  if (missingParameters.length > 0 || (duplicateLabelsNeedAggregation && !input.allowDuplicateLabels)) {
+    return {
+      ok: false,
+      error:
+        'Chart needs more analysis intent before it can be created without risking a misleading visualization.',
+      missingParameters,
+      labelSummary,
+      guidance,
+      suggestedNextTools,
+    };
+  }
+
+  return null;
+}
+
+export function rewriteClickhouseSqlForDescribedTable(sql: string, table?: string): string {
+  if (!table) return sql;
+  return sql.replace(/\b(from|join)\s+t\b/gi, (_match, keyword: string) => `${keyword} ${table}`);
 }
 
 export async function executeClientTool(
@@ -295,6 +459,7 @@ export async function executeClientTool(
           cells: { ...sheet.cells, ...updates },
           size: { width: maxCol + 1, height: maxRow + 1 },
         });
+        accumulateSheetFocus(useStore.getState().sheets[sheet.id] ?? sheet);
         return { ok: true, sheetId: sheet.id, updatedCount: Object.keys(updates).length };
       }
 
@@ -309,6 +474,9 @@ export async function executeClientTool(
         });
         store.saveSnapshot();
         store.updateSheet(sheet.id, { filters });
+        // `store` is a pre-update snapshot; safe here because applyFilter only
+        // changes `filters`, never position/size — the bounding box is identical.
+        accumulateSheetFocus(store.sheets[sheet.id] ?? sheet);
         return { ok: true, sheetId: sheet.id, filterCount: filters.length };
       }
 
@@ -317,6 +485,8 @@ export async function executeClientTool(
         if (!sheet) return { ok: false, error: `Unknown sheetId: ${input.sheetId}` };
         store.saveSnapshot();
         store.updateSheet(sheet.id, { sort: (input.sort as SortConfig | null) ?? undefined });
+        // `store` snapshot is safe: applySort only changes `sort`, never position/size.
+        accumulateSheetFocus(store.sheets[sheet.id] ?? sheet);
         return { ok: true, sheetId: sheet.id, sort: input.sort };
       }
 
@@ -343,28 +513,36 @@ export async function executeClientTool(
         store.saveSnapshot();
         // Merge to preserve every other cell on the sheet.
         store.updateSheet(sheet.id, { cells: { ...sheet.cells, ...updates } });
+        // `store` snapshot is safe: applyFormat only changes `cells`, never position/size.
+        accumulateSheetFocus(store.sheets[sheet.id] ?? sheet);
         return { ok: true, sheetId: sheet.id, range: input.range, cellsFormatted: Object.keys(updates).length };
       }
 
       case 'createChart': {
         const sheet = store.sheets[input.sheetId];
         if (!sheet) return { ok: false, error: `Unknown sheetId: ${input.sheetId}` };
+        const chartInput = input as CreateChartInput;
         const bounds = getSheetDataBounds(sheet);
-        if (!columnExistsInBounds(input.labelColumn, bounds.width)) {
-          return { ok: false, error: `labelColumn ${input.labelColumn} not in sheet` };
+        if (!columnExistsInBounds(chartInput.labelColumn, bounds.width)) {
+          return { ok: false, error: `labelColumn ${chartInput.labelColumn} not in sheet` };
         }
-        for (const dc of input.dataColumns as string[]) {
+        for (const dc of chartInput.dataColumns) {
           if (!columnExistsInBounds(dc, bounds.width)) {
             return { ok: false, error: `dataColumn ${dc} not in sheet` };
           }
         }
+        const validationError = validateChartAnalysisIntent(sheet, chartInput, bounds.height);
+        if (validationError) return validationError;
+
+        const labelSummary = summarizeChartLabels(sheet, chartInput.labelColumn, bounds.height);
         const colorSettings = readStoredChartColorSettings();
         const defaultPalette = getChartPalette(colorSettings, false);
         const config: ChartConfig = {
-          type: input.type as ChartType,
+          type: chartInput.type as ChartType,
           mode: 'metrics',
-          labelColumn: input.labelColumn,
-          dataColumns: input.dataColumns,
+          labelColumn: chartInput.labelColumn,
+          dataColumns: chartInput.dataColumns,
+          timeGranularity: chartInput.timeGranularity,
           color: defaultPalette[0],
           colorScheme: 'workspace',
           colorOverride: false,
@@ -380,12 +558,35 @@ export async function executeClientTool(
             y: sheet.position.y,
           },
           size: DEFAULT_CHART_SIZE,
-          title: input.title ?? `${sheet.title} chart`,
+          title: chartInput.title ?? `${sheet.title} chart`,
           config,
           setupRequired: false,
         };
         store.addChart(chart);
-        return { ok: true, chartId: chart.id, sheetId: sheet.id };
+        accumulateChartFocus(chart);
+        return {
+          ok: true,
+          chartId: chart.id,
+          sheetId: sheet.id,
+          resolvedColumns: {
+            labelColumn: {
+              columnId: chartInput.labelColumn,
+              header: sheet.cells[`${chartInput.labelColumn}1`]?.value ?? sheet.cells[`${chartInput.labelColumn}1`]?.raw ?? null,
+            },
+            dataColumns: chartInput.dataColumns.map((columnId) => ({
+              columnId,
+              header: sheet.cells[`${columnId}1`]?.value ?? sheet.cells[`${columnId}1`]?.raw ?? null,
+            })),
+          },
+          analysisIntent: {
+            timeRange: chartInput.timeRange ?? null,
+            timeGranularity: chartInput.timeGranularity ?? null,
+            aggregation: chartInput.aggregation ?? null,
+            sourceGrain: chartInput.sourceGrain ?? null,
+            analysisNotes: chartInput.analysisNotes ?? null,
+          },
+          labelSummary,
+        };
       }
 
       case 'createPivot': {
@@ -436,6 +637,7 @@ export async function executeClientTool(
           setupRequired: false,
         };
         store.addSheet(newSheet);
+        accumulateSheetFocus(newSheet);
         return { ok: true, sheetId: newSheet.id, sourceSheetId: source.id };
       }
 
@@ -484,6 +686,7 @@ export async function executeClientTool(
           setupRequired: false,
         };
         store.addSheet(newSheet);
+        accumulateSheetFocus(newSheet);
         return { ok: true, sheetId: newSheet.id, sourceSheetId: source.id };
       }
 
@@ -614,7 +817,8 @@ export async function executeClientTool(
         let sourceTruncated = false;
         if (connType === 'clickhouse') {
           if (!sql) return { ok: false, error: 'sql is required for ClickHouse queries' };
-          const result = await queryClickhouse({ connectorId: connectionId, sql });
+          const clickhouseSql = rewriteClickhouseSqlForDescribedTable(sql, tokenScope.table);
+          const result = await queryClickhouse({ connectorId: connectionId, sql: clickhouseSql });
           matrix = clickhouseResultToMatrix(result);
           sourceTruncated = !!result.truncated;
           sheetTitle = title ?? 'ClickHouse Query';
@@ -666,6 +870,7 @@ export async function executeClientTool(
           setupRequired: false,
         };
         store.addSheet(newSheet);
+        accumulateSheetFocus(newSheet);
         const importedHeaders = matrix[0].slice(0, MAX_CONNECTED_IMPORT_COLS);
         const headers = importedHeaders.map((h, i) => ({
           columnId: getCellId(i, 0).replace(/\d+$/, ''),
@@ -677,6 +882,14 @@ export async function executeClientTool(
           if (/\d{4}-\d{2}-\d{2}/.test(s) && !isNaN(Date.parse(s))) return 'date';
           return 'text';
         });
+        const sampleRows = matrix.slice(1, 6).map((row, rowIndex) => {
+          const sample: Record<string, string | number> = { rowNumber: rowIndex + 2 };
+          importedHeaders.forEach((_, colIndex) => {
+            const columnId = getColumnIdForIndex(colIndex);
+            sample[columnId] = row[colIndex] ?? '';
+          });
+          return sample;
+        });
         return {
           ok: true,
           sheetId: newSheet.id,
@@ -684,6 +897,7 @@ export async function executeClientTool(
           rowCount: matrix.length - 1,
           headers,
           inferredTypes,
+          sampleRows,
           derivation,
           truncated: applied.truncated,
         };

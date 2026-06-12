@@ -50,6 +50,25 @@ describe('aggregation chart workflow guidance', () => {
 
     expect(toolDefs.createChart.description).toContain('persistent source sheet');
     expect(toolDefs.createChart.description).toContain('prefer creating a persistent aggregation sheet');
+    expect(toolDefs.createChart.description).toContain('timeRange');
+    expect(toolDefs.createChart.description).toContain('timeGranularity');
+    expect(toolDefs.createChart.description).toContain('Duplicate labels');
+  });
+
+  it('accepts explicit data-analysis intent for chart creation', () => {
+    const result = toolDefs.createChart.inputSchema.safeParse({
+      sheetId: 'daily-summary',
+      type: 'line',
+      labelColumn: 'A',
+      dataColumns: ['B'],
+      timeRange: 'full available range',
+      timeGranularity: 'day',
+      aggregation: 'SUM',
+      sourceGrain: 'pivot_summary',
+      analysisNotes: 'Daily total revenue chart from a pivot summary.',
+    });
+
+    expect(result.success).toBe(true);
   });
 
   it('documents conditional COUNT metrics as chartable pivot values', () => {

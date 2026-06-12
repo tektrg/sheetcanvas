@@ -96,6 +96,7 @@ export const SortConfigSchema = z.object({
 
 export const ChartTypeEnum = z.enum(['line', 'bar', 'pie', 'area', 'scatter', 'treemap']);
 export const PivotOpEnum = z.enum(['SUM', 'COUNT', 'AVG', 'MIN', 'MAX']);
+export const TimeGranularityEnum = z.enum(['day', 'week', 'month', 'quarter', 'year']);
 
 const PivotValueSchema = z
   .object({
@@ -186,13 +187,35 @@ export const toolDefs = {
 
   createChart: {
     description:
-      'Create a chart from a persistent source sheet. labelColumn is the X-axis column letter; dataColumns is the array of Y series column letters. If the chart needs grouped, counted, summed, or conditional series from row-level sheet data, prefer creating a persistent aggregation sheet, usually with createPivot, then chart the pivot output instead of temporary querySheet results.',
+      'Create a chart from a persistent source sheet. labelColumn is the X-axis column letter; dataColumns is the array of Y series column letters. If the chart needs grouped, counted, summed, or conditional series from row-level sheet data, prefer creating a persistent aggregation sheet, usually with createPivot, then chart the pivot output instead of temporary querySheet results. For time-series charts, provide the intended timeRange and timeGranularity; if the user did not specify them and no safe default was requested, ask before charting. Duplicate labels on line/area/scatter charts usually mean the source grain is too detailed; create a pivot/summary first unless the user explicitly wants multiple points per label.',
     inputSchema: z.object({
       sheetId: z.string(),
       type: ChartTypeEnum,
       labelColumn: z.string().regex(/^[A-Z]+$/),
       dataColumns: z.array(z.string().regex(/^[A-Z]+$/)).min(1),
       title: z.string().optional(),
+      timeRange: z
+        .string()
+        .min(1)
+        .max(160)
+        .optional()
+        .describe('Required for time-series charts. Examples: "2026-05-01 to 2026-06-11", "last 30 days", or "full available range".'),
+      timeGranularity: TimeGranularityEnum.optional().describe('Required for time-series charts when the label column is date-like.'),
+      aggregation: PivotOpEnum.optional().describe('The analysis aggregation represented by this chart, such as SUM or COUNT.'),
+      sourceGrain: z
+        .enum(['raw_rows', 'already_aggregated', 'pivot_summary', 'unknown'])
+        .optional()
+        .describe('Declare whether the source sheet already matches the chart grain. Use createPivot first for chartable aggregates.'),
+      allowDuplicateLabels: z
+        .boolean()
+        .optional()
+        .describe('Only set true when the user explicitly wants multiple plotted rows with the same label. Otherwise create a pivot/summary first.'),
+      analysisNotes: z
+        .string()
+        .min(1)
+        .max(300)
+        .optional()
+        .describe('Briefly state the chart grain/assumption when using an explicit default or override.'),
     }),
   },
 
@@ -269,7 +292,7 @@ export const toolDefs = {
 
   createQuerySheet: {
     description:
-      'Create a new sheet by querying a previously described data connection. Pass schemaToken from describeConnection. ClickHouse: provide sql. Google Analytics: provide propertyId and report. Google Sheets: provide spreadsheetIdOrUrl and optional A1 range. Always provide derivation. Returns sheetId + headers for immediate createChart use.',
+      'Create a new sheet by querying a previously described data connection. Pass schemaToken from describeConnection. ClickHouse: provide sql using the real database-qualified table name from describeConnection, not the in-app sheet alias "t". Google Analytics: provide propertyId and report. Google Sheets: provide spreadsheetIdOrUrl and optional A1 range. Always provide derivation. Returns sheetId + headers for immediate createChart use.',
     inputSchema: z.object({
       connectionId: z.string().min(1),
       schemaToken: z.string().min(8),
