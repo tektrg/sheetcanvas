@@ -27,6 +27,7 @@ import {
   listGoogleSheetsConnectors,
   type GoogleSheetsPublicConnector
 } from '../utils/googleSheetsBackend';
+import { buildConnectorConfigWithQuery } from '../utils/connectedSheetQueries';
 
 interface DataConnectorDialogProps {
   onClose: () => void;
@@ -390,15 +391,14 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
         const connector = chConnectors.find((c) => c.id === connectorId);
         const title = connector ? `ClickHouse: ${connector.name}` : 'ClickHouse Query';
 
-        const config: ConnectorConfig = {
+        const config = buildConnectorConfigWithQuery({
           type: 'clickhouse',
           name: connector ? `ClickHouse: ${connector.name}` : 'ClickHouse',
           connectionId: connectorId,
-          query: { sql: chSql.trim() },
           lastRefreshedAt: Date.now(),
           truncated: !!result.truncated,
           lastError: '',
-        };
+        }, { type: 'clickhouse', sql: chSql.trim() });
 
         setStatus('success');
         setTimeout(() => {
@@ -434,13 +434,12 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
         }
         config.name = 'Google Sheets';
         config.connectionId = gsConnectorId.trim();
-        config.query = {
+        Object.assign(config, buildConnectorConfigWithQuery(config, {
+            type: 'google-sheets',
             spreadsheetIdOrUrl: sheetId.trim(),
             range: sheetRange.trim() || DEFAULT_GOOGLE_SHEETS_RANGE
-        };
+        }));
         config.lastRefreshedAt = Date.now();
-        config.params.spreadsheetIdOrUrl = sheetId.trim();
-        config.params.range = sheetRange.trim() || DEFAULT_GOOGLE_SHEETS_RANGE;
     }
     if (selectedType === 'google-analytics') {
         if (!propertyId.trim()) {
@@ -503,7 +502,11 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
         }
 
         config.connectionId = gaConnectorId.trim();
-        config.query = { propertyId: propertyId.trim(), report: Object.keys(report).length > 0 ? report : {} };
+        Object.assign(config, buildConnectorConfigWithQuery(config, {
+            type: 'google-analytics',
+            propertyId: propertyId.trim(),
+            report: Object.keys(report).length > 0 ? report : {}
+        }));
         config.lastRefreshedAt = Date.now();
     }
     if (selectedType === 'csv-url') config.params.url = url;

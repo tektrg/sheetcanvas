@@ -5,6 +5,7 @@ import { getCellId, parseCellId, computeSheet } from '../utils/formulas';
 import { formatValue } from '../utils/formatting';
 import { parseClipboardData } from '../utils/clipboard';
 import { getFilteredRows } from '../utils/dataAnalysis';
+import { serializeSheetSelection } from '../utils/sheetClipboard';
 import { CELL_WIDTH, CELL_HEIGHT, HEADER_COL_WIDTH, HEADER_ROW_HEIGHT, MIN_COL_WIDTH, MAX_RENDER_ROWS } from '../constants';
 import { GripHorizontal, Trash2, BarChart3, ChevronDown, MoreVertical, Table, Settings2, X, Image as ImageIcon, Loader2, AlertCircle, AlertTriangle, Filter, TrendingUp, Link, RefreshCcw, Code2 } from 'lucide-react';
 import { PivotConfigPanel } from './PivotConfigPanel';
@@ -16,11 +17,14 @@ import { SheetCell } from './SheetCell';
 import html2canvas from 'html2canvas';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useStore } from '../store';
-import { clickhouseResultToMatrix, queryClickhouse } from '../utils/clickhouseBackend';
-import { googleAnalyticsResultToMatrix, queryGoogleAnalytics, type GoogleAnalyticsReport } from '../utils/googleAnalyticsBackend';
-import { googleSheetsResultToMatrix, queryGoogleSheets } from '../utils/googleSheetsBackend';
-import { applyMatrixToSheet } from '../utils/connectorSheet';
-import { INITIAL_COLS, INITIAL_ROWS, MAX_CONNECTED_IMPORT_COLS, MAX_IMPORT_ROWS } from '../constants';
+import { ConnectedSheetQueryPanel } from './ConnectedSheetQueryPanel';
+import {
+  buildConnectorConfigWithQuery,
+  getConnectorQuerySummary,
+  readConnectorQuery,
+  refreshConnectedSheetFromQuery,
+  type NormalizedConnectorQuery,
+} from '../utils/connectedSheetQueries';
 
 interface SheetNodeProps {
   id: string;
@@ -34,12 +38,6 @@ interface SheetNodeProps {
 }
 
 const SUPPORTED_FORMULAS = ['SUM', 'AVG', 'AVERAGE', 'MIN', 'MAX', 'COUNT'];
-
-const getConnectorTruncationMessage = (sourceTruncated: boolean, localTruncated: boolean) => {
-  if (localTruncated) return `Dataset truncated to ${MAX_IMPORT_ROWS} rows / ${MAX_CONNECTED_IMPORT_COLS} cols`;
-  if (sourceTruncated) return 'Connector returned truncated data';
-  return '';
-};
 
 const ConnectedSheetError = ({ message }: { message: string }) => (
   <div className="border-b border-red-200/70 bg-red-50/90 px-3 py-2 dark:border-red-900/60 dark:bg-red-950/25">
@@ -95,11 +93,8 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
   
   const [showPivotConfig, setShowPivotConfig] = useState(false);
   const [showSparklineConfig, setShowSparklineConfig] = useState(false);
-  const [showClickhouseSql, setShowClickhouseSql] = useState(false);
-  const [clickhouseSqlDraft, setClickhouseSqlDraft] = useState<string>('');
-  const [isClickhouseRefreshing, setIsClickhouseRefreshing] = useState(false);
-  const [isGoogleAnalyticsRefreshing, setIsGoogleAnalyticsRefreshing] = useState(false);
-  const [isGoogleSheetsRefreshing, setIsGoogleSheetsRefreshing] = useState(false);
+  const [showConnectorQueryPanel, setShowConnectorQueryPanel] = useState(false);
+  const [isConnectorRefreshing, setIsConnectorRefreshing] = useState(false);
   
   const showFilterPanel = !!data?.showFilterPanel;
   const [preselectedFilterCol, setPreselectedFilterCol] = useState<string | null>(null);
@@ -171,131 +166,35 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
     (isClickhouseConnected || isGoogleAnalyticsConnected || (isGoogleSheetsConnected && !isGoogleSheetsSimulated))
       ? (data.connectorConfig?.lastRefreshedAt ?? null)
       : null;
+  const canEditConnectorQuery =
+    !!data.connectorConfig?.connectionId &&
+    (isClickhouseConnected || isGoogleAnalyticsConnected || isGoogleSheetsConnected);
+  const connectorQuerySummary = data.connectorConfig ? getConnectorQuerySummary(data.connectorConfig) : '';
 
 
-  const refreshClickhouse = async (opts?: { sqlOverride?: string; showToasts?: boolean }) => {
-    if (!isClickhouseConnected) return;
-    const connectorId = data.connectorConfig?.connectionId ?? '';
-    const sql = (opts?.sqlOverride ?? ((data.connectorConfig?.query as any)?.sql ?? '')).trim();
-    if (!connectorId || !sql) {
-      if (onToast) onToast('Missing ClickHouse connector or SQL');
-      return;
-    }
+  const refreshConnectedSheetQuery = async (opts?: { queryOverride?: NormalizedConnectorQuery; showToasts?: boolean }) => {
+    if (!data.connectorConfig || !canEditConnectorQuery) return;
+    const query = opts?.queryOverride ?? readConnectorQuery(data.connectorConfig);
+    if (!query) return;
 
-    setIsClickhouseRefreshing(true);
+    setIsConnectorRefreshing(true);
     saveSnapshot();
     try {
-      const result = await queryClickhouse({ connectorId, sql });
-      const matrix = clickhouseResultToMatrix(result);
-      const next = applyMatrixToSheet(matrix);
-      const nextConfig = {
-        ...data.connectorConfig!,
-        query: { sql },
-        lastRefreshedAt: Date.now(),
-        truncated: !!result.truncated || next.truncated,
-        lastError: '',
-      };
-
-      updateSheet(data.id, { size: next.size, cells: next.cells, connectorConfig: nextConfig });
-      const truncationMessage = getConnectorTruncationMessage(!!result.truncated, next.truncated);
-      if (truncationMessage && onToast) onToast(truncationMessage);
+      const next = await refreshConnectedSheetFromQuery(data.connectorConfig, query);
+      updateSheet(data.id, { size: next.size, cells: next.cells, connectorConfig: next.connectorConfig });
+      if (next.truncationMessage && onToast) onToast(next.truncationMessage);
       if (opts?.showToasts !== false && onToast) onToast('Refreshed');
     } catch (e: any) {
       const msg = e?.message || 'Refresh failed';
       updateSheet(data.id, {
         connectorConfig: {
-          ...data.connectorConfig!,
-          query: { sql },
+          ...buildConnectorConfigWithQuery(data.connectorConfig, query),
           lastError: msg,
         }
       });
       if (onToast) onToast(msg);
     } finally {
-      setIsClickhouseRefreshing(false);
-    }
-  };
-
-  const refreshGoogleAnalytics = async (opts?: { showToasts?: boolean }) => {
-    if (!isGoogleAnalyticsConnected || isGoogleAnalyticsSimulated) return;
-    const connectorId = data.connectorConfig?.connectionId ?? '';
-    const propertyId = (data.connectorConfig?.query as any)?.propertyId ?? '';
-    const report = (data.connectorConfig?.query as any)?.report as GoogleAnalyticsReport | undefined;
-    if (!connectorId || !propertyId) {
-      if (onToast) onToast('Missing Google Analytics connector or property ID');
-      return;
-    }
-
-    setIsGoogleAnalyticsRefreshing(true);
-    saveSnapshot();
-    try {
-      const result = await queryGoogleAnalytics({ connectorId, propertyId, report });
-      const matrix = googleAnalyticsResultToMatrix(result);
-      const next = applyMatrixToSheet(matrix);
-      const nextConfig = {
-        ...data.connectorConfig!,
-        lastRefreshedAt: Date.now(),
-        truncated: !!result.truncated || next.truncated,
-        lastError: '',
-      };
-
-      updateSheet(data.id, { size: next.size, cells: next.cells, connectorConfig: nextConfig });
-      const truncationMessage = getConnectorTruncationMessage(!!result.truncated, next.truncated);
-      if (truncationMessage && onToast) onToast(truncationMessage);
-      if (opts?.showToasts !== false && onToast) onToast('Refreshed');
-    } catch (e: any) {
-      const msg = e?.message || 'Refresh failed';
-      updateSheet(data.id, {
-        connectorConfig: {
-          ...data.connectorConfig!,
-          lastError: msg,
-        }
-      });
-      if (onToast) onToast(msg);
-    } finally {
-      setIsGoogleAnalyticsRefreshing(false);
-    }
-  };
-
-  const refreshGoogleSheets = async (opts?: { showToasts?: boolean }) => {
-    if (!isGoogleSheetsConnected || isGoogleSheetsSimulated) return;
-    const connectorId = data.connectorConfig?.connectionId ?? '';
-    const query = data.connectorConfig?.query as any;
-    const spreadsheetIdOrUrl = query?.spreadsheetIdOrUrl ?? data.connectorConfig?.params?.spreadsheetIdOrUrl ?? data.connectorConfig?.params?.sheetId ?? '';
-    const range = query?.range ?? data.connectorConfig?.params?.range;
-    if (!connectorId || !spreadsheetIdOrUrl) {
-      if (onToast) onToast('Missing Google Sheets connector or spreadsheet');
-      return;
-    }
-
-    setIsGoogleSheetsRefreshing(true);
-    saveSnapshot();
-    try {
-      const result = await queryGoogleSheets({ connectorId, spreadsheetIdOrUrl, range });
-      const matrix = googleSheetsResultToMatrix(result);
-      const next = applyMatrixToSheet(matrix);
-      const nextConfig = {
-        ...data.connectorConfig!,
-        query: { spreadsheetIdOrUrl, range },
-        lastRefreshedAt: Date.now(),
-        truncated: !!result.truncated || next.truncated,
-        lastError: '',
-      };
-
-      updateSheet(data.id, { size: next.size, cells: next.cells, connectorConfig: nextConfig });
-      const truncationMessage = getConnectorTruncationMessage(!!result.truncated, next.truncated);
-      if (truncationMessage && onToast) onToast(truncationMessage);
-      if (opts?.showToasts !== false && onToast) onToast('Refreshed');
-    } catch (e: any) {
-      const msg = e?.message || 'Refresh failed';
-      updateSheet(data.id, {
-        connectorConfig: {
-          ...data.connectorConfig!,
-          lastError: msg,
-        }
-      });
-      if (onToast) onToast(msg);
-    } finally {
-      setIsGoogleSheetsRefreshing(false);
+      setIsConnectorRefreshing(false);
     }
   };
 
@@ -606,6 +505,24 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
     if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
 
     if (isEditing || isEditingTitle) return;
+
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+        if (!selectionRange) return;
+        e.preventDefault();
+
+        const copiedText = serializeSheetSelection(
+            data.cells,
+            selectionRange,
+            visibleRowIndices,
+            displayRowByActualRow
+        );
+
+        navigator.clipboard.writeText(copiedText).catch((err) => {
+            console.error('Failed to copy sheet selection', err);
+            if (onToast) onToast('Failed to copy selection');
+        });
+        return;
+    }
 
     if (!activeCell) {
         if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key)) {
@@ -1281,6 +1198,11 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                 {isPivot && <div className="p-0.5 rounded text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30 mr-1" title="Pivot Table"><Table size={12} /></div>}
                 {isSparkline && <div className="p-0.5 rounded text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30 mr-1" title="Sparkline Table"><TrendingUp size={12} /></div>}
                 {isConnected && <div className="p-0.5 rounded text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30 mr-1" title={`Connected Source: ${data.connectorConfig?.type}`}><Link size={12} /></div>}
+                {isConnected && connectorQuerySummary && (
+                  <div className="text-xs text-gray-400 dark:text-gray-500 truncate max-w-[220px]" title={connectorQuerySummary}>
+                    {connectorQuerySummary}
+                  </div>
+                )}
                 {isConnected && data.connectorConfig?.derivation && (
                   <div className="text-xs text-gray-400 dark:text-gray-500 truncate max-w-[180px]" title={data.connectorConfig.derivation}>
                     {data.connectorConfig.derivation}
@@ -1322,29 +1244,28 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                   const label = m < 1 ? 'just now' : m < 60 ? `${m}m ago` : Math.floor(m / 60) < 24 ? `${Math.floor(m / 60)}h ago` : `${Math.floor(m / 1440)}d ago`;
                   return <span className="text-xs text-gray-400 dark:text-gray-500 mr-1 select-none">{label}</span>;
                 })()}
-                {isGoogleSheetsConnected && !isGoogleSheetsSimulated && (
+                {canEditConnectorQuery && (
+                  <>
                     <button
-                        onClick={() => refreshGoogleSheets({ showToasts: true })}
-                        disabled={isGoogleSheetsRefreshing}
+                        onClick={() => refreshConnectedSheetQuery({ showToasts: true })}
+                        disabled={isConnectorRefreshing}
                         className={`group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md transition-colors ${
-                            isGoogleSheetsRefreshing ? 'bg-neutral-100 dark:bg-neutral-800 cursor-not-allowed' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                            isConnectorRefreshing ? 'bg-neutral-100 dark:bg-neutral-800 cursor-not-allowed' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
                         }`}
                         title={lastRefreshedAt ? `Refresh (last: ${new Date(lastRefreshedAt).toLocaleString()})` : 'Refresh'}
                     >
-                        {isGoogleSheetsRefreshing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCcw size={14} />}
+                        {isConnectorRefreshing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCcw size={14} />}
                     </button>
-                )}
-                {isGoogleAnalyticsConnected && !isGoogleAnalyticsSimulated && (
                     <button
-                        onClick={() => refreshGoogleAnalytics({ showToasts: true })}
-                        disabled={isGoogleAnalyticsRefreshing}
+                        onClick={() => setShowConnectorQueryPanel(!showConnectorQueryPanel)}
                         className={`group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md transition-colors ${
-                            isGoogleAnalyticsRefreshing ? 'bg-neutral-100 dark:bg-neutral-800 cursor-not-allowed' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                            showConnectorQueryPanel ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
                         }`}
-                        title={lastRefreshedAt ? `Refresh (last: ${new Date(lastRefreshedAt).toLocaleString()})` : 'Refresh'}
+                        title="Edit query"
                     >
-                        {isGoogleAnalyticsRefreshing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCcw size={14} />}
+                        <Code2 size={14} />
                     </button>
+                  </>
                 )}
                 {lastRefreshedAt && isClickhouseConnected && (() => {
                   const diffMs = Date.now() - lastRefreshedAt;
@@ -1352,33 +1273,6 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                   const label = m < 1 ? 'just now' : m < 60 ? `${m}m ago` : Math.floor(m / 60) < 24 ? `${Math.floor(m / 60)}h ago` : `${Math.floor(m / 1440)}d ago`;
                   return <span className="text-xs text-gray-400 dark:text-gray-500 mr-1 select-none">{label}</span>;
                 })()}
-                {isClickhouseConnected && (
-                    <>
-                        <button
-                            onClick={() => refreshClickhouse({ showToasts: true })}
-                            disabled={isClickhouseRefreshing}
-                            className={`group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md transition-colors ${
-                                isClickhouseRefreshing ? 'bg-neutral-100 dark:bg-neutral-800 cursor-not-allowed' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
-                            }`}
-                            title={lastRefreshedAt ? `Refresh (last: ${new Date(lastRefreshedAt).toLocaleString()})` : 'Refresh'}
-                        >
-                            {isClickhouseRefreshing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCcw size={14} />}
-                        </button>
-                        <button
-                            onClick={() => {
-                                const next = !showClickhouseSql;
-                                setShowClickhouseSql(next);
-                                if (next) setClickhouseSqlDraft((data.connectorConfig?.query as any)?.sql ?? '');
-                            }}
-                            className={`group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md transition-colors ${
-                                showClickhouseSql ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
-                            }`}
-                            title="Edit SQL"
-                        >
-                            <Code2 size={14} />
-                        </button>
-                    </>
-                )}
                 {isPivot && (
                     <button onClick={() => setShowPivotConfig(!showPivotConfig)} className={`group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md transition-colors ${showPivotConfig ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}>
                         <Settings2 size={14} />
@@ -1420,55 +1314,22 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                 totalCount={recordCounts.totalCount}
             />
         )}
-	        {showClickhouseSql && isClickhouseConnected && (
-	            <div className="border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50/60 dark:bg-neutral-900/40 p-3">
-                <div className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mb-2">
-                    SQL
-                </div>
-                <textarea
-                    className="w-full min-h-[120px] bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm font-mono text-neutral-900 dark:text-neutral-100 outline-none focus:ring-2 focus:ring-teal-500/50"
-                    value={clickhouseSqlDraft}
-                    onChange={(e) => setClickhouseSqlDraft(e.target.value)}
-                    placeholder="SELECT ..."
-                />
-                <div className="flex justify-end gap-2 mt-2">
-                    <button
-                        onClick={() => setShowClickhouseSql(false)}
-                        className="px-3 py-1.5 text-xs font-medium text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        onClick={() => {
-                            const sql = clickhouseSqlDraft.trim();
-                            if (!sql) return;
-                            saveSnapshot();
-                            updateSheet(data.id, {
-                                connectorConfig: {
-                                    ...data.connectorConfig!,
-                                    query: { sql },
-                                }
-                            });
-                            setShowClickhouseSql(false);
-                        }}
-                        className="px-3 py-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-200 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors"
-                    >
-                        Save
-                    </button>
-                    <button
-                        onClick={async () => {
-                            const sql = clickhouseSqlDraft.trim();
-                            if (!sql) return;
-                            setShowClickhouseSql(false);
-                            await refreshClickhouse({ sqlOverride: sql, showToasts: true });
-                        }}
-                        className="px-3 py-1.5 text-xs font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition-colors"
-                    >
-                        Save & Refresh
-                    </button>
-                </div>
-	            </div>
-	        )}
+        {showConnectorQueryPanel && canEditConnectorQuery && data.connectorConfig && (
+          <ConnectedSheetQueryPanel
+            config={data.connectorConfig}
+            isBusy={isConnectorRefreshing}
+            onCancel={() => setShowConnectorQueryPanel(false)}
+            onSave={(connectorConfig) => {
+              saveSnapshot();
+              updateSheet(data.id, { connectorConfig });
+              setShowConnectorQueryPanel(false);
+            }}
+            onSaveAndRefresh={async (query) => {
+              setShowConnectorQueryPanel(false);
+              await refreshConnectedSheetQuery({ queryOverride: query, showToasts: true });
+            }}
+          />
+        )}
 	        {isPivot && data.pivotWarnings && data.pivotWarnings.length > 0 && (
 	            <div className="border-t border-amber-200/70 dark:border-amber-900/60 bg-amber-50/80 dark:bg-amber-950/20 px-3 py-2">
 	                <div className="flex items-start gap-2 text-[11px] text-amber-800 dark:text-amber-300">
