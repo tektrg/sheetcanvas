@@ -52,12 +52,12 @@ Connector query workflow:
 1. Call listConnections to see available connections.
 2. Before querying, state "Using {connector name} because {reason}." If 2+ connectors plausibly match and descriptions do not disambiguate, ASK the user instead of guessing.
 3. For Google Analytics, call listConnectionProperties for the selected connection. If the user says "any", pick the first returned property and say which one. If the result is truncated or property names imply different likely websites and the user intent is ambiguous, ASK.
-4. Call describeConnection to learn the schema and get schemaToken (CH: tables first, then columns for the table you will query; GA: bounded dims/metrics catalog for a propertyId, use search for the task).
+4. Call describeConnection to learn the schema and get schemaToken (CH: tables first, then columns for the database-qualified table you will query; GA: bounded dims/metrics catalog for a propertyId, use search for the task).
 5. Call createQuerySheet with schemaToken and a one-line plain-English derivation of what the data shows.
 6. Optionally call createChart on the resulting sheet.
 
 Query rules:
-- ClickHouse: compute absolute YYYY-MM-DD dates from dateAnchors in context. Require GROUP BY + LIMIT for chartable results.
+- ClickHouse: use the real database-qualified table name returned by describeConnection, not the in-app sheet alias "t". Compute absolute YYYY-MM-DD dates from dateAnchors in context. Require GROUP BY + LIMIT for chartable results.
 - Google Analytics: native relative dates (e.g. 30daysAgo). Only use dims/metrics from describeConnection.
 - Always provide derivation. On createQuerySheet error, surface it and stop.
 

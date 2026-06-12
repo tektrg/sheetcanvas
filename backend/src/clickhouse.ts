@@ -2,6 +2,12 @@ import { HttpError } from "./errors";
 
 export type ClickHouseMeta = { name: string; type: string };
 export type ClickHouseResult = { columns: ClickHouseMeta[]; rows: unknown[][]; rowCount: number };
+type ClickHouseJsonResponse = {
+  meta?: ClickHouseMeta[];
+  data?: unknown[][];
+  rows?: number;
+  exception?: string;
+};
 
 function stripTrailingSemicolon(sql: string) {
   const trimmed = sql.trim();
@@ -37,6 +43,35 @@ function basicAuthHeader(username: string, password: string) {
   return `Basic ${token}`;
 }
 
+function assertNoClickhouseException(json: ClickHouseJsonResponse) {
+  if (typeof json.exception === 'string' && json.exception.trim()) {
+    throw new HttpError(502, 'clickhouse_error', `ClickHouse error: ${json.exception.trim()}`);
+  }
+}
+
+function extractClickhouseExceptionText(text: string) {
+  const trimmed = text.trim();
+  if (!trimmed) return '';
+  if (trimmed.includes('DB::Exception') || trimmed.includes('__exception__')) return trimmed;
+  return '';
+}
+
+async function parseClickhouseJsonResponse(res: Response): Promise<ClickHouseJsonResponse> {
+  const text = await res.text();
+  let json: ClickHouseJsonResponse;
+  try {
+    json = JSON.parse(text) as ClickHouseJsonResponse;
+  } catch (err) {
+    const exceptionText = extractClickhouseExceptionText(text);
+    if (exceptionText) {
+      throw new HttpError(502, 'clickhouse_error', `ClickHouse error: ${exceptionText}`);
+    }
+    throw err;
+  }
+  assertNoClickhouseException(json);
+  return json;
+}
+
 export async function executeClickhouseQuery(args: {
   url: string;
   username: string;
@@ -70,7 +105,7 @@ export async function executeClickhouseQuery(args: {
       throw new HttpError(502, "clickhouse_error", `ClickHouse responded ${res.status}: ${text || res.statusText}`);
     }
 
-    const json = (await res.json()) as { meta?: ClickHouseMeta[]; data?: unknown[][]; rows?: number };
+    const json = await parseClickhouseJsonResponse(res);
     const columns = json.meta ?? [];
     const rows = json.data ?? [];
     const rowCount = typeof json.rows === "number" ? json.rows : rows.length;
@@ -92,7 +127,15 @@ export async function getClickhouseSchema(args: {
   database?: string;
   timeoutMs: number;
 }): Promise<{ tables: Array<{ name: string }> }> {
-  const sql = args.database ? 'SHOW TABLES FROM ' + args.database : 'SHOW TABLES';
+  const sql = args.database
+    ? 'SHOW TABLES FROM ' + args.database
+    : [
+        "SELECT concat(database, '.', name) AS name",
+        'FROM system.tables',
+        "WHERE database NOT IN ('system', 'INFORMATION_SCHEMA', 'information_schema')",
+        'ORDER BY database, name',
+        'LIMIT 200',
+      ].join('\n');
   const endpoint = withDefaultFormat(args.url);
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), args.timeoutMs);
@@ -111,7 +154,7 @@ export async function getClickhouseSchema(args: {
       const text = await res.text().catch(() => '');
       throw new HttpError(502, 'clickhouse_error', 'ClickHouse responded ' + res.status + ': ' + (text || res.statusText));
     }
-    const json = (await res.json()) as { meta?: ClickHouseMeta[]; data?: unknown[][]; rows?: number };
+    const json = await parseClickhouseJsonResponse(res);
     const rows = (json.data ?? []) as Array<[string, ...unknown[]]>;
     return { tables: rows.map((r) => ({ name: String(r[0]) })) };
   } catch (err) {
@@ -153,7 +196,7 @@ export async function describeClickhouseTable(args: {
       const text = await res.text().catch(() => '');
       throw new HttpError(502, 'clickhouse_error', 'ClickHouse responded ' + res.status + ': ' + (text || res.statusText));
     }
-    const json = (await res.json()) as { meta?: ClickHouseMeta[]; data?: unknown[][]; rows?: number };
+    const json = await parseClickhouseJsonResponse(res);
     const rows = (json.data ?? []) as Array<[string, string, ...unknown[]]>;
     return { columns: rows.map((r) => ({ name: String(r[0]), type: String(r[1]) })) };
   } catch (err) {
@@ -163,4 +206,3 @@ export async function describeClickhouseTable(args: {
     clearTimeout(timeoutId);
   }
 }
-
