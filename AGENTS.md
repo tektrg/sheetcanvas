@@ -73,13 +73,33 @@ Browser notes:
 - The runner prefers `CHROME_PATH` if set, then arm64 Microsoft Edge on this Mac, then Chrome/Chromium candidates.
 - If Chromium launch fails, first clean stale eval browser processes matching `sheetcanvas-agent-eval`, then rerun. Keep active dev servers and ambiguous sessions.
 
+## MCP Bridge (expose canvas tools to external agents)
+The canvas's 16 Copilot tools (schemas in `agent/tools.ts`) are exposed to external MCP clients while the frontend stays a static site. Tool execution still happens in the browser tab (`src/agent/clientToolExecutor.ts`); the backend only relays.
+
+Architecture:
+- `backend/src/mcp/bridge.ts` – `CanvasBridge` Durable Object, one instance per canvas token. Holds the browser tab's WebSocket, serializes tool calls, 30s per-call timeout.
+- `backend/src/mcp/route.ts` – `POST /api/mcp/token` (mint), `GET /api/mcp/bridge/:token` (browser WS upgrade), `GET /api/mcp/status/:token`, `POST /mcp/:token` (the MCP streamable-HTTP endpoint, JSON responses, stateless). Tool inputs are validated server-side against the shared zod schemas before forwarding.
+- `src/agent/useMcpBridge.ts` – browser WS client with exponential-backoff reconnect; config persisted in localStorage key `sheetcanvas:mcp:v1`.
+- `src/components/ConnectAgentDialog.tsx` – UI (plug icon in the Copilot panel header): mint/regenerate token, enable/disable toggle, copy MCP URL.
+
+Constraints to keep in mind:
+- The token is a bearer capability in the URL; regenerating revokes by abandonment (the old Durable Object simply never gets a tab connection again).
+- The tab must be open and the toggle on for tools to work; otherwise MCP clients get a clear "Canvas not connected" tool error.
+- One tab per token: a newer tab takes over the connection and the older tab gets WS close code 4000 and stops reconnecting (status "replaced").
+- A timed-out or disconnect-failed write may still have been applied by the tab — agents that retry writes can double-apply. Prefer read-back (getRange) over blind retry. The `initialize` response's `instructions` field tells MCP clients this too.
+- The tab heartbeats `ping`/`pong` every 20s (DO auto-response) so dead sockets after laptop sleep reconnect instead of lingering as a zombie "connected" state.
+- `mcpUrl`/`bridgeWsUrl` bake in the backend origin at mint time — switching `VITE_BACKEND_URL` (local↔prod) requires regenerating the URL from the dialog.
+- Backend and frontend must use the same zod major/minor (currently ^4.4) — `agent/tools.ts` is compiled by both.
+
+Smoke test: mint via `curl -X POST http://127.0.0.1:8787/api/mcp/token`, seed `sheetcanvas:mcp:v1` in the tab (or use the dialog), then `tools/list` and `tools/call listSheets` against `POST /mcp/<token>`.
+
 ## Project Memory
 - Agents **must use the `memory-project` skill** to work with project memory.
-- `AGENTS.md` is the entry point for agent context; read it first, then use the `memory-project` skill to consult `memory/` for durable project knowledge.
-- Write reusable insights, decisions, learnings, and analysis outputs into the repo's `memory/` PARA structure instead of leaving them only in chat.
-- Before repeating prior analysis or rediscovering project context, use the `memory-project` skill to search and read relevant notes from `memory/`.
-- Use `memory/Resources/` for reusable reference knowledge (stack, branding, IDs), `memory/Projects/` for active initiative notes, `memory/Areas/` for ongoing responsibilities (deployment, SEO, dev-environment, workflow), and `memory/Archives/` for inactive material.
-- `CONTINUITY.md` remains the in-session ledger (compaction-safe); `memory/` is the durable cross-session knowledge layer behind it.
+- `AGENTS.md` is the entry point for agent context; read it first, then use the `memory-project` skill to consult the root `../memory/` folder for durable project knowledge.
+- Write reusable insights, decisions, learnings, and analysis outputs into the repo root `../memory/` PARA structure instead of leaving them only in chat.
+- Before repeating prior analysis or rediscovering project context, use the `memory-project` skill to search and read relevant notes from `../memory/`.
+- Use `../memory/Resources/` for reusable reference knowledge (stack, branding, IDs), `../memory/Projects/` for active initiative notes, `../memory/Areas/` for ongoing responsibilities (deployment, SEO, dev-environment, workflow), and `../memory/Archives/` for inactive material.
+- `CONTINUITY.md` remains the in-session ledger (compaction-safe); root `../memory/` is the durable cross-session knowledge layer behind it.
 
 ## Commit & Pull Request Guidelines
 Follow the existing Conventional Commit style (`feat:`, optional scopes like `feat(charting): ...`) to keep `git log` navigable. Each PR should include: a concise summary, linked issue/task IDs when available, screenshots or GIFs for UI changes, reproduction steps for bug fixes, and a checklist of tested scenarios (keyboard shortcuts, multi-node selection, import limits). Favor small, reviewable commits and ensure lint/build succeed before requesting review.

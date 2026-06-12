@@ -22,6 +22,15 @@ AGENT_DAILY_LIMIT = "50"
 # binding = "AGENT_QUOTA"
 # id = "REPLACE_ME"
 
+# Durable Object relaying MCP tool calls to a live SheetCanvas browser tab.
+[[durable_objects.bindings]]
+name = "CANVAS_BRIDGE"
+class_name = "CanvasBridge"
+
+[[migrations]]
+tag = "v1-canvas-bridge"
+new_classes = ["CanvasBridge"]
+
 [[d1_databases]]
 binding = "DB"
 database_name = "flexsheet"

@@ -15,3 +15,11 @@ CREATE TABLE IF NOT EXISTS connectors (
 );
 
 CREATE INDEX IF NOT EXISTS idx_connectors_type ON connectors(type);
+
+-- Persists one MCP token per browser client so the token survives localStorage
+-- being cleared. client_id is a UUID generated once by the browser.
+CREATE TABLE IF NOT EXISTS mcp_tokens (
+  client_id TEXT PRIMARY KEY,
+  token     TEXT NOT NULL UNIQUE,
+  created_at_ms INTEGER NOT NULL
+);

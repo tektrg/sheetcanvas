@@ -1,5 +1,6 @@
 export type Env = {
   DB: D1Database;
+  CANVAS_BRIDGE: DurableObjectNamespace;
   ALLOWED_ORIGINS?: string;
   DEFAULT_TIMEOUT_MS?: string;
   MAX_ROWS?: string;

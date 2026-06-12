@@ -39,6 +39,9 @@ import {
   googleSheetsQuerySchema
 } from "./validation";
 import { handleAgentRequest, handleQuotaRead } from "./agent/route";
+import { mcpApp } from "./mcp/route";
+
+export { CanvasBridge } from "./mcp/bridge";
 
 function parseAllowedOrigins(origins: string | undefined) {
   const v = (origins ?? "").trim();
@@ -80,16 +83,27 @@ app.use(
 
 app.options("*", (c) => c.body(null, 204));
 
+app.route("/", mcpApp);
+
 app.onError((err, c) => {
   const { status, body } = toJsonError(err);
   if (status >= 500) {
     const url = new URL(c.req.url);
-    console.error("[flexsheet-backend] unhandled error", {
-      method: c.req.method,
-      path: url.pathname,
-      status,
-      error: err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : err
-    });
+    if (err instanceof HttpError) {
+      console.info("[flexsheet-backend] handled error", {
+        method: c.req.method,
+        path: url.pathname,
+        status,
+        error: { code: err.code, message: err.message }
+      });
+    } else {
+      console.error("[flexsheet-backend] unhandled error", {
+        method: c.req.method,
+        path: url.pathname,
+        status,
+        error: err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : err
+      });
+    }
   }
   return c.json(body, status);
 });

@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { UIMessage } from 'ai';
-import { Sparkles, X, Plus, ArrowUp, StopCircle, ChevronDown, ChevronRight, FileSpreadsheet } from 'lucide-react';
+import { Sparkles, X, Plus, ArrowUp, StopCircle, ChevronDown, ChevronRight, FileSpreadsheet, AlertCircle, Plug } from 'lucide-react';
 import type { SelectionContext } from '../../types';
 import { useAgentSession } from '../agent/useAgentSession';
 import { useConversationManager } from '../agent/useConversationManager';
 import { useStore } from '../../store';
+import { getToolErrorMessages } from './agentChatErrors';
 
 function selectionKey(sel: SelectionContext): string {
   if (!sel.sheetId) return '';
@@ -43,6 +44,10 @@ interface Props {
   onClose: () => void;
   getSelection: () => SelectionContext;
   darkMode?: boolean;
+  /** Opens the MCP "Connect an agent" dialog. */
+  onOpenConnectAgent?: () => void;
+  /** MCP bridge status — tints the plug icon (teal connected, amber replaced). */
+  mcpStatus?: 'disconnected' | 'connecting' | 'connected' | 'replaced';
 }
 
 const teal = (darkMode?: boolean) => (darkMode ? '#14b8a6' : '#0d9488');
@@ -125,6 +130,7 @@ const ToolCallCard: React.FC<{ part: any; darkMode?: boolean }> = ({ part, darkM
 
 const MessageView: React.FC<{ msg: UIMessage; darkMode?: boolean }> = ({ msg, darkMode }) => {
   const isUser = msg.role === 'user';
+  const toolErrorMessages = isUser ? [] : getToolErrorMessages(msg);
   return (
     <div
       style={{
@@ -163,6 +169,32 @@ const MessageView: React.FC<{ msg: UIMessage; darkMode?: boolean }> = ({ msg, da
           color: darkMode ? '#e2e8f0' : '#0f172a',
         }}
       >
+        {toolErrorMessages.length > 0 && (
+          <div
+            role="alert"
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 7,
+              marginBottom: 8,
+              padding: '8px 9px',
+              borderRadius: 8,
+              background: 'rgba(220,38,38,0.08)',
+              border: '1px solid rgba(220,38,38,0.25)',
+              color: darkMode ? '#fca5a5' : '#991b1b',
+              fontSize: 12,
+              lineHeight: 1.45,
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+            }}
+          >
+            <AlertCircle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+            <div>
+              <div style={{ fontWeight: 700, marginBottom: 2 }}>Action failed</div>
+              {toolErrorMessages.join('\n')}
+            </div>
+          </div>
+        )}
         {(msg.parts ?? []).map((part: any, i: number) => {
           if (part.type === 'text') {
             return (
@@ -200,7 +232,7 @@ function isPrivateBetaGated(): boolean {
   }
 }
 
-export const AgentChatPanel: React.FC<Props> = ({ open, onClose, getSelection, darkMode }) => {
+export const AgentChatPanel: React.FC<Props> = ({ open, onClose, getSelection, darkMode, onOpenConnectAgent, mcpStatus }) => {
   const [input, setInput] = useState('');
   const [dismissedKey, setDismissedKey] = useState<string | null>(null);
   const [isFocused, setIsFocused] = useState(false);
@@ -444,6 +476,29 @@ export const AgentChatPanel: React.FC<Props> = ({ open, onClose, getSelection, d
           {convName !== 'New chat' ? convName : 'Copilot'}
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 2, marginLeft: 'auto' }}>
+          {onOpenConnectAgent && (
+            <button
+              onClick={onOpenConnectAgent}
+              style={{
+                all: 'unset',
+                cursor: 'pointer',
+                padding: 6,
+                color:
+                  mcpStatus === 'connected' ? tealColor : mcpStatus === 'replaced' ? '#f59e0b' : textMuted,
+                display: 'flex',
+                alignItems: 'center',
+                borderRadius: 6,
+              }}
+              aria-label="Connect an agent"
+              title={
+                mcpStatus === 'replaced'
+                  ? 'Agent connection taken over by another tab — click to reclaim'
+                  : 'Connect an agent (MCP)'
+              }
+            >
+              <Plug size={16} />
+            </button>
+          )}
           <button
             onClick={startNew}
             disabled={running}

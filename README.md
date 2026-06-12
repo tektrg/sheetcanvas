@@ -19,6 +19,38 @@ View your app in AI Studio: https://ai.studio/apps/drive/1Ewxai_OCxKUTGbwct4xjOs
 3. Run the app:
    `npm run dev`
 
+## Connect external agents (MCP Bridge)
+
+Expose all 16 canvas tools to Claude Code or any MCP-compatible agent while the frontend stays a static site. Tools still execute in your browser tab; the Cloudflare Worker backend relays MCP calls over WebSocket.
+
+**Quick start:**
+
+1. Start the backend (see `backend/README.md`) on port 8787.
+2. Open the app at `http://localhost:5173`.
+3. Open the Copilot panel → click the **plug icon (⏚)** in the panel header.
+4. Click **"Generate MCP server URL"** — mints a bearer token and starts the relay.
+5. Copy the `claude mcp add` command shown in the dialog and run it:
+
+```bash
+claude mcp add sheetcanvas --transport http http://localhost:8787/mcp/<your-token>
+```
+
+6. In Claude Code, ask it to work with your canvas:
+
+```
+> list the sheets in my canvas
+> set cell A1 to "Revenue" and B1 to 42
+> run SELECT * FROM Sheet1 WHERE B > 10
+```
+
+**Key constraints:**
+- The tab must stay open while agents are working — tools execute in the browser.
+- One tab per token: opening the same token in a second tab takes over the relay; the first shows "taken over" in amber. Toggle the checkbox in the dialog to reclaim.
+- The MCP URL is a bearer capability — treat it like a password. Regenerate at any time from the dialog to revoke the old one.
+- For production, the token URL bakes in the backend origin. Regenerate after switching between local and prod backends.
+
+For deployment: run `npx wrangler deploy` from `backend/` to ship the Durable Object migration before the first production use.
+
 ## ClickHouse connected sheets (backend proxy)
 
 The ClickHouse connector uses a Cloudflare Worker backend (under `backend/`) so the browser never connects to ClickHouse directly and never stores passwords.

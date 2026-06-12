@@ -22,6 +22,8 @@ import { useChartPalette } from './hooks/useChartPalette';
 import { getChartPalette } from './utils/chartColorSchemes';
 import AgentChatPanel from './src/components/AgentChatPanel';
 import { AgentEvalBridge } from './src/agent/AgentEvalBridge';
+import { useMcpBridge } from './src/agent/useMcpBridge';
+import { ConnectAgentDialog } from './src/components/ConnectAgentDialog';
 import { loadGoogleSheetsAuth } from './utils/googleAnalyticsAuth';
 import { Sparkles } from 'lucide-react';
 import { getVisibleCanvasIds } from './utils/canvasVirtualization';
@@ -93,6 +95,8 @@ const App: React.FC = () => {
   const activeSelectionRef = useRef(activeSelection);
   useEffect(() => { activeSelectionRef.current = activeSelection; }, [activeSelection]);
   const [agentPanelOpen, setAgentPanelOpen] = useState(false);
+  const [connectAgentOpen, setConnectAgentOpen] = useState(false);
+  const mcpBridge = useMcpBridge({ getSelection: () => activeSelectionRef.current });
   const isLocalAgentEvalHost =
     typeof window !== 'undefined' &&
     ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
@@ -1131,7 +1135,12 @@ const App: React.FC = () => {
             onClose={() => setAgentPanelOpen(false)}
             getSelection={() => activeSelectionRef.current}
             darkMode={darkMode}
+            onOpenConnectAgent={() => setConnectAgentOpen(true)}
+            mcpStatus={mcpBridge.connectionStatus}
         />
+        {connectAgentOpen && (
+            <ConnectAgentDialog bridge={mcpBridge} onClose={() => setConnectAgentOpen(false)} />
+        )}
         <AgentEvalBridge
             enabled={agentEvalEnabled}
             getSelection={() => activeSelectionRef.current}

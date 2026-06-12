@@ -7,6 +7,7 @@ This backend provides a secure proxy layer for ClickHouse connectors so the brow
 - Cloudflare Workers (Fetch API runtime)
 - Wrangler (dev + deploy)
 - D1 (stores connector metadata + encrypted passwords)
+- Durable Objects (`CanvasBridge`) — one instance per MCP token; relays tool calls from MCP clients to the live browser tab
 - WebCrypto (AES-GCM) for encryption at rest
 
 ## Setup
@@ -77,8 +78,15 @@ If you change the frontend dev server port, update `ALLOWED_ORIGINS` in `backend
 
 ## API
 
+**Connectors**
 - `GET /health`
 - `GET /api/connectors`
 - `POST /api/connectors/clickhouse/test`
 - `POST /api/connectors/clickhouse`
 - `POST /api/query/clickhouse`
+
+**MCP Bridge** (expose canvas tools to external agents)
+- `POST /api/mcp/token` — mint a bearer token (returns `{token, mcpUrl, bridgeWsUrl}`); requires `Authorization: Bearer <API_BEARER_TOKEN>` when auth is enabled
+- `GET /api/mcp/bridge/:token` — WebSocket upgrade endpoint for the browser tab relay
+- `GET /api/mcp/status/:token` — check whether a tab is currently connected
+- `POST /mcp/:token` — MCP streamable-HTTP endpoint (JSON, stateless); GET/DELETE → 405
