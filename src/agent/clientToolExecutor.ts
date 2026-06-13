@@ -11,13 +11,22 @@ import {
 } from '../../constants';
 import { accumulateChartFocus, accumulateSheetFocus } from './agentFocusAccumulator';
 import { runSheetQuery, sheetTableSchema } from './alasqlAdapter';
-import { requestJson } from '../../utils/backendApi';
 import { clickhouseResultToMatrix, queryClickhouse, getClickhouseSchema, describeClickhouseTable } from '../../utils/clickhouseBackend';
-import { googleAnalyticsResultToMatrix, queryGoogleAnalytics, getGoogleAnalyticsMetadata, listGoogleAnalyticsPropertiesPage, type GoogleAnalyticsMetadataItem } from '../../utils/googleAnalyticsBackend';
+import { googleAnalyticsResultToMatrix, queryGoogleAnalytics, getGoogleAnalyticsMetadata, type GoogleAnalyticsMetadataItem } from '../../utils/googleAnalyticsBackend';
 import { DEFAULT_GOOGLE_SHEETS_RANGE, googleSheetsResultToMatrix, queryGoogleSheets } from '../../utils/googleSheetsBackend';
 import { applyMatrixToSheet } from '../../utils/connectorSheet';
 import { getChartPalette, readStoredChartColorSettings } from '../../utils/chartColorSchemes';
+import { buildChartSeriesDisplayNames } from '../../utils/chartDisplay';
 import { getColumnIdForIndex, getColumnIdSpan, getSheetDataBounds } from './sheetBounds';
+import { buildSelectedCanvasSummary } from './selectedCanvasSummary';
+import {
+  createGaTrendBySourceSheet,
+  enrichConnectionsForMcp,
+  getGaTopHostnames,
+  loadConnections,
+  summarizeGaReportDiagnostics,
+  type BasicConnection,
+} from './gaMcpTools';
 
 const generateId = () => Math.random().toString(36).slice(2, 11);
 
@@ -153,9 +162,13 @@ function summarizeSheet(sheet: SheetData) {
       ? {
           type: sheet.connectorConfig.type,
           name: sheet.connectorConfig.name,
+          connectionId: sheet.connectorConfig.connectionId ?? null,
+          query: sheet.connectorConfig.query ?? null,
+          params: sheet.connectorConfig.params ?? null,
           derivation: sheet.connectorConfig.derivation ?? null,
           lastError: sheet.connectorConfig.lastError ?? null,
           lastRefreshedAt: sheet.connectorConfig.lastRefreshedAt ?? null,
+          truncated: sheet.connectorConfig.truncated ?? false,
         }
       : null,
   };
@@ -194,8 +207,13 @@ function columnExistsInBounds(letter: string, columnCount: number): boolean {
 type CreateChartInput = {
   sheetId: string;
   type: ChartType;
+  mode?: ChartConfig['mode'];
   labelColumn: string;
   dataColumns: string[];
+  groupCol?: string;
+  seriesGroupCol?: string;
+  valueCol?: string;
+  operation?: PivotConfig['values'][number]['operation'];
   title?: string;
   timeRange?: string;
   timeGranularity?: ChartConfig['timeGranularity'];
@@ -277,12 +295,14 @@ function summarizeChartLabels(sheet: SheetData, labelColumn: string, rowCount: n
 }
 
 function validateChartAnalysisIntent(sheet: SheetData, input: CreateChartInput, rowCount: number): ToolResult | null {
-  const labelSummary = summarizeChartLabels(sheet, input.labelColumn, rowCount);
+  const mode = input.mode ?? 'metrics';
+  const labelColumn = mode === 'group' ? (input.groupCol ?? input.labelColumn) : input.labelColumn;
+  const labelSummary = summarizeChartLabels(sheet, labelColumn, rowCount);
   const missingParameters: string[] = [];
   const guidance: string[] = [];
   const suggestedNextTools: string[] = [];
 
-  if (labelSummary.isDateLike) {
+  if (mode === 'metrics' && labelSummary.isDateLike) {
     if (!input.timeRange) missingParameters.push('timeRange');
     if (!input.timeGranularity) missingParameters.push('timeGranularity');
     if (missingParameters.length > 0) {
@@ -294,14 +314,15 @@ function validateChartAnalysisIntent(sheet: SheetData, input: CreateChartInput, 
   }
 
   const duplicateLabelsNeedAggregation =
+    mode === 'metrics' &&
     labelSummary.duplicateLabels.length > 0 &&
     (labelSummary.isDateLike || input.type === 'line' || input.type === 'area' || input.type === 'scatter');
 
   if (duplicateLabelsNeedAggregation && !input.allowDuplicateLabels) {
     guidance.push(
-      'The label column has repeated labels. For a trustworthy visualization, create a persistent pivot/summary at the requested chart grain, then chart that output.',
+      'The label column has repeated labels. For a trustworthy visualization, use chart group mode for a clean visual aggregate, or create a persistent pivot/summary when the user needs an inspectable analytical trail.',
     );
-    suggestedNextTools.push('createPivot');
+    suggestedNextTools.push('createChart', 'createPivot');
   }
 
   if (missingParameters.length > 0 || (duplicateLabelsNeedAggregation && !input.allowDuplicateLabels)) {
@@ -402,7 +423,7 @@ export async function executeClientTool(
 
       case 'getSelection': {
         const sel = resolver.getSelection();
-        return { ok: true, selection: sel };
+        return { ok: true, selection: sel, selectedCanvas: buildSelectedCanvasSummary(store) };
       }
 
       case 'getRange': {
@@ -425,8 +446,18 @@ export async function executeClientTool(
         const sheet = store.sheets[input.sheetId];
         if (!sheet) return { ok: false, error: `Unknown sheetId: ${input.sheetId}` };
         const schema = sheetTableSchema(sheet);
-        const result = runSheetQuery(sheet, input.sql, input.limit ?? 200);
-        return { ok: true, schema, ...result };
+        try {
+          const result = runSheetQuery(sheet, input.sql, input.limit ?? 200);
+          return { ok: true, schema, ...result };
+        } catch (err) {
+          return {
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+            schema,
+            sqlGuidance:
+              'Use table "t" and the exact schema.sqlName values returned here; header-derived names may be compacted (for example hostname or sessionsource), not snake_case.',
+          };
+        }
       }
 
       case 'setCells': {
@@ -522,6 +553,10 @@ export async function executeClientTool(
         const sheet = store.sheets[input.sheetId];
         if (!sheet) return { ok: false, error: `Unknown sheetId: ${input.sheetId}` };
         const chartInput = input as CreateChartInput;
+        const chartMode = chartInput.mode ?? 'metrics';
+        const groupCol = chartInput.groupCol ?? chartInput.labelColumn;
+        const valueCol = chartInput.valueCol ?? chartInput.dataColumns[0];
+        const operation = chartInput.operation ?? chartInput.aggregation ?? 'SUM';
         const bounds = getSheetDataBounds(sheet);
         if (!columnExistsInBounds(chartInput.labelColumn, bounds.width)) {
           return { ok: false, error: `labelColumn ${chartInput.labelColumn} not in sheet` };
@@ -531,24 +566,51 @@ export async function executeClientTool(
             return { ok: false, error: `dataColumn ${dc} not in sheet` };
           }
         }
+        if (chartMode === 'group') {
+          if (!columnExistsInBounds(groupCol, bounds.width)) {
+            return { ok: false, error: `groupCol ${groupCol} not in sheet` };
+          }
+          if (!columnExistsInBounds(valueCol, bounds.width)) {
+            return { ok: false, error: `valueCol ${valueCol} not in sheet` };
+          }
+          if (chartInput.seriesGroupCol && !columnExistsInBounds(chartInput.seriesGroupCol, bounds.width)) {
+            return { ok: false, error: `seriesGroupCol ${chartInput.seriesGroupCol} not in sheet` };
+          }
+        }
         const validationError = validateChartAnalysisIntent(sheet, chartInput, bounds.height);
         if (validationError) return validationError;
 
-        const labelSummary = summarizeChartLabels(sheet, chartInput.labelColumn, bounds.height);
+        const labelSummary = summarizeChartLabels(sheet, chartMode === 'group' ? groupCol : chartInput.labelColumn, bounds.height);
         const colorSettings = readStoredChartColorSettings();
         const defaultPalette = getChartPalette(colorSettings, false);
+        const seriesNameInputs =
+          chartMode === 'group' && !chartInput.seriesGroupCol
+            ? [{
+                key: 'value_0',
+                label: `${operation} of ${getCellDisplayValue(sheet.cells[`${valueCol}1`]) ?? valueCol}`,
+              }]
+            : chartInput.dataColumns.map(columnId => ({
+                key: columnId,
+                label: getCellDisplayValue(sheet.cells[`${columnId}1`]) ?? columnId,
+              }));
+        const seriesDisplayNames = buildChartSeriesDisplayNames(seriesNameInputs);
         const config: ChartConfig = {
           type: chartInput.type as ChartType,
-          mode: 'metrics',
+          mode: chartMode,
           labelColumn: chartInput.labelColumn,
           dataColumns: chartInput.dataColumns,
+          groupCol: chartMode === 'group' ? groupCol : undefined,
+          seriesGroupCol: chartMode === 'group' ? chartInput.seriesGroupCol : undefined,
+          valueCol: chartMode === 'group' ? valueCol : undefined,
+          operation: chartMode === 'group' ? operation : undefined,
           timeGranularity: chartInput.timeGranularity,
           color: defaultPalette[0],
           colorScheme: 'workspace',
           colorOverride: false,
           highlightIndex: -1,
           animation: true,
-          showLabels: true,
+          showLabels: chartInput.dataColumns.length === 1,
+          seriesDisplayNames,
         };
         const chart: ChartData = {
           id: generateId(),
@@ -577,11 +639,30 @@ export async function executeClientTool(
               columnId,
               header: sheet.cells[`${columnId}1`]?.value ?? sheet.cells[`${columnId}1`]?.raw ?? null,
             })),
+            groupCol: chartMode === 'group'
+              ? {
+                  columnId: groupCol,
+                  header: sheet.cells[`${groupCol}1`]?.value ?? sheet.cells[`${groupCol}1`]?.raw ?? null,
+                }
+              : null,
+            seriesGroupCol: chartMode === 'group' && chartInput.seriesGroupCol
+              ? {
+                  columnId: chartInput.seriesGroupCol,
+                  header: sheet.cells[`${chartInput.seriesGroupCol}1`]?.value ?? sheet.cells[`${chartInput.seriesGroupCol}1`]?.raw ?? null,
+                }
+              : null,
+            valueCol: chartMode === 'group'
+              ? {
+                  columnId: valueCol,
+                  header: sheet.cells[`${valueCol}1`]?.value ?? sheet.cells[`${valueCol}1`]?.raw ?? null,
+                }
+              : null,
           },
           analysisIntent: {
+            chartMode,
             timeRange: chartInput.timeRange ?? null,
             timeGranularity: chartInput.timeGranularity ?? null,
-            aggregation: chartInput.aggregation ?? null,
+            aggregation: chartMode === 'group' ? operation : chartInput.aggregation ?? null,
             sourceGrain: chartInput.sourceGrain ?? null,
             analysisNotes: chartInput.analysisNotes ?? null,
           },
@@ -691,19 +772,16 @@ export async function executeClientTool(
       }
 
       case 'listConnections': {
-        const res = await requestJson<{ connectors: Array<{ id: string; type: string; name: string }> }>('/api/connectors');
-        const connections = (res.connectors || []).map((c) => ({ connectionId: c.id, type: c.type, name: c.name }));
-        store.setConnections(connections);
-        return { ok: true, connections };
+        const basicConnections = await loadConnections(store);
+        const connections = await enrichConnectionsForMcp(store, basicConnections);
+        return { ok: true, connections, selectedCanvas: buildSelectedCanvasSummary(store) };
       }
 
       case 'listConnectionProperties': {
         const { connectionId, pageSize, pageToken } = input as { connectionId: string; pageSize?: number; pageToken?: string };
         let connections = store.connections;
         if (!connections.length) {
-          const res = await requestJson<{ connectors: Array<{ id: string; type: string; name: string }> }>('/api/connectors');
-          connections = (res.connectors || []).map((c) => ({ connectionId: c.id, type: c.type, name: c.name }));
-          store.setConnections(connections);
+          connections = await loadConnections(store);
         }
         const conn = connections.find((c) => c.connectionId === connectionId);
         if (!conn) return { ok: false, error: 'Connection not found: ' + connectionId };
@@ -736,9 +814,7 @@ export async function executeClientTool(
         };
         let connections = store.connections;
         if (!connections.length) {
-          const res = await requestJson<{ connectors: Array<{ id: string; type: string; name: string }> }>('/api/connectors');
-          connections = (res.connectors || []).map((c) => ({ connectionId: c.id, type: c.type, name: c.name }));
-          store.setConnections(connections);
+          connections = await loadConnections(store);
         }
         const conn = connections.find((c) => c.connectionId === connectionId);
         if (!conn) return { ok: false, error: 'Connection not found: ' + connectionId };
@@ -838,9 +914,22 @@ export async function executeClientTool(
           return { ok: false, error: 'Unsupported connection type: ' + connType };
         }
         if (matrix.length < 2) {
+          const queryDiagnostics =
+            connType === 'google-analytics'
+              ? summarizeGaReportDiagnostics({
+                  propertyId: propertyId!,
+                  report: report as Record<string, unknown> | undefined,
+                  topHostnames: await getGaTopHostnames({
+                    connectionId,
+                    propertyId: propertyId!,
+                    report: report as Record<string, unknown> | undefined,
+                  }),
+                })
+              : null;
           return {
             ok: false,
             error: 'Query returned no data rows. No sheet or chart was created; explain the empty result and stop.',
+            queryDiagnostics,
           };
         }
         const applied = applyMatrixToSheet(matrix);
@@ -901,6 +990,10 @@ export async function executeClientTool(
           derivation,
           truncated: applied.truncated,
         };
+      }
+
+      case 'createGaTrendBySource': {
+        return createGaTrendBySourceSheet({ input, store, generateId });
       }
 
       default:

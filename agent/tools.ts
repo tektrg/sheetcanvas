@@ -129,7 +129,8 @@ export const toolDefs = {
   },
 
   getSelection: {
-    description: "Return what the user currently has selected (sheetId, cellId, range). Empty if nothing is selected.",
+    description:
+      'Return what the user currently has selected. Includes the active sheet cell/range selection plus selectedCanvas.items for whole selected sheets, charts, and notes. Use first for requests like "this data", "selected chart", "current sheet", or "what I selected" before deciding which sheet/chart to inspect or mutate.',
     inputSchema: z.object({}),
   },
 
@@ -140,7 +141,7 @@ export const toolDefs = {
 
   querySheet: {
     description:
-      'Run a read-only SQL SELECT against a sheet. The sheet is exposed as table "t" with columns named by header (sanitized to snake_case); use the returned schema to map user-mentioned column letters such as AU or BB to schema.sqlName before querying. Use this to explore, validate, filter, or preview aggregates before writing. Results are temporary and cannot be charted directly; when the user wants an aggregated chart from an existing sheet, prefer creating a persistent summary with createPivot and then call createChart on that pivot. Only SELECT is allowed.',
+      'Run a read-only SQL SELECT against a sheet. The sheet is exposed as table "t" with columns named exactly as returned in schema.sqlName; always inspect the returned schema because names are sanitized from headers and may be compact like hostname or sessionsource. Use this to explore, validate, filter, or preview aggregates before writing. Results are temporary and cannot be charted directly; when the user wants an aggregated chart from an existing sheet, prefer creating a persistent summary with createPivot and then call createChart on that pivot. Only SELECT is allowed.',
     inputSchema: z.object({
       sheetId: z.string(),
       sql: z.string().min(6, 'SQL too short'),
@@ -187,12 +188,32 @@ export const toolDefs = {
 
   createChart: {
     description:
-      'Create a chart from a persistent source sheet. labelColumn is the X-axis column letter; dataColumns is the array of Y series column letters. If the chart needs grouped, counted, summed, or conditional series from row-level sheet data, prefer creating a persistent aggregation sheet, usually with createPivot, then chart the pivot output instead of temporary querySheet results. For time-series charts, provide the intended timeRange and timeGranularity; if the user did not specify them and no safe default was requested, ask before charting. Duplicate labels on line/area/scatter charts usually mean the source grain is too detailed; create a pivot/summary first unless the user explicitly wants multiple points per label.',
+      'Create a chart from a persistent source sheet. For the cleanest visual answer to a simple grouped question, use mode:"group" with groupCol, valueCol, optional seriesGroupCol, and operation so the chart aggregates directly like the chart button. For complex multi-step logic, reusable summaries, conditional metrics, or cases where the user needs an inspectable analytical trail, createPivot first and chart the pivot. In metrics mode, labelColumn is the X-axis column and dataColumns are Y series columns. For time-series charts, provide the intended timeRange and timeGranularity when needed; if the user did not specify them and no safe default was requested, ask before charting. Duplicate labels on line/area/scatter metrics charts usually mean the source grain is too detailed; use group mode, create a pivot/summary, or explicitly allow duplicate labels. Prefer chart inputs whose series headers are human-readable; the renderer will compact noisy source names, but the first view should optimize for immediate insight over raw implementation labels.',
     inputSchema: z.object({
       sheetId: z.string(),
       type: ChartTypeEnum,
+      mode: z
+        .enum(['metrics', 'group'])
+        .optional()
+        .describe('Use group for chart-only aggregation over row-level data; metrics charts already-aggregated columns directly.'),
       labelColumn: z.string().regex(/^[A-Z]+$/),
       dataColumns: z.array(z.string().regex(/^[A-Z]+$/)).min(1),
+      groupCol: z
+        .string()
+        .regex(/^[A-Z]+$/)
+        .optional()
+        .describe('For mode:"group", the X-axis grouping column. Usually the same as labelColumn for compatibility.'),
+      seriesGroupCol: z
+        .string()
+        .regex(/^[A-Z]+$/)
+        .optional()
+        .describe('For mode:"group", optional column that splits the aggregate into series.'),
+      valueCol: z
+        .string()
+        .regex(/^[A-Z]+$/)
+        .optional()
+        .describe('For mode:"group", the numeric value column to aggregate. Usually the first dataColumns entry for compatibility.'),
+      operation: PivotOpEnum.optional().describe('For mode:"group", how to aggregate valueCol values in the chart.'),
       title: z.string().optional(),
       timeRange: z
         .string()
@@ -201,15 +222,15 @@ export const toolDefs = {
         .optional()
         .describe('Required for time-series charts. Examples: "2026-05-01 to 2026-06-11", "last 30 days", or "full available range".'),
       timeGranularity: TimeGranularityEnum.optional().describe('Required for time-series charts when the label column is date-like.'),
-      aggregation: PivotOpEnum.optional().describe('The analysis aggregation represented by this chart, such as SUM or COUNT.'),
+      aggregation: PivotOpEnum.optional().describe('The analysis aggregation represented by this chart, such as SUM or COUNT. Use operation for chart-only group mode.'),
       sourceGrain: z
         .enum(['raw_rows', 'already_aggregated', 'pivot_summary', 'unknown'])
         .optional()
-        .describe('Declare whether the source sheet already matches the chart grain. Use createPivot first for chartable aggregates.'),
+        .describe('Declare whether the source sheet already matches the chart grain, or raw_rows when mode:"group" will aggregate directly.'),
       allowDuplicateLabels: z
         .boolean()
         .optional()
-        .describe('Only set true when the user explicitly wants multiple plotted rows with the same label. Otherwise create a pivot/summary first.'),
+        .describe('Only set true when the user explicitly wants multiple plotted rows with the same label in metrics mode. Otherwise use group mode or create a pivot/summary first.'),
       analysisNotes: z
         .string()
         .min(1)
@@ -263,7 +284,7 @@ export const toolDefs = {
   },
   listConnections: {
     description:
-      'List all configured data connections (ClickHouse, Google Analytics, Google Sheets). Returns connectionId, type, name. Call first before querying external data.',
+      'List all configured data connections (ClickHouse, Google Analytics, Google Sheets). Returns connectionId, type, name, duplicate-name hints, best-effort health, GA property hints, sheets using each connection, plus selectedCanvas context. Call first before querying external data.',
     inputSchema: z.object({}),
   },
 
@@ -304,6 +325,22 @@ export const toolDefs = {
       range: z.string().min(1).optional(),
       derivation: z.string().min(1),
       title: z.string().optional(),
+    }),
+  },
+
+  createGaTrendBySource: {
+    description:
+      'Create a Google Analytics daily trend-by-source workflow in one step: queries date + hostName + source + medium + metric, creates the raw connected sheet, then creates a grouped sparkline trend table by source. Requires a schemaToken from describeConnection for the same GA connection/property. If the report returns no rows, no sheet is created and the response includes diagnostics such as propertyId, date range, host filter, and best-effort top hostnames.',
+    inputSchema: z.object({
+      connectionId: z.string().min(1),
+      schemaToken: z.string().min(8),
+      propertyId: z.string().min(1),
+      startDate: z.string().min(1).max(40).describe('GA date such as "30daysAgo" or "2026-05-14".'),
+      endDate: z.string().min(1).max(40).describe('GA date such as "today" or "2026-06-13".'),
+      hostName: z.string().min(1).max(160).optional(),
+      sourceDimension: z.enum(['sessionSource', 'firstUserSource']).optional(),
+      metric: z.enum(['sessions', 'activeUsers', 'totalUsers', 'newUsers', 'screenPageViews', 'eventCount']).optional(),
+      title: z.string().min(1).max(120).optional(),
     }),
   },
 } as const;

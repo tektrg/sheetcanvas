@@ -26,6 +26,9 @@ describe('sheet inspection tool descriptions', () => {
     expect(toolDefs.describeSheet.description).toContain('columnIds');
     expect(toolDefs.describeSheet.description).toContain('requestedColumns');
     expect(toolDefs.querySheet.description).toContain('schema.sqlName');
+    expect(toolDefs.querySheet.description).toContain('hostname');
+    expect(toolDefs.listConnections.description).toContain('health');
+    expect(toolDefs.listConnections.description).toContain('property hints');
   });
 
   it('lets describeSheet target user-mentioned column letters directly', () => {
@@ -36,10 +39,27 @@ describe('sheet inspection tool descriptions', () => {
 
     expect(result.success).toBe(true);
   });
+
+  it('supports a high-level GA trend-by-source workflow', () => {
+    expect(toolDefs.createGaTrendBySource.description).toContain('daily trend-by-source');
+    expect(toolDefs.createGaTrendBySource.description).toContain('diagnostics');
+
+    const result = toolDefs.createGaTrendBySource.inputSchema.safeParse({
+      connectionId: 'ga-conn-1',
+      schemaToken: 'schema_abc123',
+      propertyId: '123456789',
+      startDate: '30daysAgo',
+      endDate: 'today',
+      hostName: 'theindie.app',
+      metric: 'sessions',
+    });
+
+    expect(result.success).toBe(true);
+  });
 });
 
 describe('aggregation chart workflow guidance', () => {
-  it('steers temporary aggregate previews toward persistent pivots before charting', () => {
+  it('documents chart-only aggregation for simple visuals and pivots for inspectable trails', () => {
     expect(toolDefs.querySheet.description).toContain('temporary');
     expect(toolDefs.querySheet.description).toContain('cannot be charted directly');
     expect(toolDefs.querySheet.description).toContain('createPivot');
@@ -49,7 +69,9 @@ describe('aggregation chart workflow guidance', () => {
     expect(toolDefs.createPivot.description).toContain('call createChart on the pivot');
 
     expect(toolDefs.createChart.description).toContain('persistent source sheet');
-    expect(toolDefs.createChart.description).toContain('prefer creating a persistent aggregation sheet');
+    expect(toolDefs.createChart.description).toContain('cleanest visual answer');
+    expect(toolDefs.createChart.description).toContain('mode:"group"');
+    expect(toolDefs.createChart.description).toContain('inspectable analytical trail');
     expect(toolDefs.createChart.description).toContain('timeRange');
     expect(toolDefs.createChart.description).toContain('timeGranularity');
     expect(toolDefs.createChart.description).toContain('Duplicate labels');
@@ -66,6 +88,24 @@ describe('aggregation chart workflow guidance', () => {
       aggregation: 'SUM',
       sourceGrain: 'pivot_summary',
       analysisNotes: 'Daily total revenue chart from a pivot summary.',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts chart-only group aggregation intent', () => {
+    const result = toolDefs.createChart.inputSchema.safeParse({
+      sheetId: 'ga-daily-source',
+      type: 'line',
+      mode: 'group',
+      labelColumn: 'A',
+      dataColumns: ['E'],
+      groupCol: 'A',
+      seriesGroupCol: 'C',
+      valueCol: 'E',
+      operation: 'SUM',
+      sourceGrain: 'raw_rows',
+      analysisNotes: 'Simple daily sessions by source can be aggregated directly in the chart.',
     });
 
     expect(result.success).toBe(true);
