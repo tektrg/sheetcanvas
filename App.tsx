@@ -20,6 +20,7 @@ import { Upload, Moon, Sun, Table, StickyNote, Undo2, Redo2, Grid3X3, BarChart3,
 import { useStore, AppState } from './store';
 import { useChartPalette } from './hooks/useChartPalette';
 import { getChartPalette } from './utils/chartColorSchemes';
+import { buildChartSeriesDisplayNames } from './utils/chartDisplay';
 import AgentChatPanel from './src/components/AgentChatPanel';
 import { AgentEvalBridge } from './src/agent/AgentEvalBridge';
 import { useMcpBridge } from './src/agent/useMcpBridge';
@@ -27,6 +28,8 @@ import { ConnectAgentDialog } from './src/components/ConnectAgentDialog';
 import { loadGoogleSheetsAuth } from './utils/googleAnalyticsAuth';
 import { Sparkles } from 'lucide-react';
 import { getVisibleCanvasIds } from './utils/canvasVirtualization';
+import { LineageOverlay } from './components/LineageOverlay';
+import { buildLineageLinks, hasLineageForNode } from './utils/lineage';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 const ONBOARDING_DISMISSED_KEY = 'sheetcanvas:onboarding-dismissed:v4';
@@ -112,11 +115,14 @@ const App: React.FC = () => {
   
   // Dragging State
   const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [draggingType, setDraggingType] = useState<'sheet' | 'chart' | 'note' | null>(null);
   const dragInitialPositions = useRef<Record<string, Position>>({});
+  const activeDraggingId = useRef<string | null>(null);
+  const dragStartMousePos = useRef<Position | null>(null);
+  const dragListenersAttached = useRef(false);
   
   // Selection Box State
   const [selectionBox, setSelectionBox] = useState<{ start: Position, current: Position } | null>(null);
+  const [lineageNodeIds, setLineageNodeIds] = useState<Set<string>>(() => new Set());
 
   const lastMousePos = useRef<Position>({ x: 0, y: 0 });
   const dragStartSnapshot = useRef<any>(null); // Simplified snapshot handling for drag
@@ -453,6 +459,12 @@ const App: React.FC = () => {
     const initialChartType = initialType || 'bar';
 
     const defaultPalette = getChartPalette(chartColorSettings, darkMode);
+    const seriesDisplayNames = buildChartSeriesDisplayNames([
+        {
+            key: valueColId,
+            label: headers.find(h => h.id === valueColId)?.label || valueColId
+        }
+    ]);
 
     const newChart: ChartData = {
         id: generateId(),
@@ -476,7 +488,8 @@ const App: React.FC = () => {
             colorOverride: false,
             highlightIndex: -1,
             animation: true,
-            showLabels: true
+            showLabels: true,
+            seriesDisplayNames
         },
         setupRequired: false
     };
@@ -597,72 +610,13 @@ const App: React.FC = () => {
     }
   };
 
-  const handleItemMouseDown = (e: React.MouseEvent, id: string, type: 'sheet' | 'chart' | 'note') => {
-    e.stopPropagation();
-    dragStartSnapshot.current = true;
-    
-    setDraggingId(id);
-    setDraggingType(type);
-    lastMousePos.current = { x: e.clientX, y: e.clientY };
-
-    const state = useStore.getState();
-    const isShift = e.shiftKey || e.ctrlKey || e.metaKey;
-    
-    // Selection logic
-    if (isShift) {
-        select([id], true);
-    } else {
-        if (!selectedIds.has(id)) {
-            select([id]);
-        }
-    }
-
-    // IMPORTANT: Capture initial positions for DIRECT DOM MANIPULATION
-    // This allows us to move elements without re-rendering React components
-    // We check state again because select() might have updated it
-    const updatedState = useStore.getState();
-    const currentSelected = updatedState.selectedIds;
-    const newDragPositions: Record<string, Position> = {};
-
-    currentSelected.forEach(selId => {
-        let pos: Position | null = null;
-        if (updatedState.sheets[selId]) pos = updatedState.sheets[selId].position;
-        else if (updatedState.charts[selId]) pos = updatedState.charts[selId].position;
-        else if (updatedState.notes[selId]) pos = updatedState.notes[selId].position;
-        
-        if (pos) {
-            newDragPositions[selId] = { ...pos };
-        }
-    });
-    
-    // Ensure the clicked item is tracked even if something went wrong with selection sync
-    if (!newDragPositions[id]) {
-         let pos: Position | null = null;
-         if (type === 'sheet') pos = updatedState.sheets[id].position;
-         else if (type === 'chart') pos = updatedState.charts[id].position;
-         else if (type === 'note') pos = updatedState.notes[id].position;
-         if (pos) newDragPositions[id] = { ...pos };
-    }
-
-    dragInitialPositions.current = newDragPositions;
-
-    // OPTIMIZATION: Set will-change once at start of drag
-    Object.keys(newDragPositions).forEach(key => {
-        const el = document.getElementById(`sheet-${key}`) || document.getElementById(`chart-${key}`) || document.getElementById(`note-${key}`);
-        if (el) el.style.willChange = 'left, top';
-    });
-  };
-
-  // Better Move Handler with Total Delta
-  const dragStartMousePos = useRef<Position | null>(null);
-
   const handleGlobalMouseMoveOptimized = useCallback((e: MouseEvent) => {
       if (selectionBox) {
           setSelectionBox(prev => prev ? ({ ...prev, current: { x: e.clientX, y: e.clientY } }) : null);
           return;
       }
 
-      if (draggingId && dragStartMousePos.current) {
+      if (activeDraggingId.current && dragStartMousePos.current) {
           const startPos = dragStartMousePos.current;
           const deltaX = (e.clientX - startPos.x) / transform.scale;
           const deltaY = (e.clientY - startPos.y) / transform.scale;
@@ -681,14 +635,7 @@ const App: React.FC = () => {
               }
           });
       }
-  }, [draggingId, selectionBox, transform.scale]);
-
-  // Hook up the refined handler
-  useEffect(() => {
-      if (draggingId) {
-          dragStartMousePos.current = { x: lastMousePos.current.x, y: lastMousePos.current.y };
-      }
-  }, [draggingId]);
+  }, [selectionBox, transform.scale]);
 
 
   const handleGlobalMouseUp = useCallback((e: MouseEvent) => {
@@ -734,7 +681,7 @@ const App: React.FC = () => {
     }
 
     // Commit Drag Changes
-    if (draggingId && dragStartMousePos.current) {
+    if (activeDraggingId.current && dragStartMousePos.current) {
         const deltaX = (e.clientX - dragStartMousePos.current.x) / transform.scale;
         const deltaY = (e.clientY - dragStartMousePos.current.y) / transform.scale;
 
@@ -769,14 +716,82 @@ const App: React.FC = () => {
     }
 
     setDraggingId(null);
-    setDraggingType(null);
+    activeDraggingId.current = null;
     dragStartSnapshot.current = null;
     dragStartMousePos.current = null;
     dragInitialPositions.current = {};
-  }, [draggingId, draggingType, selectionBox, transform, select, saveSnapshot, updateSheet, updateChart, updateNote]);
+    if (dragListenersAttached.current) {
+      window.removeEventListener('mousemove', handleGlobalMouseMoveOptimized);
+      window.removeEventListener('mouseup', handleGlobalMouseUp);
+      dragListenersAttached.current = false;
+    }
+  }, [selectionBox, transform, select, saveSnapshot, updateSheet, updateChart, updateNote, handleGlobalMouseMoveOptimized]);
+
+  const handleItemMouseDown = (e: React.MouseEvent, id: string, type: 'sheet' | 'chart' | 'note') => {
+    e.stopPropagation();
+    dragStartSnapshot.current = true;
+
+    const startMousePos = { x: e.clientX, y: e.clientY };
+    setDraggingId(id);
+    activeDraggingId.current = id;
+    lastMousePos.current = startMousePos;
+    dragStartMousePos.current = startMousePos;
+
+    const isShift = e.shiftKey || e.ctrlKey || e.metaKey;
+
+    // Selection logic
+    if (isShift) {
+        select([id], true);
+    } else {
+        if (!selectedIds.has(id)) {
+            select([id]);
+        }
+    }
+
+    // IMPORTANT: Capture initial positions for DIRECT DOM MANIPULATION
+    // This allows us to move elements without re-rendering React components
+    // We check state again because select() might have updated it
+    const updatedState = useStore.getState();
+    const currentSelected = updatedState.selectedIds;
+    const newDragPositions: Record<string, Position> = {};
+
+    currentSelected.forEach(selId => {
+        let pos: Position | null = null;
+        if (updatedState.sheets[selId]) pos = updatedState.sheets[selId].position;
+        else if (updatedState.charts[selId]) pos = updatedState.charts[selId].position;
+        else if (updatedState.notes[selId]) pos = updatedState.notes[selId].position;
+
+        if (pos) {
+            newDragPositions[selId] = { ...pos };
+        }
+    });
+
+    // Ensure the clicked item is tracked even if something went wrong with selection sync
+    if (!newDragPositions[id]) {
+         let pos: Position | null = null;
+         if (type === 'sheet') pos = updatedState.sheets[id].position;
+         else if (type === 'chart') pos = updatedState.charts[id].position;
+         else if (type === 'note') pos = updatedState.notes[id].position;
+         if (pos) newDragPositions[id] = { ...pos };
+    }
+
+    dragInitialPositions.current = newDragPositions;
+
+    // OPTIMIZATION: Set will-change once at start of drag
+    Object.keys(newDragPositions).forEach(key => {
+        const el = document.getElementById(`sheet-${key}`) || document.getElementById(`chart-${key}`) || document.getElementById(`note-${key}`);
+        if (el) el.style.willChange = 'left, top';
+    });
+
+    if (!dragListenersAttached.current) {
+      window.addEventListener('mousemove', handleGlobalMouseMoveOptimized);
+      window.addEventListener('mouseup', handleGlobalMouseUp);
+      dragListenersAttached.current = true;
+    }
+  };
 
   useEffect(() => {
-    if (draggingId || selectionBox) {
+    if (selectionBox) {
       window.addEventListener('mousemove', handleGlobalMouseMoveOptimized);
       window.addEventListener('mouseup', handleGlobalMouseUp);
     } else {
@@ -787,7 +802,47 @@ const App: React.FC = () => {
       window.removeEventListener('mousemove', handleGlobalMouseMoveOptimized);
       window.removeEventListener('mouseup', handleGlobalMouseUp);
     };
-  }, [draggingId, selectionBox, handleGlobalMouseMoveOptimized, handleGlobalMouseUp]);
+  }, [selectionBox, handleGlobalMouseMoveOptimized, handleGlobalMouseUp]);
+
+  const lineageAvailableNodeIds = useMemo(() => {
+    const availableIds = new Set<string>();
+    [...sheetIds, ...chartIds].forEach((id) => {
+      if (hasLineageForNode(id, sheets, charts)) availableIds.add(id);
+    });
+    return availableIds;
+  }, [chartIds, charts, sheetIds, sheets]);
+
+  useEffect(() => {
+    setLineageNodeIds((currentIds) => {
+      let changed = false;
+      const nextIds = new Set<string>();
+      currentIds.forEach((id) => {
+        if (lineageAvailableNodeIds.has(id)) {
+          nextIds.add(id);
+        } else {
+          changed = true;
+        }
+      });
+      return changed ? nextIds : currentIds;
+    });
+  }, [lineageAvailableNodeIds]);
+
+  const lineageLinks = useMemo(
+    () => buildLineageLinks(Array.from(lineageNodeIds), sheets, charts),
+    [charts, lineageNodeIds, sheets]
+  );
+
+  const toggleLineageNode = useCallback((id: string) => {
+    setLineageNodeIds((currentIds) => {
+      const nextIds = new Set(currentIds);
+      if (nextIds.has(id)) {
+        nextIds.delete(id);
+      } else {
+        nextIds.add(id);
+      }
+      return nextIds;
+    });
+  }, []);
 
   const processImportedFiles = async (files: File[], targetPos?: { x: number, y: number }) => {
     let createdCount = 0;
@@ -1182,6 +1237,7 @@ const App: React.FC = () => {
             onMouseDown={handleCanvasMouseDown}
             onViewportTransformChange={setViewportTransform}
         >
+          <LineageOverlay links={lineageLinks} sheets={sheets} charts={charts} darkMode={darkMode} />
           {visibleCanvasIds.sheetIds.map(id => (
               <SheetNode
                 key={id}
@@ -1191,6 +1247,9 @@ const App: React.FC = () => {
                 onAddSparkline={handleInitSparkline}
                 onToast={showToast}
                 isPendingDelete={selectedIds.has(id) && deleteConfirmPending}
+                hasLineage={lineageAvailableNodeIds.has(id)}
+                lineageVisible={lineageNodeIds.has(id)}
+                onToggleLineage={toggleLineageNode}
                 onSelectionContextChange={setActiveSelection}
                 onMouseDown={(e) => handleItemMouseDown(e, id, 'sheet')}
               />
@@ -1201,6 +1260,9 @@ const App: React.FC = () => {
                   id={id}
                   darkMode={darkMode}
                   isPendingDelete={selectedIds.has(id) && deleteConfirmPending}
+                  hasLineage={lineageAvailableNodeIds.has(id)}
+                  lineageVisible={lineageNodeIds.has(id)}
+                  onToggleLineage={toggleLineageNode}
                   recentColors={chartRecentColors}
                   colorSettings={chartColorSettings}
                   onColorSettingsChange={updateChartColorSettings}

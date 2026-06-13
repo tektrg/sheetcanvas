@@ -150,7 +150,11 @@ export const ChartConfigPanel: React.FC<ChartConfigPanelProps> = ({
     const used = new Set(config.dataColumns);
     const next = headers.find(h => !used.has(h.id))?.id || headers[0]?.id;
     if (next) {
-      updateConfig({ dataColumns: [...config.dataColumns, next] });
+      const nextColumns = [...config.dataColumns, next];
+      updateConfig({
+        dataColumns: nextColumns,
+        showLabels: nextColumns.length === 1 ? config.showLabels : false,
+      });
     }
   };
 

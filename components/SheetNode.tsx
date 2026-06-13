@@ -7,7 +7,7 @@ import { parseClipboardData } from '../utils/clipboard';
 import { getFilteredRows } from '../utils/dataAnalysis';
 import { serializeSheetSelection } from '../utils/sheetClipboard';
 import { CELL_WIDTH, CELL_HEIGHT, HEADER_COL_WIDTH, HEADER_ROW_HEIGHT, MIN_COL_WIDTH, MAX_RENDER_ROWS } from '../constants';
-import { GripHorizontal, Trash2, BarChart3, ChevronDown, MoreVertical, Table, Settings2, X, Image as ImageIcon, Loader2, AlertCircle, AlertTriangle, Filter, TrendingUp, Link, RefreshCcw, Code2 } from 'lucide-react';
+import { GitBranch, GripHorizontal, Trash2, BarChart3, ChevronDown, MoreVertical, Table, Settings2, X, Image as ImageIcon, Loader2, AlertCircle, AlertTriangle, Filter, TrendingUp, Link, RefreshCcw, Code2 } from 'lucide-react';
 import { PivotConfigPanel } from './PivotConfigPanel';
 import { SparklineConfigPanel } from './SparklineConfigPanel';
 import { FilterPanel } from './FilterPanel';
@@ -33,6 +33,9 @@ interface SheetNodeProps {
   onAddSparkline?: (sheetId: string) => void;
   onToast?: (message: string) => void;
   isPendingDelete?: boolean;
+  hasLineage?: boolean;
+  lineageVisible?: boolean;
+  onToggleLineage?: (id: string) => void;
   onSelectionContextChange?: (ctx: SelectionContext) => void;
   onMouseDown: (e: React.MouseEvent) => void;
 }
@@ -48,7 +51,7 @@ const ConnectedSheetError = ({ message }: { message: string }) => (
   </div>
 );
 
-export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot, onAddSparkline, onToast, isPendingDelete, onSelectionContextChange, onMouseDown }) => {
+export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot, onAddSparkline, onToast, isPendingDelete, hasLineage, lineageVisible, onToggleLineage, onSelectionContextChange, onMouseDown }) => {
   const data = useStore(state => state.sheets[id]);
   const selected = useStore(state => state.selectedIds.has(id));
   const scale = useStore(state => state.transform.scale);
@@ -1232,6 +1235,19 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                 )}
             </div>
             <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                {hasLineage && (
+                    <button
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleLineage?.(data.id);
+                        }}
+                        className={`group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md transition-colors ${lineageVisible ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
+                        title="Show lineage"
+                    >
+                        <GitBranch size={14} />
+                    </button>
+                )}
                 <button onClick={() => updateSheet(data.id, { showFilterPanel: !showFilterPanel })} className={`group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md transition-colors ${showFilterPanel || (data.filters && data.filters.length > 0) ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}>
                     <Filter size={14} />
                 </button>

@@ -197,6 +197,7 @@ export interface ChartConfig {
   showLabels?: boolean;
   rightAxisColumns?: string[]; // Columns that should use the right Y-axis
   seriesTypes?: Record<string, ChartType>; // Override type for specific series
+  seriesDisplayNames?: Record<string, string>; // Presentation labels keyed by column id or group series key
 }
 
 export interface ChartData {

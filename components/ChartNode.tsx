@@ -9,10 +9,15 @@ import { formatValue } from '../utils/formatting';
 import { getCellId } from '../utils/formulas';
 import { ChartColorSettings } from '../types';
 import { buildSeriesPalette, getChartPrimaryColor, getEffectiveChartPalette } from '../utils/chartColorSchemes';
-import { GripHorizontal, Trash2, Settings2, X, Download, Video, Play, Copy, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { GitBranch, GripHorizontal, Trash2, Settings2, X, Download, Video, Play, Copy, Image as ImageIcon, Loader2 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { ChartConfigPanel } from './ChartConfigPanel';
 import { useStore } from '../store';
+import {
+  buildChartSeriesDisplayNames,
+  getChartLegendVisibility,
+  normalizeChartSeriesLabel,
+} from '../utils/chartDisplay';
 
 interface ChartNodeProps {
   id: string;
@@ -22,6 +27,9 @@ interface ChartNodeProps {
   colorSettings: ChartColorSettings;
   onColorSettingsChange: (updates: Partial<ChartColorSettings>) => void;
   onAddCustomColor?: (color: string) => void;
+  hasLineage?: boolean;
+  lineageVisible?: boolean;
+  onToggleLineage?: (id: string) => void;
   onMouseDown: (e: React.MouseEvent) => void;
 }
 
@@ -83,6 +91,34 @@ const CustomXAxisTick = ({ x, y, payload, fill, chartId }: any) => {
     );
 };
 
+const makeCompactLegendContent = (textColor: string, visible: boolean) => ({ payload }: any) => {
+    if (!visible || !payload?.length) return null;
+
+    return (
+        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-2 pt-2 text-[11px] font-medium leading-tight" style={{ color: textColor }}>
+            {payload.map((entry: any, index: number) => {
+                const label = normalizeChartSeriesLabel(String(entry.value || entry.dataKey || 'Series'));
+                return (
+                    <span key={`${entry.dataKey || entry.value}-${index}`} className="inline-flex min-w-0 max-w-[132px] items-center gap-1.5" title={String(entry.value || '')}>
+                        <span className="h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: entry.color }} />
+                        <span className="truncate">{label}</span>
+                    </span>
+                );
+            })}
+        </div>
+    );
+};
+
+const ChartLegendHint: React.FC<{ count: number; darkMode?: boolean }> = ({ count, darkMode }) => (
+    <div className={`pointer-events-none absolute bottom-5 right-5 z-10 rounded-full px-2.5 py-1 text-[10px] font-medium shadow-sm ring-1 ${
+        darkMode
+            ? 'bg-neutral-900/80 text-neutral-300 ring-white/10'
+            : 'bg-white/85 text-neutral-500 ring-black/10'
+    }`}>
+        {count} series · hover
+    </div>
+);
+
 export const ChartNode: React.FC<ChartNodeProps> = ({
   id,
   darkMode,
@@ -91,6 +127,9 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
   colorSettings,
   onColorSettingsChange,
   onAddCustomColor,
+  hasLineage,
+  lineageVisible,
+  onToggleLineage,
   onMouseDown,
 }) => {
   const data = useStore(state => state.charts[id]);
@@ -162,13 +201,36 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
 
   const headers = useMemo(() => sourceSheet ? getSheetHeaders(sourceSheet) : [], [sourceSheet]);
 
-  const getSeriesLabel = (colId: string) => {
+  const getSeriesRawLabel = (colId: string) => {
     if (data.config.mode === 'group') {
-        if (data.config.seriesGroupCol) return colId; 
+        if (data.config.seriesGroupCol) return colId;
         return `${data.config.operation || 'SUM'} of ${headers.find(h => h.id === data.config.valueCol)?.label || data.config.valueCol}`;
     }
     return headers.find(h => h.id === colId)?.label || `Column ${colId}`;
   };
+
+  const seriesDisplayNames = useMemo(() => {
+      const entries = data.config.mode === 'group' && dynamicSeriesKeys
+          ? dynamicSeriesKeys.map(key => ({ key, label: key }))
+          : data.config.dataColumns.map(colId => ({ key: colId, label: getSeriesRawLabel(colId) }));
+      return {
+          ...buildChartSeriesDisplayNames(entries),
+          ...(data.config.seriesDisplayNames || {})
+      };
+  }, [data.config, dynamicSeriesKeys, headers]);
+
+  const getSeriesLabel = (colId: string) => {
+    return seriesDisplayNames[colId] || normalizeChartSeriesLabel(getSeriesRawLabel(colId));
+  };
+
+  const chartLegendLabels = useMemo(() => {
+      if (data.config.mode === 'group') {
+          return dynamicSeriesKeys
+              ? dynamicSeriesKeys.map(getSeriesLabel)
+              : [getSeriesLabel(data.config.valueCol || '')];
+      }
+      return data.config.dataColumns.map(getSeriesLabel);
+  }, [data.config, dynamicSeriesKeys, seriesDisplayNames]);
 
   const getFormatForSeries = (colId: string) => {
       if (!sourceSheet) return undefined;
@@ -600,6 +662,14 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
     const isGroupMode = data.config.mode === 'group';
     const hasRightAxis = !isGroupMode && data.config.dataColumns.some(col => data.config.rightAxisColumns?.includes(col));
     const isScatter = data.config.type === 'scatter';
+    const showLegend = getChartLegendVisibility({
+        labels: chartLegendLabels,
+        chartWidth: data.size.width,
+        chartHeight: data.size.height,
+    }) === 'visible';
+    const compactLegendContent = makeCompactLegendContent(textColor, showLegend);
+    const effectiveSeriesCount = chartLegendLabels.length;
+    const showValueLabels = !!data.config.showLabels && effectiveSeriesCount <= 1;
 
     if (data.config.type === 'treemap') {
         const dataKey = isGroupMode && dynamicSeriesKeys ? dynamicSeriesKeys[0] : "value_0";
@@ -631,13 +701,18 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
     }
 
     if (data.config.type === 'pie') {
-      const format0 = isGroupMode 
+      const format0 = isGroupMode
             ? (data.config.valueCol ? getFormatForSeries(data.config.valueCol) : undefined)
             : getFormatForSeries(data.config.dataColumns[0]);
 
-      const seriesName = isGroupMode 
-            ? `${data.config.operation || 'SUM'} of ${data.config.valueCol}` 
+      const seriesName = isGroupMode
+            ? `${data.config.operation || 'SUM'} of ${data.config.valueCol}`
             : getSeriesLabel(data.config.dataColumns[0]);
+      const showPieLegend = getChartLegendVisibility({
+          labels: activeData.map((item: any) => normalizeChartSeriesLabel(String(item.name || ''))),
+          chartWidth: data.size.width,
+          chartHeight: data.size.height,
+      }) === 'visible';
 
       return (
         <PieChart {...CommonProps}>
@@ -650,7 +725,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
               cy="50%"
               outerRadius={data.size.height / 3}
               fill={primaryColor}
-              label={data.config.showLabels}
+              label={showValueLabels}
               {...animProps}
            >
              {activeData.map((entry: any, index: number) => (
@@ -663,7 +738,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
              ))}
            </Pie>
            <Tooltip contentStyle={tooltipStyle} formatter={(v: number, n: string) => [formatValue(v, format0), n]} />
-           <Legend wrapperStyle={{ color: textColor }} />
+           {showPieLegend && <Legend content={makeCompactLegendContent(textColor, true)} />}
         </PieChart>
       );
     }
@@ -731,7 +806,9 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
         );
     }
     chartChildren.push(<Tooltip contentStyle={tooltipStyle} cursor={{fill: darkMode ? '#404040' : '#f7f7f5'}} formatter={tooltipFormatter} labelFormatter={tooltipLabelFormatter} key="tooltip" />);
-    chartChildren.push(<Legend wrapperStyle={{ color: textColor }} key="legend" />);
+    if (showLegend) {
+        chartChildren.push(<Legend content={compactLegendContent} key="legend" />);
+    }
 
     // 2. Series Rendering
     if (isGroupMode) {
@@ -744,14 +821,14 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
                         <Bar 
                             key={key}
                             dataKey={key}
-                            name={key}
+                            name={getSeriesLabel(key)}
                             fill={color}
                             yAxisId="left"
                             radius={data.config.stacked ? [0,0,0,0] : [4, 4, 0, 0]}
                             stackId={data.config.stacked ? 'a' : undefined}
                             {...animProps}
                         >
-                            {data.config.showLabels && (
+                            {showValueLabels && (
                                 <LabelList 
                                     dataKey={key}
                                     position={data.config.stacked ? "inside" : "top"} 
@@ -776,7 +853,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
                             key={key}
                             type="monotone"
                             dataKey={key}
-                            name={key}
+                            name={getSeriesLabel(key)}
                             stroke={color}
                             fill={`url(#${gradId})`}
                             yAxisId="left"
@@ -784,7 +861,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
                             stackId={data.config.stacked ? 'a' : undefined}
                             {...animProps}
                         >
-                            {data.config.showLabels && (
+                            {showValueLabels && (
                                 <LabelList 
                                     dataKey={key}
                                     position="top" 
@@ -799,13 +876,13 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
                     chartChildren.push(
                         <Scatter
                             key={key}
-                            name={key}
+                            name={getSeriesLabel(key)}
                             dataKey={key}
                             fill={color}
                             yAxisId="left"
                             {...animProps}
                         >
-                            {data.config.showLabels && (
+                            {showValueLabels && (
                                 <LabelList 
                                     dataKey={key}
                                     position="top" 
@@ -822,7 +899,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
                             key={key}
                             type="monotone"
                             dataKey={key}
-                            name={key}
+                            name={getSeriesLabel(key)}
                             stroke={color}
                             yAxisId="left"
                             strokeWidth={3}
@@ -830,7 +907,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
                             activeDot={{ r: 6, strokeWidth: 0 }}
                             {...animProps}
                         >
-                            {data.config.showLabels && (
+                            {showValueLabels && (
                                 <LabelList 
                                     dataKey={key}
                                     position="top" 
@@ -868,7 +945,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
                                     fill={i === data.config.highlightIndex ? '#f2c94c' : seriesPalette[0]} 
                                 />
                         ))}
-                        {data.config.showLabels && (
+                        {showValueLabels && (
                                 <LabelList 
                                     dataKey={key}
                                     position="top" 
@@ -900,7 +977,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
                         strokeWidth={2}
                         {...animProps}
                     >
-                        {data.config.showLabels && (
+                        {showValueLabels && (
                                 <LabelList 
                                     dataKey={key}
                                     position="top" 
@@ -921,7 +998,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
                         yAxisId="left"
                         {...animProps}
                     >
-                        {data.config.showLabels && (
+                        {showValueLabels && (
                             <LabelList 
                                 dataKey={key}
                                 position="top" 
@@ -946,7 +1023,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
                         activeDot={{ r: 6, strokeWidth: 0 }}
                         {...animProps}
                     >
-                        {data.config.showLabels && (
+                        {showValueLabels && (
                                 <LabelList 
                                     dataKey={key}
                                     position="top" 
@@ -991,7 +1068,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
                                 fill={i === data.config.highlightIndex ? '#f2c94c' : seriesPalette[0]} 
                             />
                         ))}
-                        {data.config.showLabels && (
+                        {showValueLabels && (
                             <LabelList 
                                 dataKey={key}
                                 position={data.config.stacked ? "inside" : "top"} 
@@ -1024,7 +1101,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
                         stackId={stackId}
                         {...animProps}
                     >
-                        {data.config.showLabels && (
+                        {showValueLabels && (
                             <LabelList 
                                 dataKey={key}
                                 position="top" 
@@ -1045,7 +1122,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
                         yAxisId={axisId}
                         {...animProps}
                     >
-                        {data.config.showLabels && (
+                        {showValueLabels && (
                             <LabelList 
                                 dataKey={key}
                                 position="top" 
@@ -1083,7 +1160,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
                         activeDot={{ r: 6, strokeWidth: 0 }}
                         {...animProps}
                     >
-                            {data.config.showLabels && (
+                            {showValueLabels && (
                             <LabelList 
                                 dataKey={key}
                                 position="top" 
@@ -1134,8 +1211,23 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
         </div>
         {!isSetup && (
             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button 
-                    onClick={handleCopyImage} 
+                {hasLineage && (
+                    <button
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleLineage?.(data.id);
+                        }}
+                        className={`group/btn relative p-1.5 rounded-md transition-colors ${lineageVisible ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 dark:text-neutral-500 hover:text-neutral-600'}`}
+                    >
+                        <GitBranch size={14} />
+                        <span className="absolute top-full mt-2 left-1/2 -translate-x-1/2 px-2 py-1 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 text-[10px] font-medium rounded-md opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-sm z-50">
+                            Lineage
+                        </span>
+                    </button>
+                )}
+                <button
+                    onClick={handleCopyImage}
                     className="group/btn relative p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-md text-neutral-400 dark:text-neutral-500 hover:text-neutral-600" 
                 >
                     <Copy size={14} />
@@ -1239,6 +1331,13 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
             <ResponsiveContainer width="100%" height="100%">
                 {renderChart() || <div className="flex items-center justify-center h-full text-neutral-400 text-sm">No data selected</div>}
             </ResponsiveContainer>
+            {!isSetup && data.config.type !== 'treemap' && !showConfig && chartLegendLabels.length > 1 && getChartLegendVisibility({
+                labels: chartLegendLabels,
+                chartWidth: data.size.width,
+                chartHeight: data.size.height,
+            }) === 'hidden' && (
+                <ChartLegendHint count={chartLegendLabels.length} darkMode={darkMode} />
+            )}
          </div>
 
          {showConfig && !isSetup && (
