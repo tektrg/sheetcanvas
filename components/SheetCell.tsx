@@ -81,7 +81,7 @@ const Sparkline = ({ value, width = 100, height = 34 }: { value: string, width?:
              </svg>
              {hover && (
                  <div 
-                    className="absolute z-50 bg-neutral-900/90 backdrop-blur text-white text-[10px] rounded px-2 py-1 shadow-xl pointer-events-none flex flex-col items-center whitespace-nowrap border border-white/10"
+                    className="absolute z-[70] bg-neutral-900/90 backdrop-blur text-white text-[10px] rounded px-2 py-1 shadow-xl pointer-events-none flex flex-col items-center whitespace-nowrap border border-white/10"
                     style={{ 
                         left: hover.domX, 
                         bottom: '100%', 
@@ -219,7 +219,8 @@ const SheetCellInternal: React.FC<SheetCellProps> = ({
     return (
         <div 
            className={`absolute border-r border-b border-neutral-100 dark:border-neutral-800 text-[13px] flex items-center
-             ${isActive ? 'z-20' : 'z-auto'} 
+             ${isActive ? 'z-20' : 'z-auto'}
+             ${showSparkline && !isActive ? 'hover:z-[60]' : ''}
              ${!isActive && isSelected ? 'bg-teal-50/50 dark:bg-teal-900/20' : ''}
              ${isReferenced ? 'z-10 bg-purple-50 dark:bg-purple-900/20' : ''}
              ${!isActive && !isReferenced && !isSelected ? 
