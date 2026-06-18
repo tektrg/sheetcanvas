@@ -1,5 +1,6 @@
 
-import React from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   AlignLeft, ArrowDownAZ, ArrowUpAZ, Filter, 
   BarChart3, Table, TrendingUp, Hash, Minimize2, Maximize2, 
@@ -25,11 +26,53 @@ export const SheetColumnMenu: React.FC<SheetColumnMenuProps> = ({
   currentFormat,
   isReadOnly
 }) => {
+  const anchorRef = useRef<HTMLSpanElement>(null);
+  const [menuPosition, setMenuPosition] = useState<React.CSSProperties | null>(null);
+
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+
+    const updateMenuPosition = () => {
+      const anchor = anchorRef.current?.parentElement;
+      if (!anchor) return;
+
+      const rect = anchor.getBoundingClientRect();
+      const menuWidth = 192;
+      const viewportPadding = 8;
+      const maxLeft = Math.max(viewportPadding, window.innerWidth - menuWidth - viewportPadding);
+      const left = Math.min(
+        Math.max(rect.left, viewportPadding),
+        maxLeft
+      );
+      const top = Math.min(rect.bottom + 4, window.innerHeight - viewportPadding);
+
+      setMenuPosition({
+        position: 'fixed',
+        top,
+        left,
+        width: menuWidth,
+        zIndex: 1000,
+      });
+    };
+
+    updateMenuPosition();
+    window.addEventListener('resize', updateMenuPosition);
+    window.addEventListener('scroll', updateMenuPosition, true);
+
+    return () => {
+      window.removeEventListener('resize', updateMenuPosition);
+      window.removeEventListener('scroll', updateMenuPosition, true);
+    };
+  }, [isOpen, colIndex]);
+
   if (!isOpen) return null;
 
-  return (
-    <div 
-        className="absolute top-full left-0 mt-1 w-48 bg-white dark:bg-neutral-800 shadow-xl rounded-lg border border-neutral-100 dark:border-neutral-700 z-50 py-1 flex flex-col" 
+  const menu = (
+    <>
+    <div className="fixed inset-0 z-[999]" onMouseDown={onClose} />
+    <div
+        className="bg-white dark:bg-neutral-800 shadow-xl rounded-lg border border-neutral-100 dark:border-neutral-700 py-1 flex flex-col"
+        style={menuPosition ?? { position: 'fixed', top: 0, left: 0, width: 192, zIndex: 1000 }}
         onMouseDown={(e) => e.stopPropagation()}
     >
         {/* Insert Logic */}
@@ -213,5 +256,13 @@ export const SheetColumnMenu: React.FC<SheetColumnMenuProps> = ({
             </>
         )}
     </div>
+    </>
+  );
+
+  return (
+    <>
+      <span ref={anchorRef} className="hidden" />
+      {createPortal(menu, document.body)}
+    </>
   );
 };
