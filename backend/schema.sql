@@ -23,3 +23,18 @@ CREATE TABLE IF NOT EXISTS mcp_tokens (
   token     TEXT NOT NULL UNIQUE,
   created_at_ms INTEGER NOT NULL
 );
+
+-- Durable MCP activation/usage events. token_hash avoids duplicating bearer
+-- capability URLs in analytics rows while still allowing per-token funnels.
+CREATE TABLE IF NOT EXISTS mcp_events (
+  id TEXT PRIMARY KEY,
+  token_hash TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  tool_name TEXT,
+  ok INTEGER NOT NULL DEFAULT 1,
+  error_code TEXT,
+  created_at_ms INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_mcp_events_type_created ON mcp_events(event_type, created_at_ms);
+CREATE INDEX IF NOT EXISTS idx_mcp_events_token_created ON mcp_events(token_hash, created_at_ms);

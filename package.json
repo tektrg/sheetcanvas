@@ -21,6 +21,7 @@
     "seo:rss": "node scripts/generate-rss.mjs",
     "seo:sitemap": "node scripts/generate-sitemap.mjs",
     "seo:audit": "npm run seo:sitemap && npm run seo:rss && npm run seo:llms && npm run seo:gsc:smoke && npm run seo:root:analytics:smoke && npm run seo:analytics:smoke && npm run seo:deploy:smoke && npm run build && node scripts/seo-audit.mjs",
+    "mcp:prod:preflight": "node scripts/mcp-production-preflight.mjs",
     "deploy:pages": "npm run seo:audit && node scripts/seo-deploy-preflight.mjs && wrangler pages deploy dist --project-name sheetcanvas --branch main && npm run seo:live:root -- --retries 6 --retry-delay-ms 10000 && npm run seo:live:support -- --retries 6 --retry-delay-ms 10000",
     "preview": "vite preview"
   },

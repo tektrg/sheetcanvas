@@ -2,6 +2,16 @@ name = "flexsheet-backend"
 main = "src/index.ts"
 compatibility_date = "2025-01-01"
 
+# Canonical production routes for backend APIs and MCP server URLs copied into
+# Claude/Codex. Deploying these routes requires the real D1 database_id below
+# and Cloudflare zone access for sheetcanvas.com.
+routes = [
+  { pattern = "sheetcanvas.com/api/*", zone_name = "sheetcanvas.com" },
+  { pattern = "sheetcanvas.com/mcp/*", zone_name = "sheetcanvas.com" },
+  { pattern = "www.sheetcanvas.com/api/*", zone_name = "sheetcanvas.com" },
+  { pattern = "www.sheetcanvas.com/mcp/*", zone_name = "sheetcanvas.com" }
+]
+
 [vars]
 # Comma-separated list of allowed origins. Use "*" only if you understand the risk.
 ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173,http://127.0.0.1:3000,https://sheetcanvas.com,https://www.sheetcanvas.com,https://sheetcanvas.pages.dev"
@@ -29,10 +39,10 @@ class_name = "CanvasBridge"
 
 [[migrations]]
 tag = "v1-canvas-bridge"
-new_classes = ["CanvasBridge"]
+new_sqlite_classes = ["CanvasBridge"]
 
 [[d1_databases]]
 binding = "DB"
 database_name = "flexsheet"
-# Use a placeholder UUID for local development; replace with the real DB id for production after `wrangler d1 create`.
-database_id = "00000000-0000-0000-0000-000000000000"
+# Production D1 database created with `wrangler d1 create flexsheet --location wnam`.
+database_id = "dc491891-8ad1-4ca6-832d-8a19059bfa2f"

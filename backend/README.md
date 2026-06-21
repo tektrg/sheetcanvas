@@ -1,6 +1,7 @@
 # Flexsheet Backend (Cloudflare Workers)
 
 This backend provides a secure proxy layer for ClickHouse connectors so the browser never talks to ClickHouse directly and never stores passwords.
+It also powers the SheetCanvas MCP connector, letting Claude, Codex, and other MCP clients operate a live canvas through a browser tab.
 
 ## Stack
 
@@ -28,6 +29,7 @@ wrangler d1 execute flexsheet --file ./backend/schema.sql
 
 - Update the `database_name` to match the name you created.
 - Add the generated `database_id` for production.
+- Keep the canonical Worker routes for `sheetcanvas.com/api/*` and `sheetcanvas.com/mcp/*` if copied MCP URLs should live on the main domain.
 
 4) Set required secrets
 
@@ -90,3 +92,29 @@ If you change the frontend dev server port, update `ALLOWED_ORIGINS` in `backend
 - `GET /api/mcp/bridge/:token` — WebSocket upgrade endpoint for the browser tab relay
 - `GET /api/mcp/status/:token` — check whether a tab is currently connected
 - `POST /mcp/:token` — MCP streamable-HTTP endpoint (JSON, stateless); GET/DELETE → 405
+
+## MCP production readiness
+
+The frontend can generate useful MCP URLs only when the Worker is reachable from the deployed app.
+Use one of these paths:
+
+- Canonical domain: deploy the Worker with the `sheetcanvas.com/api/*` and `sheetcanvas.com/mcp/*` routes in `backend/wrangler.toml`.
+- Separate Worker hostname: deploy the Worker on a stable hostname, set `VITE_BACKEND_URL` for the Cloudflare Pages build, then redeploy Pages so minted MCP URLs use that hostname.
+
+After deploying, smoke check:
+
+```bash
+curl -i -X POST https://sheetcanvas.com/api/mcp/token
+curl -i -X POST https://sheetcanvas.com/mcp/000000000000000000000000000000000000000000000000
+```
+
+The first command should not be a Pages 405. The second should return the MCP JSON-RPC invalid-token response, proving `/mcp/*` reaches the Worker.
+
+## MCP analytics
+
+`mcp_events` stores activation and usage events:
+
+- `token_generated` when a new agent URL is minted.
+- `expose_enabled` when the browser tab opens the MCP bridge WebSocket.
+- `first_connected` once per token on the first bridge connection.
+- `tool_call` after a successful `tools/call` result. This is the flagship MCP usage metric.

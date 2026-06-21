@@ -28,15 +28,17 @@ const BASE_TOOL_NAMES = [
   'createPivot',
   'createSparkline',
   'listConnections',
+  'updateQuerySheet',
 ] as const satisfies readonly ToolName[];
 
 const SCHEMA_TOOL_NAMES = ['listConnectionProperties', 'describeConnection'] as const satisfies readonly ToolName[];
-const QUERY_TOOL_NAMES = ['createQuerySheet'] as const satisfies readonly ToolName[];
+const QUERY_TOOL_NAMES = ['createQuerySheet', 'updateQuerySheet'] as const satisfies readonly ToolName[];
 const CONNECTOR_FLOW_TOOL_NAMES = [
   'listConnections',
   'listConnectionProperties',
   'describeConnection',
   'createQuerySheet',
+  'updateQuerySheet',
 ] as const satisfies readonly ToolName[];
 
 const SYSTEM_PROMPT = `You are SheetCanvas Copilot, an agent that operates a spreadsheet+canvas app on the user's behalf.
@@ -45,7 +47,7 @@ Capabilities:
 - Read sheet structure and data via listSheets, describeSheet, getSelection, getRange.
 - getSelection returns both active cell/range selection and selectedCanvas summaries for whole selected sheets, charts, and notes.
 - Run read-only SQL with querySheet(sheetId, sql). Sheet exposed as table "t" with snake_case column names.
-- Mutate via setCells, applyFilter, applySort, applyFormat, createChart, createPivot, createSparkline.
+- Mutate via setCells, applyFilter, applySort, applyFormat, createChart, createPivot, createSparkline, updateQuerySheet.
 - Query external data connections via progressive connector tools. Start with listConnections; property/schema/query tools become available after earlier connector steps complete.
 - If a user asks for external connection data and only listConnections is available, call listConnections. Do not apologize that downstream connector tools are unavailable; the app will expose them after the connector flow starts. listConnections also returns selectedCanvas context so connector workflows can still respect selected sheets/charts.
 
@@ -54,13 +56,14 @@ Connector query workflow:
 2. Before querying, state "Using {connector name} because {reason}." If 2+ connectors plausibly match and descriptions do not disambiguate, ASK the user instead of guessing.
 3. For Google Analytics, call listConnectionProperties for the selected connection. If the user says "any", pick the first returned property and say which one. If the result is truncated or property names imply different likely websites and the user intent is ambiguous, ASK.
 4. Call describeConnection to learn the schema and get schemaToken (CH: tables first, then columns for the database-qualified table you will query; GA: bounded dims/metrics catalog for a propertyId, use search for the task).
-5. Call createQuerySheet with schemaToken and a one-line plain-English derivation of what the data shows.
+5. Call createQuerySheet with schemaToken, a one-line plain-English derivation of what the data shows, and a structured brief with logic, scope, sources, and judgmentNotes. The brief should be concise; include key time ranges, filters/exclusions, source/table names, and caveats that affect user judgment, but do not paste raw rows or long SQL. If using createGaTrendBySource, provide the same structured brief for the raw connected sheet.
 6. Optionally call createChart on the resulting sheet.
+- If the user asks to edit/revise the SQL or query of an existing selected/current connector sheet, call getSelection or describeSheet to identify it, then call updateQuerySheet. Do not create a replacement sheet unless the user explicitly asks for a new sheet.
 
 Query rules:
 - ClickHouse: use the real database-qualified table name returned by describeConnection, not the in-app sheet alias "t". Compute absolute YYYY-MM-DD dates from dateAnchors in context. Require GROUP BY + LIMIT for chartable results.
 - Google Analytics: native relative dates (e.g. 30daysAgo). Only use dims/metrics from describeConnection.
-- Always provide derivation. On createQuerySheet error, surface it and stop.
+- Always provide derivation and structured brief for createQuerySheet/updateQuerySheet. On createQuerySheet error, surface it and stop.
 
 General rules:
 - Never assume cell values or column types. Inspect first.
@@ -131,6 +134,7 @@ function summarizeAgentFlow(messages: UIMessage[], selectedToolNames: ToolName[]
     detectedConnectorTools,
     selectedToolNames,
     createQuerySheetAvailable: selectedToolNames.includes('createQuerySheet'),
+    updateQuerySheetAvailable: selectedToolNames.includes('updateQuerySheet'),
   };
 }
 

@@ -21,6 +21,12 @@ import { requireBearerToken } from '../auth';
 const SUPPORTED_PROTOCOL_VERSIONS = ['2025-06-18'];
 const SERVER_INFO = { name: 'sheetcanvas', version: '1.0.0' };
 const TOKEN_PATTERN = /^[a-f0-9]{48}$/;
+const MCP_EVENT_TYPES = {
+  tokenGenerated: 'token_generated',
+  exposeEnabled: 'expose_enabled',
+  firstConnected: 'first_connected',
+  toolCall: 'tool_call',
+} as const;
 
 // Converted once at module load — toolDefs is the single source of truth.
 const MCP_TOOL_LIST = TOOL_NAMES.map((name) => ({
@@ -69,6 +75,67 @@ function isValidToken(token: string): boolean {
   return TOKEN_PATTERN.test(token);
 }
 
+async function hashToken(token: string): Promise<string> {
+  const bytes = new TextEncoder().encode(token);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function recordMcpEvent(
+  env: Env,
+  event: {
+    token: string;
+    eventType: string;
+    toolName?: string | null;
+    ok?: boolean;
+    errorCode?: string | null;
+  },
+) {
+  try {
+    const tokenHash = await hashToken(event.token);
+    await env.DB.prepare(
+      'INSERT INTO mcp_events (id, token_hash, event_type, tool_name, ok, error_code, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind(
+        crypto.randomUUID(),
+        tokenHash,
+        event.eventType,
+        event.toolName ?? null,
+        event.ok === false ? 0 : 1,
+        event.errorCode ?? null,
+        Date.now(),
+      )
+      .run();
+  } catch (err) {
+    console.warn('[sheetcanvas-mcp] analytics event write failed', {
+      eventType: event.eventType,
+      toolName: event.toolName,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+async function recordFirstConnectionIfNeeded(env: Env, token: string) {
+  try {
+    const tokenHash = await hashToken(token);
+    const row = await env.DB.prepare(
+      'SELECT id FROM mcp_events WHERE token_hash = ? AND event_type = ? LIMIT 1',
+    )
+      .bind(tokenHash, MCP_EVENT_TYPES.firstConnected)
+      .first<{ id: string }>();
+    if (row) return;
+    await env.DB.prepare(
+      'INSERT INTO mcp_events (id, token_hash, event_type, tool_name, ok, error_code, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind(crypto.randomUUID(), tokenHash, MCP_EVENT_TYPES.firstConnected, null, 1, null, Date.now())
+      .run();
+  } catch (err) {
+    console.warn('[sheetcanvas-mcp] first connection analytics write failed', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 async function handleToolsCall(env: Env, token: string, request: JsonRpcRequest) {
   const id = request.id ?? null;
   const params = request.params ?? {};
@@ -91,6 +158,12 @@ async function handleToolsCall(env: Env, token: string, request: JsonRpcRequest)
       isError: true,
     });
   }
+  await recordMcpEvent(env, {
+    token,
+    eventType: MCP_EVENT_TYPES.toolCall,
+    toolName,
+    ok: true,
+  });
   return rpcResult(id, {
     content: [{ type: 'text', text: JSON.stringify(callResult.result ?? { ok: true }) }],
   });
@@ -166,6 +239,11 @@ mcpApp.post('/api/mcp/token', async (c) => {
       .bind(clientId, token, Date.now())
       .run();
   }
+  await recordMcpEvent(c.env, {
+    token,
+    eventType: MCP_EVENT_TYPES.tokenGenerated,
+    ok: true,
+  });
 
   return c.json({
     token,
@@ -180,6 +258,12 @@ mcpApp.get('/api/mcp/bridge/:token', async (c) => {
   if (c.req.header('Upgrade')?.toLowerCase() !== 'websocket') {
     return c.json({ error: { code: 'upgrade_required', message: 'Expected WebSocket upgrade' } }, 426);
   }
+  await recordMcpEvent(c.env, {
+    token,
+    eventType: MCP_EVENT_TYPES.exposeEnabled,
+    ok: true,
+  });
+  await recordFirstConnectionIfNeeded(c.env, token);
   return bridgeStubForToken(c.env, token).fetch(c.req.raw);
 });
 
