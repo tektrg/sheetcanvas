@@ -52,6 +52,64 @@ describe('sheet inspection tool descriptions', () => {
       endDate: 'today',
       hostName: 'theindie.app',
       metric: 'sessions',
+      brief: {
+        logic: 'Trends GA sessions by source for the selected host.',
+        scope: ['30daysAgo to today', 'Filtered to theindie.app'],
+        sources: ['GA property 123456789'],
+        judgmentNotes: ['Only includes traffic returned by the GA report dimensions and host filter.'],
+      },
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('exposes an in-place query sheet update tool for existing connector sheets', () => {
+    expect(toolDefs.updateQuerySheet.description).toContain('preserving the sheetId');
+    expect(toolDefs.updateQuerySheet.description).toContain('selected/current query sheet');
+    expect(toolDefs.updateQuerySheet.description).toContain('lastError');
+
+    const result = toolDefs.updateQuerySheet.inputSchema.safeParse({
+      sheetId: 'query-sheet-1',
+      queryPayload: { sql: 'SELECT month, count() AS transaction_count FROM sales GROUP BY month' },
+      derivation: 'Adds transaction frequency to the existing selected sheet.',
+      brief: {
+        logic: 'Counts transactions by month from the selected connector query.',
+        scope: ['Grouped by month', 'Uses the connector query replacement'],
+        sources: ['sales'],
+        judgmentNotes: ['Results depend on the query filters and connector table scope.'],
+      },
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('lets applyFormat use first-class presets, custom d3, and derived-sheet guidance', () => {
+    expect(toolDefs.applyFormat.description).toContain('derived pivot/sparkline');
+    expect(toolDefs.applyFormat.description).toContain('compactNumber');
+    expect(toolDefs.applyFormat.description).toContain('visual:"bar"');
+    expect(toolDefs.applyFormat.description).toContain('formatDecisions');
+
+    const compactResult = toolDefs.applyFormat.inputSchema.safeParse({
+      sheetId: 'pivot-1',
+      range: 'B2:B10',
+      preset: { preset: 'compactNumber', visual: 'bar' },
+      reason: 'primary comparison metric',
+    });
+    expect(compactResult.success).toBe(true);
+
+    const customResult = toolDefs.applyFormat.inputSchema.safeParse({
+      sheetId: 'pivot-1',
+      range: 'B2:B10',
+      preset: { preset: 'customD3', d3Format: '$.2s' },
+    });
+    expect(customResult.success).toBe(true);
+  });
+
+  it('keeps legacy explicit applyFormat inputs valid and exposes d3Format', () => {
+    const result = toolDefs.applyFormat.inputSchema.safeParse({
+      sheetId: 'source-1',
+      range: 'C2:C20',
+      format: { type: 'currency', d3Format: '$.2s', visual: 'bar' },
     });
 
     expect(result.success).toBe(true);

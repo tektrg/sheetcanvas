@@ -12,12 +12,19 @@ export interface Size {
   height: number;
 }
 
-export type CellFormat = 
+export type CellFormat =
   | { type: 'number'; decimals?: number; d3Format?: string; visual?: 'bar' | 'bar-row' | 'heatmap' | 'heatmap-row' | 'sparkline'; heatmapColor?: 'red' | 'green' | 'yellow' }
   | { type: 'currency'; symbol?: string; decimals?: number; d3Format?: string; visual?: 'bar' | 'bar-row' | 'heatmap' | 'heatmap-row' | 'sparkline'; heatmapColor?: 'red' | 'green' | 'yellow' }
   | { type: 'percent'; decimals?: number; d3Format?: string; visual?: 'bar' | 'bar-row' | 'heatmap' | 'heatmap-row' | 'sparkline'; heatmapColor?: 'red' | 'green' | 'yellow' }
   | { type: 'date'; dateFormat?: string; visual?: 'bar' | 'bar-row' | 'heatmap' | 'heatmap-row' | 'sparkline'; heatmapColor?: 'red' | 'green' | 'yellow' }
   | { type: 'text'; visual?: 'bar' | 'bar-row' | 'heatmap' | 'heatmap-row' | 'sparkline'; heatmapColor?: 'red' | 'green' | 'yellow' };
+
+export interface SheetFormatRule {
+  range: string;
+  format: CellFormat;
+  reason?: string;
+  createdBy?: 'mcp' | 'user';
+}
 
 export interface CellData {
   raw: string;     // The formula or raw value entered by user (e.g., "=SUM(A1:A2)")
@@ -98,11 +105,46 @@ export interface SortConfig {
 }
 
 // Data Connector Types
-export type ConnectorType = 'google-sheets' | 'google-analytics' | 'csv-url' | 'clickhouse';
+export type ConnectorType = 'google-sheets' | 'google-analytics' | 'clickhouse';
+
+// Connector types that support schema discovery + query sheets (the registered providers).
+export type QueryableConnectorType = 'clickhouse' | 'google-analytics' | 'google-sheets';
+
+// Result of describeConnection, scoped to one connection (and optionally a table/property).
+// Issued as a schemaToken so createQuerySheet can verify the agent described the source first.
+export interface ConnectionSchemaScope {
+  connectionId: string;
+  type: QueryableConnectorType;
+  table?: string;
+  propertyId?: string;
+  createdAt: number;
+}
 
 export type ClickhouseQuery = { sql: string };
 export type GaQuery = { propertyId: string; report: GoogleAnalyticsReport };
 export type GoogleSheetsQuery = { spreadsheetIdOrUrl: string; range?: string };
+
+// Connector-specific query payload. Each connector provider owns the meaning of its payload;
+// the surrounding `ConnectorConfig.type` is the discriminant.
+export type ConnectorQueryPayload = ClickhouseQuery | GaQuery | GoogleSheetsQuery;
+
+// Versioned envelope persisted on a connected sheet. The payload shape is connector-owned,
+// keeping the "query" abstraction stable while letting each connector evolve independently.
+export interface ConnectorQueryEnvelope<TPayload = ConnectorQueryPayload> {
+  version: number;
+  payload: TPayload;
+}
+
+export type ConnectorQueryBriefStatus = 'current' | 'stale';
+
+export interface ConnectorQueryBrief {
+  logic: string;
+  scope: string[];
+  sources: string[];
+  judgmentNotes: string[];
+  status?: ConnectorQueryBriefStatus;
+  updatedAt?: number;
+}
 
 export type GoogleAnalyticsReport = {
   dateRanges?: Array<{ startDate: string; endDate: string }>;
@@ -118,8 +160,9 @@ export interface ConnectorConfig {
   type: ConnectorType;
   name: string;
   connectionId?: string;
-  query?: ClickhouseQuery | GaQuery | GoogleSheetsQuery;
+  query?: ConnectorQueryEnvelope;
   derivation?: string;
+  brief?: ConnectorQueryBrief;
   lastRefreshedAt?: number;
   truncated?: boolean;
   lastError?: string;
@@ -143,6 +186,7 @@ export interface SheetData {
   pivotWarnings?: string[]; // Scoped warnings from pivot materialization
   sparklineConfig?: SparklineConfig; // If present, this sheet is a sparkline table
   connectorConfig?: ConnectorConfig; // If present, this sheet is connected to external data
+  formatRules?: SheetFormatRule[]; // Presentation rules reapplied after derived-sheet refreshes
   setupRequired?: boolean; // If true, show setup UI
   filters?: FilterCondition[];
   sort?: SortConfig;

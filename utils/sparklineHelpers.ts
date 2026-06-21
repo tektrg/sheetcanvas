@@ -5,6 +5,7 @@ import { getCellId, parseCellId } from './formulas';
 import { getSheetHeaders } from './chartHelpers';
 import { CELL_WIDTH, CELL_HEIGHT } from '../constants';
 import { getFilteredRows } from './dataAnalysis';
+import { applyFormatRulesToCells } from './formatRules';
 
 // Helper to aggregate values
 const aggregate = (values: number[], op: PivotOperation): number => {
@@ -244,9 +245,11 @@ export const refreshSparklineTable = (sparkSheet: SheetData, sourceSheet: SheetD
         }
     });
 
+    const formattedCells = applyFormatRulesToCells(mergedCells, sparkSheet.formatRules);
+
     return {
         ...sparkSheet,
         size: { width, height },
-        cells: mergedCells
+        cells: formattedCells
     };
 };

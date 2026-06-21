@@ -14,6 +14,7 @@ interface GlobalCommandBarProps {
   onAddNote: () => void;
   onImport: () => void;
   onConnectData: () => void;
+  onConnectAgent: () => void;
   onCopyImage: () => void;
   onInitChart: (sheetId: string, colIndex?: number, selectedCols?: number[], initialType?: ChartType) => void;
   onInitPivot: (sheetId: string, colIndex?: number) => void;
@@ -29,6 +30,7 @@ export const GlobalCommandBar: React.FC<GlobalCommandBarProps> = (props) => {
     onAddNote: props.onAddNote,
     onImport: props.onImport,
     onConnectData: props.onConnectData,
+    onConnectAgent: props.onConnectAgent,
     onCopyImage: props.onCopyImage,
     onInitChart: props.onInitChart,
     onInitPivot: props.onInitPivot,

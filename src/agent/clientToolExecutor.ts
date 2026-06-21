@@ -1,5 +1,5 @@
 import { useStore } from '../../store';
-import type { CellData, CellFormat, ChartData, ChartConfig, SheetData, FilterCondition, SortConfig, SelectionContext, ChartType, PivotConfig, PivotValue, SparklineConfig, ConnectorConfig } from '../../types';
+import type { CellData, ChartData, ChartConfig, SheetData, FilterCondition, SortConfig, SelectionContext, ChartType, PivotConfig, PivotValue, SparklineConfig, ConnectorType } from '../../types';
 import { parseCellId, getCellId } from '../../utils/formulas';
 import {
   CELL_HEIGHT,
@@ -7,26 +7,29 @@ import {
   DEFAULT_CHART_SIZE,
   HEADER_COL_WIDTH,
   HEADER_ROW_HEIGHT,
-  MAX_CONNECTED_IMPORT_COLS,
 } from '../../constants';
 import { accumulateChartFocus, accumulateSheetFocus } from './agentFocusAccumulator';
 import { runSheetQuery, sheetTableSchema } from './alasqlAdapter';
-import { clickhouseResultToMatrix, queryClickhouse, getClickhouseSchema, describeClickhouseTable } from '../../utils/clickhouseBackend';
-import { googleAnalyticsResultToMatrix, queryGoogleAnalytics, getGoogleAnalyticsMetadata, type GoogleAnalyticsMetadataItem } from '../../utils/googleAnalyticsBackend';
-import { DEFAULT_GOOGLE_SHEETS_RANGE, googleSheetsResultToMatrix, queryGoogleSheets } from '../../utils/googleSheetsBackend';
-import { applyMatrixToSheet } from '../../utils/connectorSheet';
+import { getClickhouseSchema, describeClickhouseTable } from '../../utils/clickhouseBackend';
+import { getConnectorQueryProvider } from '../../utils/connectorQuery';
+import { getGoogleAnalyticsMetadata, listGoogleAnalyticsPropertiesPage, type GoogleAnalyticsMetadataItem } from '../../utils/googleAnalyticsBackend';
+import { DEFAULT_GOOGLE_SHEETS_RANGE } from '../../utils/googleSheetsBackend';
 import { getChartPalette, readStoredChartColorSettings } from '../../utils/chartColorSchemes';
 import { buildChartSeriesDisplayNames } from '../../utils/chartDisplay';
 import { getColumnIdForIndex, getColumnIdSpan, getSheetDataBounds } from './sheetBounds';
 import { buildSelectedCanvasSummary } from './selectedCanvasSummary';
+import { applyFormatToSheet, type ApplyFormatInput } from './applyFormatTool';
 import {
   createGaTrendBySourceSheet,
   enrichConnectionsForMcp,
-  getGaTopHostnames,
   loadConnections,
-  summarizeGaReportDiagnostics,
   type BasicConnection,
 } from './gaMcpTools';
+import {
+  handleCreateQuerySheet,
+  handleUpdateQuerySheet,
+  rewriteClickhouseSqlForDescribedTable,
+} from './querySheetTools';
 
 const generateId = () => Math.random().toString(36).slice(2, 11);
 
@@ -166,6 +169,7 @@ function summarizeSheet(sheet: SheetData) {
           query: sheet.connectorConfig.query ?? null,
           params: sheet.connectorConfig.params ?? null,
           derivation: sheet.connectorConfig.derivation ?? null,
+          brief: sheet.connectorConfig.brief ?? null,
           lastError: sheet.connectorConfig.lastError ?? null,
           lastRefreshedAt: sheet.connectorConfig.lastRefreshedAt ?? null,
           truncated: sheet.connectorConfig.truncated ?? false,
@@ -340,10 +344,7 @@ function validateChartAnalysisIntent(sheet: SheetData, input: CreateChartInput, 
   return null;
 }
 
-export function rewriteClickhouseSqlForDescribedTable(sql: string, table?: string): string {
-  if (!table) return sql;
-  return sql.replace(/\b(from|join)\s+t\b/gi, (_match, keyword: string) => `${keyword} ${table}`);
-}
+export { rewriteClickhouseSqlForDescribedTable };
 
 export async function executeClientTool(
   name: string,
@@ -524,29 +525,21 @@ export async function executeClientTool(
       case 'applyFormat': {
         const sheet = store.sheets[input.sheetId];
         if (!sheet) return { ok: false, error: `Unknown sheetId: ${input.sheetId}` };
-        if (sheet.pivotConfig || sheet.sparklineConfig) {
-          return {
-            ok: false,
-            error: `Sheet ${sheet.id} is a derived ${sheet.pivotConfig ? 'pivot' : 'sparkline'} table — format its source sheet (${(sheet.pivotConfig ?? sheet.sparklineConfig)!.sourceSheetId}) instead.`,
-          };
-        }
         const r = parseRange(input.range);
         if (!r) return { ok: false, error: `Invalid range: ${input.range}` };
-        const format = input.format as CellFormat;
-        const updates: Record<string, CellData> = {};
-        for (let row = r.startRow; row <= r.endRow; row++) {
-          for (let col = r.startCol; col <= r.endCol; col++) {
-            const id = getCellId(col, row);
-            const existing = sheet.cells[id] ?? { raw: '', value: null };
-            updates[id] = { ...existing, format };
-          }
-        }
+        const formatted = applyFormatToSheet(sheet, input as ApplyFormatInput, r);
         store.saveSnapshot();
-        // Merge to preserve every other cell on the sheet.
-        store.updateSheet(sheet.id, { cells: { ...sheet.cells, ...updates } });
+        store.updateSheet(sheet.id, { cells: formatted.cells, formatRules: formatted.formatRules });
         // `store` snapshot is safe: applyFormat only changes `cells`, never position/size.
         accumulateSheetFocus(store.sheets[sheet.id] ?? sheet);
-        return { ok: true, sheetId: sheet.id, range: input.range, cellsFormatted: Object.keys(updates).length };
+        return {
+          ok: true,
+          sheetId: sheet.id,
+          range: input.range,
+          cellsFormatted: formatted.cellsFormatted,
+          persistedOutputOverride: formatted.persistedOutputOverride,
+          formatDecisions: formatted.formatDecisions,
+        };
       }
 
       case 'createChart': {
@@ -818,15 +811,17 @@ export async function executeClientTool(
         }
         const conn = connections.find((c) => c.connectionId === connectionId);
         if (!conn) return { ok: false, error: 'Connection not found: ' + connectionId };
+        // Provider-owned payload contract so the agent learns the exact queryPayload shape + examples.
+        const queryShape = getConnectorQueryProvider(conn.type as ConnectorType)?.describeShape() ?? null;
         if (conn.type === 'clickhouse') {
           if (table) {
             const result = await describeClickhouseTable({ connectorId: connectionId, table });
             const schemaToken = makeSchemaToken();
             store.setConnectionSchemaToken(schemaToken, { connectionId, type: 'clickhouse', table, createdAt: Date.now() });
-            return { ok: true, connectionId, type: 'clickhouse', table, schemaToken, columns: result.columns };
+            return { ok: true, connectionId, type: 'clickhouse', table, schemaToken, queryShape, columns: result.columns };
           }
           const result = await getClickhouseSchema({ connectorId: connectionId });
-          return { ok: true, connectionId, type: 'clickhouse', tables: result.tables };
+          return { ok: true, connectionId, type: 'clickhouse', tables: result.tables, queryShape };
         }
         if (conn.type === 'google-analytics') {
           if (!propertyId) return { ok: false, error: 'propertyId is required for Google Analytics describeConnection' };
@@ -843,6 +838,7 @@ export async function executeClientTool(
             type: 'google-analytics',
             propertyId,
             schemaToken,
+            queryShape,
             search: search ?? null,
             dimensions: compactGaMetadata(fullMetadata.dimensions, DEFAULT_GA_DIMENSIONS, compactArgs),
             metrics: compactGaMetadata(fullMetadata.metrics, DEFAULT_GA_METRICS, compactArgs),
@@ -858,6 +854,7 @@ export async function executeClientTool(
             connectionId,
             type: 'google-sheets',
             schemaToken,
+            queryShape,
             spreadsheetIdOrUrlRequired: true,
             rangeOptional: true,
             defaultRange: DEFAULT_GOOGLE_SHEETS_RANGE,
@@ -868,128 +865,11 @@ export async function executeClientTool(
       }
 
       case 'createQuerySheet': {
-        const { connectionId, schemaToken, type: connType, sql, propertyId, report, spreadsheetIdOrUrl, range, derivation, title } = input as {
-          connectionId: string;
-          schemaToken: string;
-          type: 'clickhouse' | 'google-analytics' | 'google-sheets';
-          sql?: string;
-          propertyId?: string;
-          report?: Record<string, unknown>;
-          spreadsheetIdOrUrl?: string;
-          range?: string;
-          derivation: string;
-          title?: string;
-        };
-        const tokenScope = store.connectionSchemaTokens[schemaToken];
-        if (!tokenScope) return { ok: false, error: 'Run describeConnection first and pass its schemaToken' };
-        if (tokenScope.connectionId !== connectionId || tokenScope.type !== connType) {
-          return { ok: false, error: 'schemaToken does not match the requested connection/type' };
-        }
-        if (connType === 'google-analytics' && tokenScope.propertyId !== propertyId) {
-          return { ok: false, error: 'schemaToken does not match the requested Google Analytics property' };
-        }
-        let matrix: string[][];
-        let sheetTitle: string;
-        let sourceTruncated = false;
-        if (connType === 'clickhouse') {
-          if (!sql) return { ok: false, error: 'sql is required for ClickHouse queries' };
-          const clickhouseSql = rewriteClickhouseSqlForDescribedTable(sql, tokenScope.table);
-          const result = await queryClickhouse({ connectorId: connectionId, sql: clickhouseSql });
-          matrix = clickhouseResultToMatrix(result);
-          sourceTruncated = !!result.truncated;
-          sheetTitle = title ?? 'ClickHouse Query';
-        } else if (connType === 'google-analytics') {
-          if (!propertyId) return { ok: false, error: 'propertyId is required for Google Analytics queries' };
-          const result = await queryGoogleAnalytics({ connectorId: connectionId, propertyId, report: report as any });
-          matrix = googleAnalyticsResultToMatrix(result);
-          sourceTruncated = !!result.truncated;
-          sheetTitle = title ?? ('Analytics: ' + propertyId);
-        } else if (connType === 'google-sheets') {
-          if (!spreadsheetIdOrUrl) return { ok: false, error: 'spreadsheetIdOrUrl is required for Google Sheets queries' };
-          const result = await queryGoogleSheets({ connectorId: connectionId, spreadsheetIdOrUrl, range });
-          matrix = googleSheetsResultToMatrix(result);
-          sourceTruncated = !!result.truncated;
-          sheetTitle = title ?? 'Google Sheets';
-        } else {
-          return { ok: false, error: 'Unsupported connection type: ' + connType };
-        }
-        if (matrix.length < 2) {
-          const queryDiagnostics =
-            connType === 'google-analytics'
-              ? summarizeGaReportDiagnostics({
-                  propertyId: propertyId!,
-                  report: report as Record<string, unknown> | undefined,
-                  topHostnames: await getGaTopHostnames({
-                    connectionId,
-                    propertyId: propertyId!,
-                    report: report as Record<string, unknown> | undefined,
-                  }),
-                })
-              : null;
-          return {
-            ok: false,
-            error: 'Query returned no data rows. No sheet or chart was created; explain the empty result and stop.',
-            queryDiagnostics,
-          };
-        }
-        const applied = applyMatrixToSheet(matrix);
-        const position = store.getNextSheetPosition();
-        const connectorConfig: ConnectorConfig = {
-          type: connType,
-          name: sheetTitle,
-          connectionId,
-          query:
-            connType === 'clickhouse'
-              ? { sql: sql! }
-              : connType === 'google-analytics'
-                ? { propertyId: propertyId!, report: (report ?? {}) as any }
-                : { spreadsheetIdOrUrl: spreadsheetIdOrUrl!, range: range || DEFAULT_GOOGLE_SHEETS_RANGE },
-          derivation,
-          lastRefreshedAt: Date.now(),
-          truncated: sourceTruncated || applied.truncated,
-          lastError: '',
-        };
-        const newSheet: SheetData = {
-          id: generateId(),
-          title: sheetTitle,
-          position,
-          size: applied.size,
-          cells: applied.cells,
-          connectorConfig,
-          setupRequired: false,
-        };
-        store.addSheet(newSheet);
-        accumulateSheetFocus(newSheet);
-        const importedHeaders = matrix[0].slice(0, MAX_CONNECTED_IMPORT_COLS);
-        const headers = importedHeaders.map((h, i) => ({
-          columnId: getCellId(i, 0).replace(/\d+$/, ''),
-          header: h,
-        }));
-        const inferredTypes = importedHeaders.map((_, i) => {
-          const s = matrix[1]?.[i] ?? '';
-          if (s !== '' && !isNaN(Number(s))) return 'number';
-          if (/\d{4}-\d{2}-\d{2}/.test(s) && !isNaN(Date.parse(s))) return 'date';
-          return 'text';
-        });
-        const sampleRows = matrix.slice(1, 6).map((row, rowIndex) => {
-          const sample: Record<string, string | number> = { rowNumber: rowIndex + 2 };
-          importedHeaders.forEach((_, colIndex) => {
-            const columnId = getColumnIdForIndex(colIndex);
-            sample[columnId] = row[colIndex] ?? '';
-          });
-          return sample;
-        });
-        return {
-          ok: true,
-          sheetId: newSheet.id,
-          title: sheetTitle,
-          rowCount: matrix.length - 1,
-          headers,
-          inferredTypes,
-          sampleRows,
-          derivation,
-          truncated: applied.truncated,
-        };
+        return handleCreateQuerySheet(store, input);
+      }
+
+      case 'updateQuerySheet': {
+        return handleUpdateQuerySheet(store, input);
       }
 
       case 'createGaTrendBySource': {

@@ -17,6 +17,7 @@ import { SheetCell } from './SheetCell';
 import html2canvas from 'html2canvas';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useStore } from '../store';
+import { ConnectedSheetBriefPanel } from './ConnectedSheetBriefPanel';
 import { ConnectedSheetQueryPanel } from './ConnectedSheetQueryPanel';
 import {
   buildConnectorConfigWithQuery,
@@ -1345,6 +1346,9 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
               await refreshConnectedSheetQuery({ queryOverride: query, showToasts: true });
             }}
           />
+        )}
+        {isConnected && data.connectorConfig?.brief && (
+          <ConnectedSheetBriefPanel brief={data.connectorConfig.brief} />
         )}
 	        {isPivot && data.pivotWarnings && data.pivotWarnings.length > 0 && (
 	            <div className="border-t border-amber-200/70 dark:border-amber-900/60 bg-amber-50/80 dark:bg-amber-950/20 px-3 py-2">

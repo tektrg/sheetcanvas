@@ -1,8 +1,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { ConnectorConfig, ConnectorType } from '../types';
-import { X, Database, FileSpreadsheet, BarChart2, Globe, Loader2, CheckCircle2, AlertCircle, KeyRound, RefreshCcw, Code2 } from 'lucide-react';
-import { fetchDataFromConnector } from '../utils/dataConnectors';
+import { X, Database, FileSpreadsheet, BarChart2, Loader2, CheckCircle2, AlertCircle, KeyRound, RefreshCcw, Code2 } from 'lucide-react';
 import { ClickHousePublicConnector, clickhouseResultToMatrix, createClickhouseConnector, listClickhouseConnectors, queryClickhouse, testClickhouseConnector } from '../utils/clickhouseBackend';
 import {
   buildGoogleAnalyticsAuthUrl,
@@ -27,7 +26,8 @@ import {
   listGoogleSheetsConnectors,
   type GoogleSheetsPublicConnector
 } from '../utils/googleSheetsBackend';
-import { buildConnectorConfigWithQuery } from '../utils/connectedSheetQueries';
+import { buildConnectorConfigWithQuery, readConnectorQuery, validateConnectorQuery } from '../utils/connectedSheetQueries';
+import { requireConnectorQueryProvider } from '../utils/connectorQuery';
 
 interface DataConnectorDialogProps {
   onClose: () => void;
@@ -76,8 +76,6 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
   const [sheetId, setSheetId] = useState('');
   const [sheetRange, setSheetRange] = useState(DEFAULT_GOOGLE_SHEETS_RANGE);
   const [propertyId, setPropertyId] = useState('');
-  const [url, setUrl] = useState('');
-  const [simulate, setSimulate] = useState(() => (initialType === 'google-analytics' || initialType === 'google-sheets' ? false : true));
   const [gsConnectorId, setGsConnectorId] = useState('');
   const [gsConnectors, setGsConnectors] = useState<GoogleSheetsPublicConnector[]>([]);
   const [gsLoadingConnectors, setGsLoadingConnectors] = useState(false);
@@ -195,9 +193,6 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
     setSelectedType(type);
     setStatus('idle');
     setErrorMsg('');
-    // Google OAuth-backed connectors rely on backend connector selection; default to real mode.
-    // Other connectors default to simulated mode for the demo experience.
-    setSimulate(type === 'google-analytics' || type === 'google-sheets' ? false : true);
     if (type === 'clickhouse') {
       try {
         await loadClickhouseConnectors();
@@ -232,11 +227,10 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
 
   useEffect(() => {
     if (selectedType !== 'google-analytics') return;
-    if (simulate) return;
     if (!gaConnectorId) return;
     loadGoogleAnalyticsProperties(gaConnectorId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedType, simulate, gaConnectorId]);
+  }, [selectedType, gaConnectorId]);
 
   useEffect(() => {
     if (selectedType !== 'google-analytics') return;
@@ -272,7 +266,6 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
         setGaAuthError('');
         setGaConnectorId(connector.id);
         setGaUseManualConnectorId(false);
-        setSimulate(false);
         loadGoogleAnalyticsConnectors();
       })
       .catch((e: any) => {
@@ -318,7 +311,6 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
       .then(({ connector }) => {
         setGsAuthError('');
         setGsConnectorId(connector.id);
-        setSimulate(false);
         loadGoogleSheetsConnectors();
       })
       .catch((e: any) => {
@@ -416,9 +408,6 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
     const config: ConnectorConfig = {
         type: selectedType,
         name: 'Import',
-        params: {
-            simulate
-        }
     };
 
     if (selectedType === 'google-sheets') {
@@ -427,7 +416,7 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
             setErrorMsg('Google Sheets URL or ID is required');
             return;
         }
-        if (!simulate && !gsConnectorId.trim()) {
+        if (!gsConnectorId.trim()) {
             setStatus('error');
             setErrorMsg('Select a Google Sheets connector');
             return;
@@ -439,7 +428,6 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
             spreadsheetIdOrUrl: sheetId.trim(),
             range: sheetRange.trim() || DEFAULT_GOOGLE_SHEETS_RANGE
         }));
-        config.lastRefreshedAt = Date.now();
     }
     if (selectedType === 'google-analytics') {
         if (!propertyId.trim()) {
@@ -447,7 +435,7 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
             setErrorMsg('GA4 property ID is required');
             return;
         }
-        if (!simulate && !gaConnectorId.trim()) {
+        if (!gaConnectorId.trim()) {
             setStatus('error');
             setErrorMsg('Select a Google Analytics connector');
             return;
@@ -507,16 +495,30 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
             propertyId: propertyId.trim(),
             report: Object.keys(report).length > 0 ? report : {}
         }));
-        config.lastRefreshedAt = Date.now();
     }
-    if (selectedType === 'csv-url') config.params.url = url;
+
+    // Single execution path: every connector runs through its registered query provider.
+    const query = readConnectorQuery(config);
+    if (!query) {
+        setStatus('error');
+        setErrorMsg(`Unsupported connector type: ${config.type}`);
+        return;
+    }
+    const validationError = validateConnectorQuery(config, query);
+    if (validationError) {
+        setStatus('error');
+        setErrorMsg(validationError);
+        return;
+    }
 
     try {
-        const result = await fetchDataFromConnector(config);
-        config.truncated = !!result.truncated;
+        const provider = requireConnectorQueryProvider(config.type);
+        const { matrix, truncated } = await provider.execute(config.connectionId!.trim(), query);
+        config.truncated = !!truncated;
+        config.lastRefreshedAt = Date.now();
         setStatus('success');
         setTimeout(() => {
-            onImport(result.title, result.data, config);
+            onImport(provider.defaultTitle(query), matrix, config);
             onClose();
         }, 500);
     } catch (e: any) {
@@ -708,8 +710,7 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
         case 'google-sheets':
             return (
                 <div className="space-y-4 animate-scale-in">
-                    {!simulate && (
-                        <div className="space-y-3">
+                    <div className="space-y-3">
                             <div className="flex items-center justify-between">
                                 <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">Google Sheets connector</label>
                                 <button
@@ -750,8 +751,7 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
                                     <RefreshCcw size={14} />
                                 </button>
                             </div>
-                        </div>
-                    )}
+                    </div>
                     <div>
                         <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1.5 uppercase">Google Sheets URL or ID</label>
                         <input
@@ -779,8 +779,7 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
         case 'google-analytics':
             return (
                 <div className="space-y-4 animate-scale-in">
-                    {!simulate && (
-                        <div className="space-y-3">
+                    <div className="space-y-3">
                             <div className="flex items-center justify-between">
                                 <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">Google Analytics connector</label>
                                 <button
@@ -842,11 +841,10 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
                                     onChange={e => setGaConnectorId(e.target.value)}
                                 />
                             )}
-                        </div>
-                    )}
+                    </div>
                     <div>
                         <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1.5 uppercase">GA4 Property ID</label>
-                        {!simulate && gaProperties.length > 0 && !gaPropertyError ? (
+                        {gaProperties.length > 0 && !gaPropertyError ? (
                             <div className="flex gap-2">
                                 <select
                                     className="flex-1 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:ring-2 focus:ring-teal-500/50"
@@ -1031,21 +1029,6 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
                     </div>
                 </div>
             );
-        case 'csv-url':
-            return (
-                <div className="space-y-4 animate-scale-in">
-                    <div>
-                        <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1.5 uppercase">CSV URL</label>
-                        <input 
-                            type="text" 
-                            className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:ring-2 focus:ring-teal-500/50"
-                            placeholder="https://example.com/data.csv"
-                            value={url}
-                            onChange={e => setUrl(e.target.value)}
-                        />
-                    </div>
-                </div>
-            );
         default:
             return <div className="h-32 flex items-center justify-center text-sm text-neutral-400 italic">Select a source from the left to configure.</div>;
     }
@@ -1098,19 +1081,7 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
                         <div className="text-[10px] opacity-70">Import GA4 reports</div>
                     </div>
                 </button>
-	                <button 
-	                    onClick={() => handleSelectType('csv-url')}
-	                    className={`w-full text-left px-3 py-3 rounded-lg flex items-center gap-3 transition-colors ${selectedType === 'csv-url' ? 'bg-white dark:bg-neutral-800 shadow-sm text-teal-600 dark:text-teal-400' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
-	                >
-	                     <div className="p-1.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded">
-	                        <Globe size={16} />
-                    </div>
-                    <div>
-                        <div className="text-sm font-medium">CSV from URL</div>
-                        <div className="text-[10px] opacity-70">Live CSV feed</div>
-	                    </div>
-	                </button>
-	                <button 
+	                <button
 	                    onClick={() => handleSelectType('clickhouse')}
 	                    className={`w-full text-left px-3 py-3 rounded-lg flex items-center gap-3 transition-colors ${selectedType === 'clickhouse' ? 'bg-white dark:bg-neutral-800 shadow-sm text-teal-600 dark:text-teal-400' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
 	                >
@@ -1123,32 +1094,14 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
 	                    </div>
 	                </button>
 	            </div>
-	            <div className="p-4 border-t border-neutral-200 dark:border-neutral-700 bg-neutral-100/50 dark:bg-neutral-900/50">
-	                {selectedType === 'clickhouse' ? (
+	            {selectedType === 'clickhouse' && (
+	                <div className="p-4 border-t border-neutral-200 dark:border-neutral-700 bg-neutral-100/50 dark:bg-neutral-900/50">
 	                    <div className="text-[10px] text-neutral-500 dark:text-neutral-400 flex items-center gap-2">
 	                        <Code2 size={14} />
 	                        Uses backend proxy; configure `VITE_BACKEND_URL` and optional `VITE_API_BEARER_TOKEN`.
 	                    </div>
-	                ) : (
-	                     <>
-	                         <div className="flex items-center gap-2">
-	                             <input 
-	                                type="checkbox" 
-	                                id="sim-mode"
-	                                checked={simulate}
-	                                onChange={e => setSimulate(e.target.checked)}
-	                                className="rounded text-teal-600 focus:ring-teal-500"
-	                             />
-	                             <label htmlFor="sim-mode" className="text-xs text-neutral-500 cursor-pointer select-none">
-	                                 Simulate API (Demo Mode)
-	                             </label>
-	                         </div>
-	                         <p className="text-[10px] text-neutral-400 mt-1 leading-tight">
-	                             Uncheck to use real API endpoints (requires configured API keys/OAuth in environment).
-	                         </p>
-	                     </>
-	                )}
-	            </div>
+	                </div>
+	            )}
 	        </div>
 
         {/* Main Area */}
@@ -1161,7 +1114,6 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
 	                <h2 className="text-lg font-semibold text-neutral-800 dark:text-neutral-100">
 	                    {selectedType === 'google-sheets' ? 'Configure Google Sheets' : 
 	                     selectedType === 'google-analytics' ? 'Configure Analytics' :
-	                     selectedType === 'csv-url' ? 'Configure CSV Link' :
 	                     selectedType === 'clickhouse' ? 'Configure ClickHouse' : 'Select Source'}
 	                </h2>
 	            </div>

@@ -10,11 +10,25 @@ export const A1RangeSchema = z
 // shade the cell background. `heatmapColor` only applies to heatmap visuals.
 const CellVisualEnum = z.enum(['bar', 'bar-row', 'heatmap', 'heatmap-row', 'sparkline']);
 const HeatmapColorEnum = z.enum(['red', 'green', 'yellow']);
+const FormatPresetEnum = z.enum([
+  'integer',
+  'decimal',
+  'compactNumber',
+  'currency',
+  'compactCurrency',
+  'percent',
+  'date',
+  'datetime',
+  'duration',
+  'text',
+  'customD3',
+]);
 
 export const CellFormatSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('number'),
     decimals: z.number().int().min(0).max(10).optional(),
+    d3Format: z.string().min(1).max(40).optional(),
     visual: CellVisualEnum.optional(),
     heatmapColor: HeatmapColorEnum.optional(),
   }),
@@ -22,12 +36,14 @@ export const CellFormatSchema = z.discriminatedUnion('type', [
     type: z.literal('currency'),
     symbol: z.string().max(4).optional(),
     decimals: z.number().int().min(0).max(10).optional(),
+    d3Format: z.string().min(1).max(40).optional(),
     visual: CellVisualEnum.optional(),
     heatmapColor: HeatmapColorEnum.optional(),
   }),
   z.object({
     type: z.literal('percent'),
     decimals: z.number().int().min(0).max(10).optional(),
+    d3Format: z.string().min(1).max(40).optional(),
     visual: CellVisualEnum.optional(),
     heatmapColor: HeatmapColorEnum.optional(),
   }),
@@ -43,6 +59,21 @@ export const CellFormatSchema = z.discriminatedUnion('type', [
     heatmapColor: HeatmapColorEnum.optional(),
   }),
 ]);
+
+const FormatPresetSchema = z
+  .object({
+    preset: FormatPresetEnum,
+    decimals: z.number().int().min(0).max(10).optional(),
+    symbol: z.string().max(4).optional(),
+    d3Format: z.string().min(1).max(40).optional(),
+    dateFormat: z.string().max(40).optional(),
+    visual: CellVisualEnum.optional(),
+    heatmapColor: HeatmapColorEnum.optional(),
+  })
+  .refine(value => value.preset !== 'customD3' || !!value.d3Format, {
+    message: 'customD3 preset requires d3Format',
+    path: ['d3Format'],
+  });
 
 const ColumnIdSchema = z.string().regex(/^[A-Z]+$/, 'columnId must be a column letter like "A"');
 
@@ -113,6 +144,29 @@ const PivotValueSchema = z
     }
   );
 
+const QueryBriefSchema = z.object({
+  logic: z
+    .string()
+    .min(1)
+    .max(500)
+    .describe('Plain-English summary of the query logic. Do not paste raw rows or long SQL.'),
+  scope: z
+    .array(z.string().min(1).max(180))
+    .min(1)
+    .max(6)
+    .describe('Important scope boundaries such as time range, included segments, excluded filters, limits, or sampling.'),
+  sources: z
+    .array(z.string().min(1).max(160))
+    .min(1)
+    .max(6)
+    .describe('Data source names, table names, GA property, or spreadsheet/range names used. Keep these concise.'),
+  judgmentNotes: z
+    .array(z.string().min(1).max(220))
+    .min(1)
+    .max(6)
+    .describe('The most important caveats that affect user judgment, especially exclusions or ambiguous definitions.'),
+});
+
 // ── Tool definitions ────────────────────────────────────────────────────────
 
 export const toolDefs = {
@@ -178,12 +232,22 @@ export const toolDefs = {
   },
 
   applyFormat: {
-    description: 'Apply a cell format (number/currency/percent/date/text) to every cell in an A1 range.',
-    inputSchema: z.object({
-      sheetId: z.string(),
-      range: A1RangeSchema,
-      format: CellFormatSchema,
-    }),
+    description:
+      'Apply presentation formatting to every cell in an A1 range. Works on normal sheets and derived pivot/sparkline sheets; derived sheets persist output-format overrides so refreshes keep the presentation. Prefer first-class presets (integer, decimal, compactNumber, currency, compactCurrency, percent, date, datetime, duration, text) and use customD3 only when a named preset is not expressive enough. For meaningful numeric metrics, consider visual:"bar": use bars for a single primary metric and only main comparison metrics in multi-metric outputs; avoid bars for IDs, dates, labels, tiny flags, and secondary support metrics. Returns formatDecisions explaining what was formatted and why.',
+    inputSchema: z
+      .object({
+        sheetId: z.string(),
+        range: A1RangeSchema,
+        format: CellFormatSchema.optional(),
+        preset: FormatPresetSchema.optional(),
+        reason: z.string().min(1).max(160).optional(),
+      })
+      .refine(value => !!value.format || !!value.preset, {
+        message: 'Pass either format or preset',
+      })
+      .refine(value => !(value.format && value.preset), {
+        message: 'Pass format or preset, not both',
+      }),
   },
 
   createChart: {
@@ -300,7 +364,7 @@ export const toolDefs = {
 
   describeConnection: {
     description:
-      'Describe a data connection and return a schemaToken required by createQuerySheet. ClickHouse without table returns tables[] only; with table returns columns[] and schemaToken. Google Analytics requires propertyId and returns a bounded dimensions[]/metrics[] catalog. Google Sheets returns read-only URL/ID and range requirements.',
+      'Describe a data connection and return a schemaToken required by createQuerySheet, plus a queryShape describing the exact queryPayload to build (payloadSchema, requiredFields, worked examples). ClickHouse without table returns tables[] only; with table returns columns[] and schemaToken. Google Analytics requires propertyId and returns a bounded dimensions[]/metrics[] catalog. Google Sheets returns read-only URL/ID and range requirements. Always read queryShape before constructing queryPayload.',
     inputSchema: z.object({
       connectionId: z.string().min(1),
       table: z.string().min(1).optional(),
@@ -313,24 +377,37 @@ export const toolDefs = {
 
   createQuerySheet: {
     description:
-      'Create a new sheet by querying a previously described data connection. Pass schemaToken from describeConnection. ClickHouse: provide sql using the real database-qualified table name from describeConnection, not the in-app sheet alias "t". Google Analytics: provide propertyId and report. Google Sheets: provide spreadsheetIdOrUrl and optional A1 range. Always provide derivation. Returns sheetId + headers for immediate createChart use.',
+      'Create a new sheet by querying a previously described data connection. Pass schemaToken from describeConnection. The connector-specific query goes in queryPayload, whose exact shape, required fields, and worked examples come from describeConnection\'s queryShape — build the payload to match it rather than guessing. Always provide derivation and a structured brief that summarizes query logic, data scope, sources/tables, and judgment caveats without raw data. Returns sheetId + headers for immediate createChart use.',
     inputSchema: z.object({
       connectionId: z.string().min(1),
       schemaToken: z.string().min(8),
       type: z.enum(['clickhouse', 'google-analytics', 'google-sheets']),
-      sql: z.string().min(1).optional(),
-      propertyId: z.string().min(1).optional(),
-      report: z.record(z.string(), z.unknown()).optional(),
-      spreadsheetIdOrUrl: z.string().min(1).optional(),
-      range: z.string().min(1).optional(),
+      queryPayload: z
+        .record(z.string(), z.unknown())
+        .describe('Connector-owned query payload. Build it to match the queryShape returned by describeConnection (payloadSchema + examples) for this connector type.'),
       derivation: z.string().min(1),
+      brief: QueryBriefSchema,
+      title: z.string().optional(),
+    }),
+  },
+
+  updateQuerySheet: {
+    description:
+      'Update an existing connector query sheet in place and refresh its data while preserving the sheetId. Use this when the user asks to edit, revise, or add columns to the query of a selected/current query sheet instead of creating a replacement sheet. The connector type is inferred from the sheet; pass the full replacement query in queryPayload plus a fresh structured brief for the new logic/scope/sources/judgment caveats. Use describeConnection\'s queryShape for the exact payload shape and examples for that connector type (ClickHouse, Google Analytics, or Google Sheets). On query errors, the old cells are preserved and the sheet records lastError.',
+    inputSchema: z.object({
+      sheetId: z.string().min(1),
+      queryPayload: z
+        .record(z.string(), z.unknown())
+        .describe('Full replacement query matching the sheet connector type. Build it to match describeConnection\'s queryShape (payloadSchema + examples) for that type.'),
+      derivation: z.string().min(1).optional(),
+      brief: QueryBriefSchema,
       title: z.string().optional(),
     }),
   },
 
   createGaTrendBySource: {
     description:
-      'Create a Google Analytics daily trend-by-source workflow in one step: queries date + hostName + source + medium + metric, creates the raw connected sheet, then creates a grouped sparkline trend table by source. Requires a schemaToken from describeConnection for the same GA connection/property. If the report returns no rows, no sheet is created and the response includes diagnostics such as propertyId, date range, host filter, and best-effort top hostnames.',
+      'Create a Google Analytics daily trend-by-source workflow in one step: queries date + hostName + source + medium + metric, creates the raw connected sheet, then creates a grouped sparkline trend table by source. Requires a schemaToken from describeConnection for the same GA connection/property and a structured brief for the raw connected sheet. If the report returns no rows, no sheet is created and the response includes diagnostics such as propertyId, date range, host filter, and best-effort top hostnames.',
     inputSchema: z.object({
       connectionId: z.string().min(1),
       schemaToken: z.string().min(8),
@@ -340,6 +417,7 @@ export const toolDefs = {
       hostName: z.string().min(1).max(160).optional(),
       sourceDimension: z.enum(['sessionSource', 'firstUserSource']).optional(),
       metric: z.enum(['sessions', 'activeUsers', 'totalUsers', 'newUsers', 'screenPageViews', 'eventCount']).optional(),
+      brief: QueryBriefSchema,
       title: z.string().min(1).max(120).optional(),
     }),
   },

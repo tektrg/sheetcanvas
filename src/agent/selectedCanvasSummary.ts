@@ -115,6 +115,7 @@ function summarizeSelectedSheet(sheet: SheetData): SelectedCanvasSheet {
           name: sheet.connectorConfig.name,
           connectionId: sheet.connectorConfig.connectionId ?? null,
           derivation: sheet.connectorConfig.derivation ?? null,
+          brief: sheet.connectorConfig.brief ?? null,
           truncated: sheet.connectorConfig.truncated ?? null,
           lastError: sheet.connectorConfig.lastError ?? null,
           lastRefreshedAt: sheet.connectorConfig.lastRefreshedAt ?? null,

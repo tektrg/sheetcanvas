@@ -213,12 +213,11 @@ const MessageView: React.FC<{ msg: UIMessage; darkMode?: boolean }> = ({ msg, da
   );
 };
 
-// Private-beta gate: until the backend is publicly deployed, end-users on the
-// production site see a "request access" notice instead of the live composer.
+// Production gate: the hosted API is not public yet, so end-users see the
+// durable-agent path instead of the live Copilot composer.
 // Local dev (localhost / 127.0.0.1 / *.local) keeps the full Copilot UI so
 // developers can keep iterating. A future explicit override (set
 // `VITE_AI_BETA_PUBLIC=1` at build time) flips this off everywhere.
-const BETA_CONTACT_EMAIL = 'yourfriend@theindie.app';
 function isPrivateBetaGated(): boolean {
   try {
     if ((import.meta as any).env?.VITE_AI_BETA_PUBLIC === '1') return false;
@@ -277,10 +276,6 @@ export const AgentChatPanel: React.FC<Props> = ({ open, onClose, getSelection, d
     const textMuted = darkMode ? '#a3a3a3' : '#737373';
     const textPrimary = darkMode ? '#f5f5f5' : '#171717';
     const tealColor = teal(darkMode);
-    const subject = encodeURIComponent('SheetCanvas Copilot — private beta access');
-    const body = encodeURIComponent(
-      'Hi — I’d like to try the SheetCanvas Copilot private beta.\n\nHow I’d use it:\n\nThanks!',
-    );
     return (
       <div
         style={{
@@ -288,7 +283,7 @@ export const AgentChatPanel: React.FC<Props> = ({ open, onClose, getSelection, d
           top: 0,
           right: 0,
           bottom: 0,
-          width: 400,
+          width: 'min(400px, 100vw)',
           background: panelBg,
           backdropFilter: 'blur(24px)',
           WebkitBackdropFilter: 'blur(24px)',
@@ -323,7 +318,7 @@ export const AgentChatPanel: React.FC<Props> = ({ open, onClose, getSelection, d
               color: tealColor,
             }}
           >
-            Private beta
+            Coming soon
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 2, marginLeft: 'auto' }}>
             <button
@@ -370,37 +365,43 @@ export const AgentChatPanel: React.FC<Props> = ({ open, onClose, getSelection, d
           }}
         >
           <div style={{ fontSize: 15, fontWeight: 600, color: textPrimary, lineHeight: 1.4 }}>
-            Copilot is in private beta.
+            Copilot is coming soon.
           </div>
           <div style={{ fontSize: 13, color: textMuted, lineHeight: 1.6 }}>
-            It can read your sheet, run SQL over your data, and make edits for you — charts,
-            filters, formatting, pivots. We’re onboarding testers a few at a time so the
-            answers stay good and costs stay sane.
+            The hosted chat API is not available in production yet. You can use the same
+            canvas tools today from Claude or Codex by connecting this SheetCanvas tab as
+            an agent workspace.
           </div>
           <div style={{ fontSize: 13, color: textPrimary, lineHeight: 1.6 }}>
-            Want in? Send a quick note about what you’d use it for:
+            Turn massive data into durable, shareable artifacts: tables, charts, pivots,
+            notes, and dashboards that stay on the canvas after the chat disappears.
           </div>
-          <a
-            href={`mailto:${BETA_CONTACT_EMAIL}?subject=${subject}&body=${body}`}
+          <button
+            type="button"
+            onClick={onOpenConnectAgent}
+            disabled={!onOpenConnectAgent}
             style={{
+              all: 'unset',
               display: 'inline-flex',
               alignSelf: 'flex-start',
               alignItems: 'center',
-              gap: 6,
+              gap: 8,
               padding: '8px 14px',
               borderRadius: 10,
               background: tealColor,
               color: '#ffffff',
-              textDecoration: 'none',
               fontSize: 13,
               fontWeight: 600,
+              cursor: onOpenConnectAgent ? 'pointer' : 'not-allowed',
+              opacity: onOpenConnectAgent ? 1 : 0.6,
             }}
           >
-            Email {BETA_CONTACT_EMAIL}
-          </a>
+            <Plug size={15} />
+            Connect Claude or Codex now
+          </button>
           <div style={{ fontSize: 11, color: textMuted, marginTop: 'auto', lineHeight: 1.5 }}>
-            Everything else in SheetCanvas keeps working as normal — this gate is just for the
-            Copilot assistant.
+            Copilot will become one built-in client. Claude and Codex remain the power path
+            for agent-native SheetCanvas work.
           </div>
         </div>
       </div>

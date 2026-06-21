@@ -26,7 +26,7 @@ import { AgentEvalBridge } from './src/agent/AgentEvalBridge';
 import { useMcpBridge } from './src/agent/useMcpBridge';
 import { ConnectAgentDialog } from './src/components/ConnectAgentDialog';
 import { loadGoogleSheetsAuth } from './utils/googleAnalyticsAuth';
-import { Sparkles } from 'lucide-react';
+import { Plug, Sparkles } from 'lucide-react';
 import { getVisibleCanvasIds } from './utils/canvasVirtualization';
 import { LineageOverlay } from './components/LineageOverlay';
 import { buildLineageLinks, hasLineageForNode } from './utils/lineage';
@@ -100,6 +100,10 @@ const App: React.FC = () => {
   const [agentPanelOpen, setAgentPanelOpen] = useState(false);
   const [connectAgentOpen, setConnectAgentOpen] = useState(false);
   const mcpBridge = useMcpBridge({ getSelection: () => activeSelectionRef.current });
+  const openConnectAgent = useCallback(() => {
+    setAgentPanelOpen(false);
+    setConnectAgentOpen(true);
+  }, []);
   const isLocalAgentEvalHost =
     typeof window !== 'undefined' &&
     ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
@@ -1168,12 +1172,21 @@ const App: React.FC = () => {
 
         <Toast message={toast.message} isVisible={toast.visible} onClose={() => setToast({ ...toast, visible: false })} />
 
-        {/* AI Copilot bubble — same pill style as the Toolbar nav bar */}
+        {/* Agent controls — same pill style as the Toolbar nav bar */}
         <div
             className="fixed bottom-8 z-[999] transition-all duration-[120ms] ease-in-out"
             style={{ right: agentPanelOpen ? 396 : 16 }}
         >
-            <div className="p-1.5 bg-white/90 dark:bg-neutral-900/90 backdrop-blur-xl shadow-xl border border-neutral-200/50 dark:border-neutral-700/50 rounded-full">
+            <div className="flex items-center gap-1 p-1.5 bg-white/90 dark:bg-neutral-900/90 backdrop-blur-xl shadow-xl border border-neutral-200/50 dark:border-neutral-700/50 rounded-full">
+                <button
+                    onClick={openConnectAgent}
+                    title="Connect Claude or Codex"
+                    aria-label="Connect Agent"
+                    className="group relative px-3 py-2.5 rounded-full flex items-center gap-2 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100 transition-all cursor-pointer"
+                >
+                    <Plug size={18} strokeWidth={1.5} className={mcpBridge.connectionStatus === 'connected' ? 'text-teal-500' : mcpBridge.connectionStatus === 'replaced' ? 'text-amber-500' : ''} />
+                    <span className="text-xs font-medium">Connect Agent</span>
+                </button>
                 <button
                     onClick={() => setAgentPanelOpen((v) => !v)}
                     title="Open Copilot"
@@ -1190,7 +1203,7 @@ const App: React.FC = () => {
             onClose={() => setAgentPanelOpen(false)}
             getSelection={() => activeSelectionRef.current}
             darkMode={darkMode}
-            onOpenConnectAgent={() => setConnectAgentOpen(true)}
+            onOpenConnectAgent={openConnectAgent}
             mcpStatus={mcpBridge.connectionStatus}
         />
         {connectAgentOpen && (
@@ -1211,6 +1224,7 @@ const App: React.FC = () => {
             onAddNote={handleAddNote}
             onImport={() => fileInputRef.current?.click()}
             onConnectData={() => setDataConnectorState({ isOpen: true })}
+            onConnectAgent={openConnectAgent}
             onCopyImage={handleCopySelectionAsImage}
             onInitChart={handleInitChart}
             onInitPivot={handleInitPivot}

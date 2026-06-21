@@ -128,19 +128,23 @@ export const loadAppState = async (id: string = 'default'): Promise<AppState> =>
       if (cfg.connectionId !== undefined || cfg.query !== undefined) return sheet;
       const migrated: any = { ...cfg };
       const p = cfg.params as Record<string, unknown>;
+      // Connector-owned payloads are persisted inside a versioned envelope { version, payload }.
       if (cfg.type === 'clickhouse' && p.connectorId) {
         migrated.connectionId = String(p.connectorId);
-        if (p.sql) migrated.query = { sql: String(p.sql) };
+        if (p.sql) migrated.query = { version: 1, payload: { sql: String(p.sql) } };
       } else if (cfg.type === 'google-analytics' && p.connectorId) {
         migrated.connectionId = String(p.connectorId);
-        if (p.propertyId) migrated.query = { propertyId: String(p.propertyId), report: p.report ?? {} };
+        if (p.propertyId) migrated.query = { version: 1, payload: { propertyId: String(p.propertyId), report: p.report ?? {} } };
       } else if (cfg.type === 'google-sheets' && p.connectorId) {
         migrated.connectionId = String(p.connectorId);
         const spreadsheetIdOrUrl = p.spreadsheetIdOrUrl ?? p.sheetId;
         if (spreadsheetIdOrUrl) {
           migrated.query = {
-            spreadsheetIdOrUrl: String(spreadsheetIdOrUrl),
-            ...(p.range ? { range: String(p.range) } : {}),
+            version: 1,
+            payload: {
+              spreadsheetIdOrUrl: String(spreadsheetIdOrUrl),
+              ...(p.range ? { range: String(p.range) } : {}),
+            },
           };
         }
       }

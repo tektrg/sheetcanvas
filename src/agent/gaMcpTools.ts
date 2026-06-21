@@ -1,4 +1,4 @@
-import type { ConnectorConfig, SheetData, SparklineConfig } from '../../types';
+import type { ConnectionSchemaScope, ConnectorConfig, SheetData, SparklineConfig } from '../../types';
 import { CELL_WIDTH, MAX_CONNECTED_IMPORT_COLS } from '../../constants';
 import { applyMatrixToSheet } from '../../utils/connectorSheet';
 import {
@@ -7,23 +7,17 @@ import {
   queryGoogleAnalytics,
 } from '../../utils/googleAnalyticsBackend';
 import { requestJson } from '../../utils/backendApi';
+import { buildConnectorConfigWithQuery } from '../../utils/connectedSheetQueries';
 import { accumulateSheetFocus } from './agentFocusAccumulator';
 import { getColumnIdForIndex } from './sheetBounds';
+import { normalizeConnectorQueryBrief, type ConnectorQueryBriefInput } from './queryBrief';
 
 export type BasicConnection = { connectionId: string; type: string; name: string };
-
-type SchemaTokenScope = {
-  connectionId: string;
-  type: 'clickhouse' | 'google-analytics' | 'google-sheets';
-  table?: string;
-  propertyId?: string;
-  createdAt: number;
-};
 
 type GaTrendStore = {
   sheets: Record<string, SheetData>;
   setConnections: (connections: BasicConnection[]) => void;
-  connectionSchemaTokens: Record<string, SchemaTokenScope>;
+  connectionSchemaTokens: Record<string, ConnectionSchemaScope>;
   getNextSheetPosition: () => { x: number; y: number };
   addSheet: (sheet: SheetData) => void;
 };
@@ -53,7 +47,10 @@ function getConnectionUsage(sheets: Record<string, SheetData>, connectionId: str
       derivation: config.derivation ?? null,
       query,
     });
-    if (query && 'propertyId' in query && query.propertyId) propertyIds.add(query.propertyId);
+    const payload = query?.payload as Record<string, unknown> | undefined;
+    if (payload && typeof payload.propertyId === 'string' && payload.propertyId) {
+      propertyIds.add(payload.propertyId);
+    }
   });
 
   return { usedBySheets, propertyIds: Array.from(propertyIds) };
@@ -204,6 +201,7 @@ export async function createGaTrendBySourceSheet(args: {
     hostName?: string;
     sourceDimension?: 'sessionSource' | 'firstUserSource';
     metric?: 'sessions' | 'activeUsers' | 'totalUsers' | 'newUsers' | 'screenPageViews' | 'eventCount';
+    brief?: ConnectorQueryBriefInput;
     title?: string;
   };
   store: GaTrendStore;
@@ -218,8 +216,13 @@ export async function createGaTrendBySourceSheet(args: {
     hostName,
     sourceDimension = 'sessionSource',
     metric = 'sessions',
+    brief,
     title,
   } = args.input;
+  const normalizedBrief = normalizeConnectorQueryBrief(brief);
+  if (normalizedBrief.error || !normalizedBrief.brief) {
+    return { ok: false, error: normalizedBrief.error ?? 'Invalid brief' };
+  }
   const tokenScope = args.store.connectionSchemaTokens[schemaToken];
   if (!tokenScope) return { ok: false, error: 'Run describeConnection first and pass its schemaToken' };
   if (tokenScope.connectionId !== connectionId || tokenScope.type !== 'google-analytics' || tokenScope.propertyId !== propertyId) {
@@ -262,16 +265,17 @@ export async function createGaTrendBySourceSheet(args: {
     position: args.store.getNextSheetPosition(),
     size: applied.size,
     cells: applied.cells,
-    connectorConfig: {
-      type: 'google-analytics',
-      name: sheetTitle,
-      connectionId,
-      query: { propertyId, report },
-      derivation: 'ga4-trend-by-source',
-      lastRefreshedAt: Date.now(),
-      truncated: result.truncated || applied.truncated,
-      lastError: '',
-    },
+    connectorConfig: buildConnectorConfigWithQuery(
+      { type: 'google-analytics', name: sheetTitle, connectionId } as ConnectorConfig,
+      { type: 'google-analytics', propertyId, report },
+      {
+        derivation: 'ga4-trend-by-source',
+        brief: normalizedBrief.brief,
+        lastRefreshedAt: Date.now(),
+        truncated: result.truncated || applied.truncated,
+        lastError: '',
+      },
+    ),
     setupRequired: false,
   };
   args.store.addSheet(sourceSheet);
@@ -306,6 +310,7 @@ export async function createGaTrendBySourceSheet(args: {
     propertyId,
     hostName: hostName ?? null,
     dateRange: { startDate, endDate },
+    brief: sourceSheet.connectorConfig?.brief ?? null,
     sourceDimension,
     metric,
     rawRowCount: matrix.length - 1,

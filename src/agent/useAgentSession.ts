@@ -5,6 +5,7 @@ import type { SelectionContext } from '../../types';
 import { executeClientTool } from './clientToolExecutor';
 import { flushAgentFocus } from './agentFocusAccumulator';
 import { buildAgentContextLine } from './contextBuilder';
+import { getBackendBaseUrl } from '../../utils/backendApi';
 
 // Stored in localStorage so all conversations share a single quota bucket.
 const ROOT_SESSION_KEY = 'sheetcanvas:agent:rootSessionId';
@@ -19,11 +20,6 @@ function getOrCreateSessionId(): string {
   } catch {
     return 'anon-' + Math.random().toString(36).slice(2, 10);
   }
-}
-
-function getBackendBase(): string {
-  const fromEnv = (import.meta as any).env?.VITE_BACKEND_URL as string | undefined;
-  return (fromEnv && fromEnv.trim()) || 'http://localhost:8787';
 }
 
 function getBearer(): string | null {
@@ -52,7 +48,7 @@ export function useAgentSession({ getSelection, getAttachSelection }: UseAgentSe
     if (bearer) headers.Authorization = `Bearer ${bearer}`;
 
     return new DefaultChatTransport<UIMessage>({
-      api: `${getBackendBase()}/api/agent`,
+      api: `${getBackendBaseUrl()}/api/agent`,
       headers,
       // Send fresh sheet+selection context every turn in a dedicated body field.
       // The backend concatenates it onto its own system prompt — we cannot use a

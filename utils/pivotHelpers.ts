@@ -11,6 +11,7 @@ import { getCellId, parseCellId } from './formulas';
 import { getSheetHeaders } from './chartHelpers';
 import { CELL_WIDTH, CELL_HEIGHT } from '../constants';
 import { getFilteredRows, matchesFilterCondition } from './dataAnalysis';
+import { applyFormatRulesToCells } from './formatRules';
 
 type SourceRow = Record<string, any>;
 
@@ -498,10 +499,12 @@ export const refreshPivotTable = (pivotSheet: SheetData, sourceSheet: SheetData)
     }
   });
 
+  const formattedCells = applyFormatRulesToCells(mergedCells, pivotSheet.formatRules);
+
   return {
     ...pivotSheet,
     size: { width, height },
-    cells: mergedCells,
+    cells: formattedCells,
     pivotWarnings: warnings
   };
 };

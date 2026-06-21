@@ -84,6 +84,9 @@ function makeGaDailySourceSheet(): SheetData {
 }
 
 const initialState = useStore.getState();
+const emptySelectionResolver = {
+  getSelection: () => ({ sheetId: null, cellId: null, range: null }),
+};
 
 afterEach(() => {
   useStore.setState({
@@ -231,11 +234,14 @@ describe('executeClientTool describeSheet', () => {
       name: 'TheIndie GA trend',
       connectionId: 'ga-conn-1',
       query: {
-        propertyId: '123456789',
-        report: {
-          dateRanges: [{ startDate: '30daysAgo', endDate: 'today' }],
-          dimensions: [{ name: 'date' }, { name: 'sessionSource' }],
-          metrics: [{ name: 'sessions' }],
+        version: 1,
+        payload: {
+          propertyId: '123456789',
+          report: {
+            dateRanges: [{ startDate: '30daysAgo', endDate: 'today' }],
+            dimensions: [{ name: 'date' }, { name: 'sessionSource' }],
+            metrics: [{ name: 'sessions' }],
+          },
         },
       },
       derivation: 'ga4',
@@ -260,7 +266,7 @@ describe('executeClientTool describeSheet', () => {
         type: 'google-analytics',
         connectionId: 'ga-conn-1',
         derivation: 'ga4',
-        query: expect.objectContaining({ propertyId: '123456789' }),
+        query: expect.objectContaining({ payload: expect.objectContaining({ propertyId: '123456789' }) }),
       }),
     );
   });
@@ -521,6 +527,120 @@ describe('executeClientTool describeSheet', () => {
     );
   });
 
+  it('applies format presets to derived pivots and persists them across source refreshes', async () => {
+    const sheet = makeDateSeriesSheet(['2026-06-01', '2026-06-02']);
+    useStore.setState({
+      sheets: { [sheet.id]: sheet },
+      sheetIds: [sheet.id],
+      charts: {},
+      chartIds: [],
+    });
+
+    const pivotResult = await executeClientTool(
+      'createPivot',
+      {
+        sheetId: sheet.id,
+        rowLabelCol: 'A',
+        values: [{ column: 'B', operation: 'SUM', label: 'Revenue' }],
+        showColTotals: false,
+        title: 'Daily revenue',
+      },
+      emptySelectionResolver,
+    );
+
+    expect(pivotResult.ok).toBe(true);
+    const pivotSheetId = pivotResult.sheetId as string;
+
+    const formatResult = await executeClientTool(
+      'applyFormat',
+      {
+        sheetId: pivotSheetId,
+        range: 'B2:B10',
+        preset: { preset: 'compactCurrency', visual: 'bar' },
+        reason: 'primary revenue comparison metric',
+      },
+      emptySelectionResolver,
+    );
+
+    expect(formatResult.ok).toBe(true);
+    expect(formatResult.persistedOutputOverride).toBe(true);
+    expect(formatResult.formatDecisions).toEqual([
+      expect.objectContaining({
+        sheetId: pivotSheetId,
+        columnId: 'B',
+        header: 'Revenue',
+        preset: 'compactCurrency',
+        visual: 'bar',
+        persistedOutputOverride: true,
+        reason: 'primary revenue comparison metric',
+      }),
+    ]);
+    expect(useStore.getState().sheets[pivotSheetId].formatRules).toEqual([
+      expect.objectContaining({ range: 'B2:B10', reason: 'primary revenue comparison metric' }),
+    ]);
+
+    await executeClientTool(
+      'setCells',
+      {
+        sheetId: sheet.id,
+        cells: {
+          A4: { raw: '2026-06-03' },
+          B4: { raw: '300' },
+        },
+      },
+      emptySelectionResolver,
+    );
+
+    const refreshedPivot = useStore.getState().sheets[pivotSheetId];
+    expect(refreshedPivot.cells.B4.format).toEqual(
+      expect.objectContaining({ type: 'currency', d3Format: '$.2s', visual: 'bar' }),
+    );
+  });
+
+  it('applies format presets to derived sparklines without blocking', async () => {
+    const sheet = makeDateSeriesSheet(['2026-06-01', '2026-06-02']);
+    useStore.setState({
+      sheets: { [sheet.id]: sheet },
+      sheetIds: [sheet.id],
+      charts: {},
+      chartIds: [],
+    });
+
+    const sparklineResult = await executeClientTool(
+      'createSparkline',
+      {
+        sheetId: sheet.id,
+        dateCol: 'A',
+        mode: 'metrics',
+        dataCols: ['B'],
+        title: 'Revenue trend',
+      },
+      emptySelectionResolver,
+    );
+
+    expect(sparklineResult.ok).toBe(true);
+    const sparklineSheetId = sparklineResult.sheetId as string;
+
+    const formatResult = await executeClientTool(
+      'applyFormat',
+      {
+        sheetId: sparklineSheetId,
+        range: 'B2:B10',
+        preset: { preset: 'compactNumber', visual: 'bar' },
+      },
+      emptySelectionResolver,
+    );
+
+    expect(formatResult.ok).toBe(true);
+    expect(formatResult.persistedOutputOverride).toBe(true);
+    expect(useStore.getState().sheets[sparklineSheetId].formatRules).toEqual([
+      expect.objectContaining({
+        range: 'B2:B10',
+        format: expect.objectContaining({ type: 'number', d3Format: '.2s', visual: 'bar' }),
+      }),
+    ]);
+  });
+
   it('creates sparklines from occupied wide columns beyond sheet size', async () => {
     const sheet = makeViewportConstrainedWideSheet();
     useStore.setState({
@@ -722,8 +842,11 @@ describe('executeClientTool selected canvas context', () => {
       name: 'GA4',
       connectionId: 'conn-1',
       query: {
-        propertyId: '537587042',
-        report: { dimensions: [{ name: 'date' }], metrics: [{ name: 'sessions' }] },
+        version: 1,
+        payload: {
+          propertyId: '537587042',
+          report: { dimensions: [{ name: 'date' }], metrics: [{ name: 'sessions' }] },
+        },
       },
       derivation: 'ga4',
     };
@@ -779,7 +902,7 @@ describe('executeClientTool selected canvas context', () => {
         duplicateName: true,
         health: expect.objectContaining({ status: 'ok' }),
         propertyHints: [expect.objectContaining({ propertyId: '537587042', displayName: 'TheIndie' })],
-        usedBySheets: [expect.objectContaining({ sheetId: sheet.id, query: expect.objectContaining({ propertyId: '537587042' }) })],
+        usedBySheets: [expect.objectContaining({ sheetId: sheet.id, query: expect.objectContaining({ payload: expect.objectContaining({ propertyId: '537587042' }) }) })],
       }),
       expect.objectContaining({
         connectionId: 'conn-2',
@@ -847,6 +970,12 @@ describe('executeClientTool selected canvas context', () => {
         startDate: '30daysAgo',
         endDate: 'today',
         hostName: 'theindie.app',
+        brief: {
+          logic: 'Trends daily GA sessions by source and medium for the selected host.',
+          scope: ['30daysAgo to today', 'Filtered to theindie.app'],
+          sources: ['GA property 123456789'],
+          judgmentNotes: ['The sparkline summary depends on the raw GA rows returned by source and medium.'],
+        },
         title: 'TheIndie daily source trend',
       },
       { getSelection: () => ({}) },
@@ -861,7 +990,11 @@ describe('executeClientTool selected canvas context', () => {
       expect.objectContaining({
         connectionId: 'ga-conn-1',
         derivation: 'ga4-trend-by-source',
-        query: expect.objectContaining({ propertyId: '123456789' }),
+        brief: expect.objectContaining({
+          logic: 'Trends daily GA sessions by source and medium for the selected host.',
+          status: 'current',
+        }),
+        query: expect.objectContaining({ payload: expect.objectContaining({ propertyId: '123456789' }) }),
       }),
     );
     expect(sourceSheet.cells.A2.value).toBe('2026-06-01');
@@ -921,6 +1054,12 @@ describe('executeClientTool selected canvas context', () => {
         startDate: '2026-05-14',
         endDate: '2026-06-13',
         hostName: 'theindie.app',
+        brief: {
+          logic: 'Attempts to trend GA sessions by source for the selected host.',
+          scope: ['2026-05-14 to 2026-06-13', 'Filtered to theindie.app'],
+          sources: ['GA property 123456789'],
+          judgmentNotes: ['No sheet should be created if GA returns no rows.'],
+        },
       },
       { getSelection: () => ({}) },
     );

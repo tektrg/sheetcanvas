@@ -1,10 +1,10 @@
 
 import { useMemo } from 'react';
 import { 
-  Grid3X3, StickyNote, Upload, Database, Sun, Moon, Undo2, Redo2, Maximize2, 
-  Trash2, Image as ImageIcon, ArrowLeft, ArrowRight, Eraser, ArrowDownAZ, 
-  ArrowUpAZ, Filter, AlignLeft, Palette, BarChart3, LineChart, PieChart, AreaChart, Table, TrendingUp, 
-  Minimize2, DollarSign, Percent, Calendar, Type, ScatterChart, LayoutGrid
+  Grid3X3, StickyNote, Upload, Database, Sun, Moon, Undo2, Redo2, Maximize2,
+  Trash2, Image as ImageIcon, ArrowLeft, ArrowRight, Eraser, ArrowDownAZ,
+  ArrowUpAZ, Filter, AlignLeft, Palette, BarChart3, LineChart, PieChart, AreaChart, Table, TrendingUp,
+  Minimize2, DollarSign, Percent, Calendar, Type, ScatterChart, LayoutGrid, Plug
 } from 'lucide-react';
 import { useStore } from '../store';
 import { Command, SelectionContext, CellData, CellFormat, ChartType, SheetData, ChartData, NoteData } from '../types';
@@ -19,6 +19,7 @@ interface UseCommandServiceProps {
   onAddNote: () => void;
   onImport: () => void;
   onConnectData: () => void;
+  onConnectAgent: () => void;
   onCopyImage: () => void;
   onInitChart: (sheetId: string, colIndex?: number, selectedCols?: number[], initialType?: ChartType) => void;
   onInitPivot: (sheetId: string, colIndex?: number) => void;
@@ -33,6 +34,7 @@ export const useCommandService = ({
   onAddNote,
   onImport,
   onConnectData,
+  onConnectAgent,
   onCopyImage,
   onInitChart,
   onInitPivot,
@@ -86,6 +88,15 @@ export const useCommandService = ({
         category: 'Data',
         icon: <Database size={18} />,
         action: onConnectData
+      },
+      {
+        id: 'connect-agent',
+        label: 'Connect Claude or Codex',
+        subLabel: 'Create durable analytics artifacts with MCP',
+        category: 'Agent',
+        icon: <Plug size={18} />,
+        action: onConnectAgent,
+        keywords: ['mcp', 'agent', 'claude', 'codex', 'copilot']
       },
       {
         id: 'theme',
@@ -591,7 +602,7 @@ export const useCommandService = ({
     return [...baseCommands, ...navCommands];
   }, [
     darkMode, setDarkMode, selectedIds.size, activeSelection,
-    onAddTable, onAddNote, onImport, onConnectData, onCopyImage,
+    onAddTable, onAddNote, onImport, onConnectData, onConnectAgent, onCopyImage,
     onInitChart, onInitPivot, onInitSparkline,
     deleteSelected, undo, redo, setTransform, 
     sheets, charts, notes, // Dependencies for search update

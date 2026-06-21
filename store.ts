@@ -1,6 +1,6 @@
 
 import { create } from 'zustand';
-import { SheetData, ChartData, NoteData, CanvasTransform, ToolMode, CellData } from './types';
+import { SheetData, ChartData, NoteData, CanvasTransform, ToolMode, CellData, ConnectionSchemaScope } from './types';
 import { refreshPivotTable } from './utils/pivotHelpers';
 import { refreshSparklineTable } from './utils/sparklineHelpers';
 import { saveFullState, saveIncrementalState, loadAppState } from './utils/persistence';
@@ -48,11 +48,11 @@ export interface AppState {
 
   connections: Array<{ connectionId: string; type: string; name: string }>;
   gaMetadataCache: Record<string, { dimensions: Array<{ apiName: string; displayName: string; description?: string }>; metrics: Array<{ apiName: string; displayName: string; description?: string }> }>;
-  connectionSchemaTokens: Record<string, { connectionId: string; type: 'clickhouse' | 'google-analytics' | 'google-sheets'; table?: string; propertyId?: string; createdAt: number }>;
+  connectionSchemaTokens: Record<string, ConnectionSchemaScope>;
   getNextSheetPosition: () => { x: number; y: number };
   setConnections: (connections: Array<{ connectionId: string; type: string; name: string }>) => void;
   setGaMetadata: (cacheKey: string, metadata: { dimensions: Array<{ apiName: string; displayName: string; description?: string }>; metrics: Array<{ apiName: string; displayName: string; description?: string }> }) => void;
-  setConnectionSchemaToken: (token: string, scope: { connectionId: string; type: 'clickhouse' | 'google-analytics' | 'google-sheets'; table?: string; propertyId?: string; createdAt: number }) => void;
+  setConnectionSchemaToken: (token: string, scope: ConnectionSchemaScope) => void;
 }
 
 const MAX_HISTORY = 50;

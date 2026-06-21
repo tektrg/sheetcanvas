@@ -1,6 +1,20 @@
-const getBaseUrl = () => {
+export const getBackendBaseUrl = () => {
   const fromEnv = (import.meta as any).env?.VITE_BACKEND_URL as string | undefined;
-  return (fromEnv && fromEnv.trim()) || 'http://localhost:8787';
+  if (fromEnv && fromEnv.trim()) return fromEnv.trim();
+
+  const host = typeof location !== 'undefined' ? location.hostname : '';
+  if (
+    !host ||
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    host === '0.0.0.0' ||
+    host === '::1' ||
+    host.endsWith('.local')
+  ) {
+    return 'http://localhost:8787';
+  }
+
+  return typeof location !== 'undefined' ? location.origin : 'http://localhost:8787';
 };
 
 const getBearerToken = () => {
@@ -9,7 +23,7 @@ const getBearerToken = () => {
 };
 
 export async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const baseUrl = getBaseUrl();
+  const baseUrl = getBackendBaseUrl();
   const url = `${baseUrl}${path}`;
   const headers = new Headers(init?.headers);
   headers.set('Accept', 'application/json');
