@@ -3,22 +3,22 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Learn SheetCanvas - Spreadsheet canvas for local analysis</title>
-    <meta name="description" content="Learn how SheetCanvas uses a spreadsheet canvas for local files, tables, charts, pivots, sparklines, and notes without turning the app home into a marketing page.">
+    <title>Learn SheetCanvas - Agent-native spreadsheet canvas for analysis</title>
+    <meta name="description" content="Learn how SheetCanvas turns local files, connected data, and Claude or Codex workflows into durable tables, charts, pivots, sparklines, and notes.">
     <link rel="canonical" href="https://sheetcanvas.com/learn/">
     <link rel="alternate" type="application/rss+xml" title="SheetCanvas Blog RSS" href="https://sheetcanvas.com/rss.xml">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="SheetCanvas">
-    <meta property="og:title" content="Learn SheetCanvas - Spreadsheet canvas for local analysis">
-    <meta property="og:description" content="A concise guide to SheetCanvas: local spreadsheet objects, charts, pivots, notes, command search, and the live app at /." >
+    <meta property="og:title" content="Learn SheetCanvas - Agent-native spreadsheet canvas for analysis">
+    <meta property="og:description" content="A concise guide to SheetCanvas: local spreadsheet objects, charts, pivots, notes, Claude or Codex, and the live app at /." >
     <meta property="og:url" content="https://sheetcanvas.com/learn/">
     <meta property="og:image" content="https://sheetcanvas.com/brand/sheetcanvas-og.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta property="og:image:alt" content="SheetCanvas spreadsheet canvas preview">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Learn SheetCanvas - Spreadsheet canvas for local analysis">
-    <meta name="twitter:description" content="Understand the SheetCanvas object model before opening the live spreadsheet canvas.">
+    <meta name="twitter:title" content="Learn SheetCanvas - Agent-native spreadsheet canvas for analysis">
+    <meta name="twitter:description" content="Understand the SheetCanvas object model and agent connector before opening the live spreadsheet canvas.">
     <meta name="twitter:image" content="https://sheetcanvas.com/brand/sheetcanvas-og.png">
     <meta name="theme-color" content="#0f766e">
     <link rel="icon" type="image/svg+xml" href="/brand/sheetcanvas-logo.svg">
@@ -47,8 +47,8 @@
             "@type": "WebPage",
             "name": "Learn SheetCanvas",
             "url": "https://sheetcanvas.com/learn/",
-            "description": "A concise product guide for SheetCanvas, a local-first spreadsheet canvas for analysis.",
-            "dateModified": "2026-05-26",
+            "description": "A concise product guide for SheetCanvas, an agent-native spreadsheet canvas for analysis.",
+            "dateModified": "2026-06-14",
             "isPartOf": {
               "@type": "WebSite",
               "@id": "https://sheetcanvas.com/#website",
@@ -510,6 +510,7 @@
       <nav class="nav" aria-label="Primary navigation">
         <a href="/">Open app</a>
         <a href="/docs/">Docs</a>
+        <a href="/connect-agent/">Connect Agent</a>
         <a href="/use-cases/spreadsheet-canvas/">Use case</a>
         <a href="/use-cases/csv-to-dashboard/">CSV dashboard</a>
         <a href="/use-cases/local-spreadsheet-app/">Local files</a>
@@ -518,6 +519,7 @@
         <a href="/alternatives/google-sheets/">Google Sheets alternative</a>
         <a href="/alternatives/airtable/">Airtable alternative</a>
         <a href="#object-model">Object model</a>
+        <a href="#agent-workflow">Agent workflow</a>
         <a href="#workflows">Workflows</a>
         <a href="#connectors">Connectors</a>
       </nav>
@@ -528,8 +530,8 @@
         <div>
           <p class="eyebrow">Product guide</p>
           <h1 id="hero-title">A spreadsheet canvas for analysis that does not fit in one grid.</h1>
-          <p class="hero-copy">SheetCanvas keeps the app at <a href="/">/</a> so you can start working immediately. This page explains the product model: tables, charts, pivots, sparklines, and notes are movable objects on the same local-first canvas.</p>
-          <p class="reviewed">Last reviewed: May 26, 2026</p>
+          <p class="hero-copy">SheetCanvas keeps the app at <a href="/">/</a> so you can start working immediately. This page explains the product model: tables, charts, pivots, sparklines, notes, and Claude or Codex as agent clients for the same durable canvas.</p>
+          <p class="reviewed">Last reviewed: June 14, 2026</p>
           <div class="actions">
             <a class="button button-primary" href="/">Open SheetCanvas</a>
             <a class="button button-secondary" href="/docs/">Read the docs</a>
@@ -579,6 +581,28 @@
           <article class="card">
             <h3>Write notes near evidence</h3>
             <p>Add canvas notes for caveats, decisions, and next steps. The note can live beside the table or chart it explains.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="agent-workflow" class="section" aria-labelledby="agent-title">
+        <div class="section-head">
+          <p class="eyebrow">Agent workflow</p>
+          <h2 id="agent-title">Claude or Codex can turn massive data into shareable insight.</h2>
+          <p class="lede">AI chat artifacts are ephemeral. SheetCanvas gives your agent a place to leave durable analytics artifacts: source tables, charts, pivots, sparklines, notes, and dashboard layouts that stay on the canvas.</p>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <h3>Connect your agent</h3>
+            <p>Use the <a href="/connect-agent/">Connect Agent guide</a> to expose the active canvas to Claude, Codex, or another MCP-capable client.</p>
+          </article>
+          <article class="card">
+            <h3>Ask for a decision surface</h3>
+            <p>Prompt the agent to build a chart, pivot, and notes around the business decision instead of returning only a text answer.</p>
+          </article>
+          <article class="card">
+            <h3>Keep the artifact</h3>
+            <p>When the chat ends, the SheetCanvas workspace still contains the evidence and visual summary your team can inspect.</p>
           </article>
         </div>
       </section>
@@ -637,6 +661,7 @@
         <a href="/">Open app</a>
         <a href="/learn/">Learn</a>
         <a href="/docs/">Docs</a>
+        <a href="/connect-agent/">Connect Agent</a>
         <a href="/blog/">Blog</a>
         <a href="/use-cases/spreadsheet-canvas/">Spreadsheet canvas use case</a>
         <a href="/use-cases/csv-to-dashboard/">CSV to dashboard use case</a>

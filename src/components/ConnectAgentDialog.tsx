@@ -8,7 +8,7 @@ interface ConnectAgentDialogProps {
 }
 
 const STATUS_LABEL: Record<string, { text: string; dotClass: string }> = {
-  connected: { text: 'Connected — agents can reach this canvas', dotClass: 'bg-emerald-500' },
+  connected: { text: 'Connected - Claude or Codex can reach this canvas', dotClass: 'bg-emerald-500' },
   connecting: { text: 'Connecting…', dotClass: 'bg-amber-500' },
   disconnected: { text: 'Not connected', dotClass: 'bg-neutral-400' },
   replaced: { text: 'Another tab took over — toggle off and on here to reclaim', dotClass: 'bg-amber-500' },
@@ -74,7 +74,7 @@ export const ConnectAgentDialog: React.FC<ConnectAgentDialogProps> = ({ bridge, 
         <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-200 dark:border-neutral-700">
           <div className="flex items-center gap-2">
             <Plug size={16} className="text-teal-500" />
-            <h3 className="font-semibold text-lg text-neutral-800 dark:text-neutral-100">Connect an agent</h3>
+            <h3 className="font-semibold text-lg text-neutral-800 dark:text-neutral-100">Connect Claude or Codex</h3>
           </div>
           <button
             onClick={onClose}
@@ -87,8 +87,12 @@ export const ConnectAgentDialog: React.FC<ConnectAgentDialogProps> = ({ bridge, 
 
         <div className="px-6 py-5 flex flex-col gap-4 text-sm text-neutral-600 dark:text-neutral-300">
           <p>
-            Expose this canvas to external AI agents (Claude Code, etc.) over MCP. Tools run in this tab — keep
-            it open while agents are working.
+            Create durable analytics artifacts from your data. Claude or Codex can turn large datasets into
+            SheetCanvas tables, charts, pivots, notes, and dashboards that stay shareable after the chat ends.
+          </p>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400">
+            Powered by MCP. Tools run in this tab, so keep SheetCanvas open while your agent is working.
+            See the <a href="/connect-agent/" className="text-teal-600 dark:text-teal-400 hover:underline">setup guide</a>.
           </p>
 
           {!bridge.token ? (
@@ -97,7 +101,7 @@ export const ConnectAgentDialog: React.FC<ConnectAgentDialogProps> = ({ bridge, 
               disabled={minting}
               className="self-start px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium disabled:opacity-50 cursor-pointer"
             >
-              {minting ? 'Generating…' : 'Generate MCP server URL'}
+              {minting ? 'Generating...' : 'Generate agent connection URL'}
             </button>
           ) : (
             <>
@@ -117,7 +121,7 @@ export const ConnectAgentDialog: React.FC<ConnectAgentDialogProps> = ({ bridge, 
                 </label>
               </div>
 
-              <CopyField label="MCP server URL" value={bridge.mcpUrl ?? ''} />
+              <CopyField label="Agent server URL" value={bridge.mcpUrl ?? ''} />
               <CopyField
                 label="Add to Claude Code"
                 value={`claude mcp add sheetcanvas --transport http ${bridge.mcpUrl ?? ''}`}

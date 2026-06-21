@@ -3,22 +3,22 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>SheetCanvas Docs - Spreadsheet canvas setup and connectors</title>
-    <meta name="description" content="SheetCanvas docs for importing local spreadsheet files, using canvas objects, and configuring ClickHouse or Google Analytics connected sheets.">
+    <title>SheetCanvas Docs - Spreadsheet canvas setup and agent connectors</title>
+    <meta name="description" content="SheetCanvas docs for importing local files, using canvas objects, connecting Claude or Codex, and configuring ClickHouse or Google Analytics sheets.">
     <link rel="canonical" href="https://sheetcanvas.com/docs/">
     <link rel="alternate" type="application/rss+xml" title="SheetCanvas Blog RSS" href="https://sheetcanvas.com/rss.xml">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="SheetCanvas">
-    <meta property="og:title" content="SheetCanvas Docs - Spreadsheet canvas setup and connectors">
-    <meta property="og:description" content="Product-specific SheetCanvas docs for local files, canvas objects, ClickHouse, and Google Analytics connected sheets.">
+    <meta property="og:title" content="SheetCanvas Docs - Spreadsheet canvas setup and agent connectors">
+    <meta property="og:description" content="Product-specific SheetCanvas docs for local files, canvas objects, Claude or Codex, ClickHouse, and Google Analytics connected sheets.">
     <meta property="og:url" content="https://sheetcanvas.com/docs/">
     <meta property="og:image" content="https://sheetcanvas.com/brand/sheetcanvas-og.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta property="og:image:alt" content="SheetCanvas spreadsheet canvas preview">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="SheetCanvas Docs - Spreadsheet canvas setup and connectors">
-    <meta name="twitter:description" content="Set up SheetCanvas local imports and connected sheets for ClickHouse or Google Analytics.">
+    <meta name="twitter:title" content="SheetCanvas Docs - Spreadsheet canvas setup and agent connectors">
+    <meta name="twitter:description" content="Set up SheetCanvas local imports, agent access for Claude or Codex, and connected sheets.">
     <meta name="twitter:image" content="https://sheetcanvas.com/brand/sheetcanvas-og.png">
     <meta name="theme-color" content="#0f766e">
     <link rel="icon" type="image/svg+xml" href="/brand/sheetcanvas-logo.svg">
@@ -47,8 +47,8 @@
             "@type": "WebPage",
             "name": "SheetCanvas Docs",
             "url": "https://sheetcanvas.com/docs/",
-            "description": "Documentation for SheetCanvas local imports, canvas objects, and connected sheets.",
-            "dateModified": "2026-05-26",
+            "description": "Documentation for SheetCanvas local imports, canvas objects, agent access, and connected sheets.",
+            "dateModified": "2026-06-14",
             "isPartOf": {
               "@type": "WebSite",
               "@id": "https://sheetcanvas.com/#website",
@@ -433,6 +433,7 @@
       <nav class="nav" aria-label="Primary navigation">
         <a href="/">Open app</a>
         <a href="/learn/">Learn</a>
+        <a href="/connect-agent/">Connect Agent</a>
         <a href="/use-cases/spreadsheet-canvas/">Use case</a>
         <a href="/use-cases/csv-to-dashboard/">CSV dashboard</a>
         <a href="/use-cases/local-spreadsheet-app/">Local files</a>
@@ -452,8 +453,8 @@
         <div>
           <p class="eyebrow">Docs</p>
           <h1 id="hero-title">Set up SheetCanvas objects and connected sheets.</h1>
-          <p class="hero-copy">These docs cover the product paths that exist in SheetCanvas now: importing local spreadsheet files, arranging canvas objects, and using connector-backed sheets for ClickHouse or Google Analytics data.</p>
-          <p class="reviewed">Last reviewed: May 26, 2026</p>
+          <p class="hero-copy">These docs cover the product paths that exist in SheetCanvas now: importing local spreadsheet files, arranging canvas objects, connecting Claude or Codex, and using connector-backed sheets for ClickHouse or Google Analytics data.</p>
+          <p class="reviewed">Last reviewed: June 14, 2026</p>
           <div class="actions">
             <a class="button button-primary" href="/">Open SheetCanvas</a>
             <a class="button button-secondary" href="/learn/">Read the product guide</a>
@@ -463,6 +464,7 @@
           <strong>On this page</strong>
           <a href="#local-files">Local spreadsheet files</a>
           <a href="#canvas-objects">Canvas objects</a>
+          <a href="#agent-connector">Agent connector</a>
           <a href="#connectors">Connected sheets</a>
           <a href="#troubleshooting">Troubleshooting</a>
         </aside>
@@ -499,6 +501,31 @@
           <article class="card">
             <h3>Notes</h3>
             <p>Add notes for assumptions, decisions, and next steps directly beside the data view they reference.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="agent-connector" class="section" aria-labelledby="agent-connector-title">
+        <div class="section-head">
+          <p class="eyebrow">Agent connector</p>
+          <h2 id="agent-connector-title">Connect Claude or Codex to create durable analytics artifacts.</h2>
+          <p class="lede">The agent connector is separate from data connectors. Claude or Codex operates the canvas through MCP, while data connectors bring refreshable source data into the canvas.</p>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <span class="status">Flagship</span>
+            <h3>Claude and Codex</h3>
+            <p>Use the <a href="/connect-agent/">Connect Agent guide</a> to generate an MCP server URL and let your agent build persistent tables, charts, pivots, notes, and dashboards.</p>
+          </article>
+          <article class="card">
+            <span class="status">Coming soon</span>
+            <h3>Built-in Copilot</h3>
+            <p>The hosted Copilot chat is coming soon in production. Until then, the sparkle panel points users toward connecting their own agent.</p>
+          </article>
+          <article class="card">
+            <span class="status">Persistent</span>
+            <h3>Shareable output</h3>
+            <p>Use SheetCanvas when the decision artifact needs to outlive the chat: evidence, visualization, and notes remain together.</p>
           </article>
         </div>
       </section>
@@ -560,6 +587,7 @@
         <a href="/">Open app</a>
         <a href="/learn/">Learn</a>
         <a href="/docs/">Docs</a>
+        <a href="/connect-agent/">Connect Agent</a>
         <a href="/blog/">Blog</a>
         <a href="/use-cases/spreadsheet-canvas/">Spreadsheet canvas use case</a>
         <a href="/use-cases/csv-to-dashboard/">CSV to dashboard use case</a>

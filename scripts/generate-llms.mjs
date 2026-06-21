@@ -31,6 +31,7 @@ const ROUTE_GROUPS = [
       '/use-cases/csv-to-dashboard/',
       '/use-cases/local-spreadsheet-app/',
       '/use-cases/data-analysis-canvas/',
+      '/connect-agent/',
       '/connectors/clickhouse/',
       '/connectors/google-analytics/',
     ],

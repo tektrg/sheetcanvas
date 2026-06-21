@@ -19,6 +19,7 @@
 - CSV to dashboard use case: https://sheetcanvas.com/use-cases/csv-to-dashboard/
 - Local spreadsheet app use case: https://sheetcanvas.com/use-cases/local-spreadsheet-app/
 - Data analysis canvas use case: https://sheetcanvas.com/use-cases/data-analysis-canvas/
+- Connect Claude or Codex to SheetCanvas: https://sheetcanvas.com/connect-agent/
 - SheetCanvas ClickHouse connector: https://sheetcanvas.com/connectors/clickhouse/
 - SheetCanvas Google Analytics connector: https://sheetcanvas.com/connectors/google-analytics/
 
