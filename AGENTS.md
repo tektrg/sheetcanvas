@@ -7,7 +7,8 @@ Backend services live under `backend/` as a Cloudflare Workers project (Wrangler
 
 ## Build, Test, and Development Commands
 - `npm install` – install React, Zustand, and charting dependencies pinned in `package.json`.
-- `npm run dev -- --host 127.0.0.1 --port 5173 --strictPort` – start the Vite dev server (HMR, local storage-backed state) on the dedicated SheetCanvas port 5173. Use this exact port when starting the app; if 5173 is occupied, stop the stale SheetCanvas server instead of letting Vite choose another port.
+- `npm run start:app` – deterministic agent-friendly startup from `flexsheet/`: restarts the frontend and backend in fixed tmux sessions (`sheetcanvas-dev`, `sheetcanvas-backend`), waits for ports 5173/8787, and verifies backend `/health`. Prefer this when asked to “start app”. Use `npm run start:app -- --status` to inspect, `--keep-existing` to reuse healthy sessions, and `--stop` to stop both sessions.
+- `npm run dev -- --host 127.0.0.1 --port 5173 --strictPort` – start only the Vite dev server (HMR, local storage-backed state) on the dedicated SheetCanvas port 5173. Use this exact port when starting the frontend only; if 5173 is occupied, stop the stale SheetCanvas server instead of letting Vite choose another port.
 - `npm run build` – compile the TypeScript/React bundle and worker scripts into `dist/` with optimized chunks.
 - `npm run preview` – serve the built bundle for smoke testing exact production behavior.
 - `npm run seo:audit` – build the app and run the maintained SEO metadata/schema audit against source and `dist/`.

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:local": "node scripts/dev-local.mjs",
+    "start:app": "node scripts/start-app.mjs",
     "test": "vitest --run",
     "tmux:capture": "node scripts/tmux-run-capture.mjs",
     "agent:eval": "node scripts/agent-eval.mjs",
