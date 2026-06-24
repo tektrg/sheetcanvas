@@ -5,6 +5,10 @@ export type GoogleAnalyticsPublicConnector = {
   type: 'google-analytics';
   name: string;
   config_json?: string | null;
+  health_status?: 'healthy' | 'needs_reconnect' | 'error' | null;
+  health_error_code?: string | null;
+  health_error_message?: string | null;
+  health_checked_at_ms?: number | null;
   created_at_ms: number;
   updated_at_ms: number;
 };
@@ -47,6 +51,7 @@ export async function exchangeGoogleAnalyticsAuthCode(args: {
   code: string;
   codeVerifier: string;
   redirectUri: string;
+  connectorId?: string;
 }): Promise<{ connector: GoogleAnalyticsPublicConnector }> {
   return requestJson<{ connector: GoogleAnalyticsPublicConnector }>(
     '/api/connectors/google-analytics/auth/exchange',

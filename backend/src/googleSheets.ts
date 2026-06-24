@@ -2,6 +2,7 @@ import { HttpError } from "./errors";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import {
   exchangeGoogleOAuthCode,
+  getGoogleOAuthUserInfo,
   refreshGoogleOAuthAccessToken,
   type GoogleOAuthTokenResponse
 } from "./googleOAuth";
@@ -44,6 +45,10 @@ export async function refreshGoogleSheetsAccessToken(args: {
   clientSecret?: string;
 }): Promise<GoogleOAuthTokenResponse> {
   return refreshGoogleOAuthAccessToken(args);
+}
+
+export async function getGoogleSheetsUserInfo(accessToken: string) {
+  return getGoogleOAuthUserInfo(accessToken);
 }
 
 function stringifyCell(value: unknown) {

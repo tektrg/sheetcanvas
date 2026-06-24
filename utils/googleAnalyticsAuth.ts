@@ -6,6 +6,7 @@ type StoredGoogleAuth = {
   state: string;
   redirectUri: string;
   createdAt: number;
+  reconnectConnectorId?: string;
 };
 
 const base64UrlEncode = (bytes: Uint8Array) => {
@@ -51,6 +52,7 @@ const buildGoogleAuthUrl = async (args: {
   redirectUri: string;
   scopes: string[];
   storageKey: string;
+  reconnectConnectorId?: string;
 }) => {
   const codeVerifier = createCodeVerifier();
   const codeChallenge = await createCodeChallenge(codeVerifier);
@@ -60,7 +62,8 @@ const buildGoogleAuthUrl = async (args: {
     codeVerifier,
     state,
     redirectUri: args.redirectUri,
-    createdAt: Date.now()
+    createdAt: Date.now(),
+    ...(args.reconnectConnectorId ? { reconnectConnectorId: args.reconnectConnectorId } : {})
   });
 
   const params = new URLSearchParams({
@@ -87,12 +90,16 @@ export const buildGoogleAnalyticsAuthUrl = async (args: {
   clientId: string;
   redirectUri: string;
   scopes?: string[];
+  reconnectConnectorId?: string;
 }) =>
   buildGoogleAuthUrl({
     clientId: args.clientId,
     redirectUri: args.redirectUri,
-    scopes: args.scopes?.length ? args.scopes : ['https://www.googleapis.com/auth/analytics.readonly'],
+    scopes: args.scopes?.length
+      ? args.scopes
+      : ['openid', 'email', 'profile', 'https://www.googleapis.com/auth/analytics.readonly'],
     storageKey: GA_STORAGE_KEY,
+    reconnectConnectorId: args.reconnectConnectorId,
   });
 
 export const loadGoogleSheetsAuth = (): StoredGoogleAuth | null => loadGoogleAuth(GOOGLE_SHEETS_STORAGE_KEY);
@@ -105,7 +112,7 @@ export const buildGoogleSheetsAuthUrl = async (args: {
   buildGoogleAuthUrl({
     clientId: args.clientId,
     redirectUri: args.redirectUri,
-    scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+    scopes: ['openid', 'email', 'profile', 'https://www.googleapis.com/auth/spreadsheets.readonly'],
     storageKey: GOOGLE_SHEETS_STORAGE_KEY,
   });
 

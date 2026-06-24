@@ -28,6 +28,7 @@ import {
 } from '../utils/googleSheetsBackend';
 import { buildConnectorConfigWithQuery, readConnectorQuery, validateConnectorQuery } from '../utils/connectedSheetQueries';
 import { requireConnectorQueryProvider } from '../utils/connectorQuery';
+import { isConnectorNeedsReconnectError } from '../utils/backendApi';
 
 interface DataConnectorDialogProps {
   onClose: () => void;
@@ -66,6 +67,40 @@ const DialogErrorMessage = ({ message }: { message: string }) => (
     </div>
   </div>
 );
+
+const GA_RECONNECT_MESSAGE = 'Google Analytics connection needs reconnect.';
+
+const isGaConnectorNeedsReconnect = (connector?: GoogleAnalyticsPublicConnector) =>
+  connector?.health_status === 'needs_reconnect';
+
+type GoogleConnectorWithConfig = {
+  name: string;
+  config_json?: string | null;
+};
+
+const getGoogleConnectorIdentity = (connector: GoogleConnectorWithConfig) => {
+  if (!connector.config_json) return { email: '', name: '' };
+  try {
+    const config = JSON.parse(connector.config_json) as {
+      accountEmail?: string | null;
+      accountName?: string | null;
+    };
+    return {
+      email: config.accountEmail?.trim() ?? '',
+      name: config.accountName?.trim() ?? '',
+    };
+  } catch {
+    return { email: '', name: '' };
+  }
+};
+
+const getGoogleConnectorLabel = (connector: GoogleConnectorWithConfig, fallback: string) => {
+  const { email, name } = getGoogleConnectorIdentity(connector);
+  if (email && name && name !== email) return `${name} <${email}>`;
+  if (email) return email;
+  if (name) return name;
+  return connector.name?.trim() || fallback;
+};
 
 export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClose, onImport, initialType }) => {
   const [selectedType, setSelectedType] = useState<ConnectorType | null>(initialType || null);
@@ -114,6 +149,24 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
   const [chSaving, setChSaving] = useState(false);
   const [chTestOk, setChTestOk] = useState<boolean | null>(null);
   const clickhouseSqlRef = useRef<HTMLTextAreaElement>(null);
+  const selectedGaConnector = gaConnectors.find((connector) => connector.id === gaConnectorId);
+  const selectedGaNeedsReconnect = isGaConnectorNeedsReconnect(selectedGaConnector);
+
+  const markGaConnectorNeedsReconnect = (connectorId: string, message = GA_RECONNECT_MESSAGE) => {
+    setGaConnectors((connectors) =>
+      connectors.map((connector) =>
+        connector.id === connectorId
+          ? {
+              ...connector,
+              health_status: 'needs_reconnect',
+              health_error_code: 'connector_needs_reconnect',
+              health_error_message: message,
+              health_checked_at_ms: Date.now(),
+            }
+          : connector
+      )
+    );
+  };
 
   useEffect(() => {
     document.body.dataset.modalOpen = 'true';
@@ -182,7 +235,12 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
         if (!propertyId || !hasMatch) setPropertyId(first);
       }
     } catch (e: any) {
-      setGaPropertyError(e.message || 'Failed to load properties');
+      if (isConnectorNeedsReconnectError(e)) {
+        markGaConnectorNeedsReconnect(connectorId, e.message || GA_RECONNECT_MESSAGE);
+        setGaPropertyError(GA_RECONNECT_MESSAGE);
+      } else {
+        setGaPropertyError(e.message || 'Failed to load properties');
+      }
       setGaProperties([]);
     } finally {
       setGaLoadingProperties(false);
@@ -260,7 +318,8 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
     exchangeGoogleAnalyticsAuthCode({
       code,
       codeVerifier: stored.codeVerifier,
-      redirectUri: stored.redirectUri
+      redirectUri: stored.redirectUri,
+      connectorId: stored.reconnectConnectorId
     })
       .then(({ connector }) => {
         setGaAuthError('');
@@ -323,7 +382,7 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedType]);
 
-  const startGoogleAnalyticsAuth = async () => {
+  const startGoogleAnalyticsAuth = async (reconnectConnectorId?: string) => {
     const clientId = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID as string | undefined;
     if (!clientId || !clientId.trim()) {
       setGaAuthError('Missing VITE_GOOGLE_CLIENT_ID');
@@ -336,7 +395,8 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
     try {
       const url = await buildGoogleAnalyticsAuthUrl({
         clientId: clientId.trim(),
-        redirectUri
+        redirectUri,
+        reconnectConnectorId
       });
       window.location.assign(url);
     } catch (e: any) {
@@ -515,6 +575,9 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
         const provider = requireConnectorQueryProvider(config.type);
         const { matrix, truncated } = await provider.execute(config.connectionId!.trim(), query);
         config.truncated = !!truncated;
+        config.healthStatus = 'healthy';
+        config.healthErrorCode = '';
+        config.lastError = '';
         config.lastRefreshedAt = Date.now();
         setStatus('success');
         setTimeout(() => {
@@ -522,8 +585,13 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
             onClose();
         }, 500);
     } catch (e: any) {
+        if (selectedType === 'google-analytics' && isConnectorNeedsReconnectError(e)) {
+            markGaConnectorNeedsReconnect(gaConnectorId.trim(), e.message || GA_RECONNECT_MESSAGE);
+            config.healthStatus = 'needs_reconnect';
+            config.healthErrorCode = 'connector_needs_reconnect';
+        }
         setStatus('error');
-        setErrorMsg(e.message || "Failed to connect");
+        setErrorMsg(isConnectorNeedsReconnectError(e) ? GA_RECONNECT_MESSAGE : e.message || "Failed to connect");
     }
   };
 
@@ -739,7 +807,7 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
                                     </option>
                                     {gsConnectors.map(c => (
                                         <option key={c.id} value={c.id}>
-                                            {c.name} ({c.id.slice(0, 6)}...)
+                                            {getGoogleConnectorLabel(c, 'Google Sheets connection')}
                                         </option>
                                     ))}
                                 </select>
@@ -783,11 +851,11 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
                             <div className="flex items-center justify-between">
                                 <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase">Google Analytics connector</label>
                                 <button
-                                    onClick={startGoogleAnalyticsAuth}
+                                    onClick={() => startGoogleAnalyticsAuth(selectedGaNeedsReconnect ? gaConnectorId : undefined)}
                                     className="text-xs font-medium text-teal-700 dark:text-teal-300 hover:underline flex items-center gap-2"
                                 >
                                     <KeyRound size={14} />
-                                    {gaAuthLoading ? 'Connecting...' : 'Connect Google'}
+                                    {gaAuthLoading ? 'Connecting...' : selectedGaNeedsReconnect ? 'Reconnect Google' : 'Connect Google'}
                                 </button>
                             </div>
                             {gaAuthError && (
@@ -808,7 +876,7 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
                                     </option>
                                     {gaConnectors.map(c => (
                                         <option key={c.id} value={c.id}>
-                                            {c.name} ({c.id.slice(0, 6)}…)
+                                            {getGoogleConnectorLabel(c, 'Google Analytics connection')}{isGaConnectorNeedsReconnect(c) ? ' - needs reconnect' : ''}
                                         </option>
                                     ))}
                                 </select>
@@ -820,6 +888,23 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
                                     <RefreshCcw size={14} />
                                 </button>
                             </div>
+                            {selectedGaNeedsReconnect && (
+                                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <div className="font-medium">Google Analytics needs reconnect</div>
+                                            <div className="mt-0.5">The last data can stay visible, but this connection cannot create or refresh sheets until it is reauthorized.</div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => startGoogleAnalyticsAuth(gaConnectorId)}
+                                            className="flex-shrink-0 text-xs font-medium text-amber-900 underline underline-offset-2 dark:text-amber-100"
+                                        >
+                                            Reconnect
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                             <div className="flex items-center gap-2 text-[10px] text-neutral-400">
                                 <input
                                     id="ga-manual-id"
@@ -845,29 +930,41 @@ export const DataConnectorDialog: React.FC<DataConnectorDialogProps> = ({ onClos
                     <div>
                         <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1.5 uppercase">GA4 Property ID</label>
                         {gaProperties.length > 0 && !gaPropertyError ? (
-                            <div className="flex gap-2">
-                                <select
-                                    className="flex-1 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:ring-2 focus:ring-teal-500/50"
+                            <div className="space-y-2">
+                                <div className="flex gap-2">
+                                    <select
+                                        className="flex-1 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:ring-2 focus:ring-teal-500/50"
+                                        value={gaProperties.some((prop) => prop.propertyId === propertyId) ? propertyId : ''}
+                                        onChange={e => setPropertyId(e.target.value)}
+                                    >
+                                        <option value="" disabled>
+                                            Select loaded property
+                                        </option>
+                                        {gaProperties.map((prop) => (
+                                            <option key={prop.propertyId} value={prop.propertyId}>
+                                                {prop.displayName}{prop.accountDisplayName ? ` • ${prop.accountDisplayName}` : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <button
+                                        onClick={() => loadGoogleAnalyticsProperties(gaConnectorId)}
+                                        className="px-3 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-200 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors flex items-center gap-2"
+                                        title="Refresh properties"
+                                        disabled={!gaConnectorId}
+                                    >
+                                        <RefreshCcw size={14} />
+                                    </button>
+                                </div>
+                                <input
+                                    type="text"
+                                    className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:ring-2 focus:ring-teal-500/50"
+                                    placeholder="Or enter GA4 property ID"
                                     value={propertyId}
                                     onChange={e => setPropertyId(e.target.value)}
-                                >
-                                    {gaProperties.map((prop) => (
-                                        <option key={prop.propertyId} value={prop.propertyId}>
-                                            {prop.displayName}{prop.accountDisplayName ? ` • ${prop.accountDisplayName}` : ''}
-                                        </option>
-                                    ))}
-                                </select>
-                                <button
-                                    onClick={() => loadGoogleAnalyticsProperties(gaConnectorId)}
-                                    className="px-3 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-200 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-lg transition-colors flex items-center gap-2"
-                                    title="Refresh properties"
-                                    disabled={!gaConnectorId}
-                                >
-                                    <RefreshCcw size={14} />
-                                </button>
+                                />
                             </div>
                         ) : (
-                            <input 
+                            <input
                                 type="text" 
                                 className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:ring-2 focus:ring-teal-500/50"
                                 placeholder="e.g. 342555123"

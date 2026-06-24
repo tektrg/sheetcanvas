@@ -1,6 +1,7 @@
 import { HttpError } from "./errors";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
+const USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo";
 
 export type GoogleOAuthTokenResponse = {
   access_token: string;
@@ -8,6 +9,11 @@ export type GoogleOAuthTokenResponse = {
   refresh_token?: string;
   token_type?: string;
   scope?: string;
+};
+
+export type GoogleOAuthUserInfo = {
+  email?: string;
+  name?: string;
 };
 
 type OAuthErrorResponse = {
@@ -38,6 +44,10 @@ function getTokenErrorStatus(upstreamStatus: number, oauthError: string | undefi
   return 502;
 }
 
+function getTokenErrorCode(oauthError: string | undefined) {
+  return oauthError === "invalid_grant" ? "oauth_invalid_grant" : "oauth_error";
+}
+
 async function fetchToken(params: Record<string, string>) {
   const res = await fetch(TOKEN_URL, {
     method: "POST",
@@ -51,7 +61,7 @@ async function fetchToken(params: Record<string, string>) {
       json?.error_description ||
       json?.error ||
       `Token exchange failed (${res.status})`;
-    throw new HttpError(getTokenErrorStatus(res.status, json?.error), "oauth_error", msg);
+    throw new HttpError(getTokenErrorStatus(res.status, json?.error), getTokenErrorCode(json?.error), msg);
   }
   return json;
 }
@@ -84,4 +94,13 @@ export async function refreshGoogleOAuthAccessToken(args: {
     client_secret: args.clientSecret || "",
     grant_type: "refresh_token"
   });
+}
+
+export async function getGoogleOAuthUserInfo(accessToken: string): Promise<GoogleOAuthUserInfo | null> {
+  const res = await fetch(USERINFO_URL, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  if (!res.ok) return null;
+  const json = (await res.json().catch(() => null)) as GoogleOAuthUserInfo | null;
+  return json ? { email: json.email, name: json.name } : null;
 }

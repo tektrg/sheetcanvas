@@ -26,6 +26,7 @@ import {
   refreshConnectedSheetFromQuery,
   type NormalizedConnectorQuery,
 } from '../utils/connectedSheetQueries';
+import { isConnectorNeedsReconnectError } from '../utils/backendApi';
 
 interface SheetNodeProps {
   id: string;
@@ -174,6 +175,7 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
     !!data.connectorConfig?.connectionId &&
     (isClickhouseConnected || isGoogleAnalyticsConnected || isGoogleSheetsConnected);
   const connectorQuerySummary = data.connectorConfig ? getConnectorQuerySummary(data.connectorConfig) : '';
+  const connectorNeedsReconnect = data.connectorConfig?.healthStatus === 'needs_reconnect';
 
 
   const refreshConnectedSheetQuery = async (opts?: { queryOverride?: NormalizedConnectorQuery; showToasts?: boolean }) => {
@@ -190,9 +192,13 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
       if (opts?.showToasts !== false && onToast) onToast('Refreshed');
     } catch (e: any) {
       const msg = e?.message || 'Refresh failed';
+      const needsReconnect = isConnectorNeedsReconnectError(e);
       updateSheet(data.id, {
         connectorConfig: {
           ...buildConnectorConfigWithQuery(data.connectorConfig, query),
+          ...(needsReconnect
+            ? { healthStatus: 'needs_reconnect' as const, healthErrorCode: 'connector_needs_reconnect' }
+            : {}),
           lastError: msg,
         }
       });
@@ -1201,7 +1207,7 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                 <GripHorizontal size={14} className="text-neutral-300 dark:text-neutral-600 flex-shrink-0" />
                 {isPivot && <div className="p-0.5 rounded text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30 mr-1" title="Pivot Table"><Table size={12} /></div>}
                 {isSparkline && <div className="p-0.5 rounded text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30 mr-1" title="Sparkline Table"><TrendingUp size={12} /></div>}
-                {isConnected && <div className="p-0.5 rounded text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30 mr-1" title={`Connected Source: ${data.connectorConfig?.type}`}><Link size={12} /></div>}
+                {isConnected && <div className={`p-0.5 rounded mr-1 ${connectorNeedsReconnect ? 'text-amber-700 bg-amber-50 dark:text-amber-300 dark:bg-amber-950/40' : 'text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30'}`} title={connectorNeedsReconnect ? 'Connection needs reconnect' : `Connected Source: ${data.connectorConfig?.type}`}><Link size={12} /></div>}
                 {isConnected && connectorQuerySummary && (
                   <div className="text-xs text-gray-400 dark:text-gray-500 truncate max-w-[220px]" title={connectorQuerySummary}>
                     {connectorQuerySummary}
@@ -1214,7 +1220,7 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                 )}
                 {isConnected && data.connectorConfig?.lastError && (
                   <div className="text-xs text-red-500 dark:text-red-400 truncate max-w-[180px]" title={data.connectorConfig.lastError}>
-                    {data.connectorConfig.lastError}
+                    {connectorNeedsReconnect ? 'Needs reconnect' : data.connectorConfig.lastError}
                   </div>
                 )}
 
@@ -1267,9 +1273,13 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                         onClick={() => refreshConnectedSheetQuery({ showToasts: true })}
                         disabled={isConnectorRefreshing}
                         className={`group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md transition-colors ${
-                            isConnectorRefreshing ? 'bg-neutral-100 dark:bg-neutral-800 cursor-not-allowed' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                            isConnectorRefreshing
+                              ? 'bg-neutral-100 dark:bg-neutral-800 cursor-not-allowed'
+                              : connectorNeedsReconnect
+                                ? 'text-amber-600 bg-amber-50 hover:bg-amber-100 dark:text-amber-300 dark:bg-amber-950/30 dark:hover:bg-amber-950/50'
+                                : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
                         }`}
-                        title={lastRefreshedAt ? `Refresh (last: ${new Date(lastRefreshedAt).toLocaleString()})` : 'Refresh'}
+                        title={connectorNeedsReconnect ? 'Reconnect this source, then refresh again' : lastRefreshedAt ? `Refresh (last: ${new Date(lastRefreshedAt).toLocaleString()})` : 'Refresh'}
                     >
                         {isConnectorRefreshing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCcw size={14} />}
                     </button>
@@ -1318,7 +1328,13 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
         </div>
 
         {isConnected && data.connectorConfig?.lastError && (
-          <ConnectedSheetError message={data.connectorConfig.lastError} />
+          <ConnectedSheetError
+            message={
+              connectorNeedsReconnect
+                ? `${data.connectorConfig.lastError}\nLast successful data is still shown. Reconnect the source from Connect Data, then refresh this sheet.`
+                : data.connectorConfig.lastError
+            }
+          />
         )}
 
         {showFilterPanel && (

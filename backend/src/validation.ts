@@ -25,7 +25,8 @@ export const clickhouseQuerySchema = z.object({
 export const googleAnalyticsAuthExchangeSchema = z.object({
   code: z.string().trim().min(1),
   codeVerifier: z.string().trim().min(1),
-  redirectUri: z.string().trim().url()
+  redirectUri: z.string().trim().url(),
+  connectorId: z.string().trim().min(1).optional()
 });
 
 export const googleSheetsAuthExchangeSchema = googleAnalyticsAuthExchangeSchema;

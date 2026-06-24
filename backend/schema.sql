@@ -10,6 +10,10 @@ CREATE TABLE IF NOT EXISTS connectors (
   config_json TEXT,
   secret_ciphertext_b64 TEXT,
   secret_iv_b64 TEXT,
+  health_status TEXT NOT NULL DEFAULT 'healthy',
+  health_error_code TEXT,
+  health_error_message TEXT,
+  health_checked_at_ms INTEGER,
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL
 );

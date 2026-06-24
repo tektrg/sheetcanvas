@@ -22,6 +22,22 @@ const getBearerToken = () => {
   return token && token.trim() ? token.trim() : null;
 };
 
+export class ApiError extends Error {
+  status: number;
+  code?: string;
+
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
+  }
+}
+
+export function isConnectorNeedsReconnectError(error: unknown) {
+  return error instanceof ApiError && error.code === 'connector_needs_reconnect';
+}
+
 export async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const baseUrl = getBackendBaseUrl();
   const url = `${baseUrl}${path}`;
@@ -38,7 +54,7 @@ export async function requestJson<T>(path: string, init?: RequestInit): Promise<
       json?.error?.message ||
       json?.message ||
       `Request failed (${res.status})`;
-    throw new Error(msg);
+    throw new ApiError(msg, res.status, json?.error?.code || json?.code);
   }
   return json as T;
 }

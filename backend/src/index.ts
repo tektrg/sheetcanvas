@@ -6,8 +6,11 @@ import { requireBearerToken } from "./auth";
 import { decryptString, encryptString } from "./crypto";
 import { executeClickhouseQuery, getClickhouseSchema, describeClickhouseTable } from "./clickhouse";
 import {
+  GOOGLE_ANALYTICS_READONLY_SCOPE,
   exchangeGoogleAnalyticsCode,
   getGoogleAnalyticsMetadata,
+  getGoogleAnalyticsUserInfo,
+  hasGoogleAnalyticsReadonlyScope,
   listGoogleAnalyticsProperties,
   refreshGoogleAnalyticsAccessToken,
   runGoogleAnalyticsReport
@@ -15,15 +18,19 @@ import {
 import {
   GOOGLE_SHEETS_READONLY_SCOPE,
   exchangeGoogleSheetsCode,
+  getGoogleSheetsUserInfo,
   getGoogleSheetsValues,
   refreshGoogleSheetsAccessToken
 } from "./googleSheets";
 import {
+  type ConnectorRow,
   getConnectorById,
   insertClickhouseConnector,
   insertGoogleAnalyticsConnector,
   insertGoogleSheetsConnector,
-  listConnectors
+  listConnectors,
+  updateConnectorHealth,
+  updateGoogleAnalyticsConnectorSecret
 } from "./db";
 import {
   clickhouseCreateSchema,
@@ -61,6 +68,72 @@ function getMaxRows(env: Env) {
 function getTimeoutMs(env: Env) {
   const raw = Number(env.DEFAULT_TIMEOUT_MS ?? "15000");
   return Number.isFinite(raw) && raw > 0 ? Math.min(raw, 120_000) : 15000;
+}
+
+function isReconnectableOAuthError(err: unknown) {
+  return err instanceof HttpError && err.code === "oauth_invalid_grant";
+}
+
+function getStoredGoogleConnectorScope(connector: ConnectorRow) {
+  if (!connector.config_json) return null;
+  try {
+    const config = JSON.parse(connector.config_json) as { scope?: unknown };
+    return typeof config.scope === "string" ? config.scope : null;
+  } catch {
+    return null;
+  }
+}
+
+async function markGoogleAnalyticsInvalidScope(env: Env, connectorId: string) {
+  const message = "Google Analytics read-only scope was not granted. Reconnect Google Analytics and approve Analytics read access.";
+  await updateConnectorHealth(env, connectorId, {
+    status: "needs_reconnect",
+    errorCode: "invalid_scope",
+    errorMessage: message
+  });
+  throw new HttpError(401, "connector_needs_reconnect", message);
+}
+
+async function refreshGoogleAnalyticsAccessForConnector(env: Env, connector: ConnectorRow) {
+  const clientId = env.GOOGLE_CLIENT_ID?.trim();
+  if (!clientId) throw new HttpError(500, "missing_config", "GOOGLE_CLIENT_ID is not set");
+  if (!connector.secret_ciphertext_b64 || !connector.secret_iv_b64) {
+    throw new HttpError(400, "missing_secret", "Connector is missing credentials");
+  }
+  const storedScope = getStoredGoogleConnectorScope(connector);
+  if (storedScope && !hasGoogleAnalyticsReadonlyScope(storedScope)) {
+    await markGoogleAnalyticsInvalidScope(env, connector.id);
+  }
+
+  const refreshToken = await decryptString(
+    connector.secret_ciphertext_b64,
+    connector.secret_iv_b64,
+    env.ENCRYPTION_KEY_B64
+  );
+
+  try {
+    const access = await refreshGoogleAnalyticsAccessToken({
+      refreshToken,
+      clientId,
+      clientSecret: env.GOOGLE_CLIENT_SECRET?.trim()
+    });
+    if (access.scope && !hasGoogleAnalyticsReadonlyScope(access.scope)) {
+      await markGoogleAnalyticsInvalidScope(env, connector.id);
+    }
+    await updateConnectorHealth(env, connector.id, { status: "healthy" });
+    return access;
+  } catch (err) {
+    if (isReconnectableOAuthError(err)) {
+      const message = "Google Analytics connection needs reconnect.";
+      await updateConnectorHealth(env, connector.id, {
+        status: "needs_reconnect",
+        errorCode: "oauth_invalid_grant",
+        errorMessage: message
+      });
+      throw new HttpError(401, "connector_needs_reconnect", message);
+    }
+    throw err;
+  }
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -225,13 +298,38 @@ app.post("/api/connectors/google-analytics/auth/exchange", async (c) => {
   if (!token.refresh_token) {
     throw new HttpError(400, "missing_refresh_token", "No refresh token returned. Re-consent is required.");
   }
+  if (!hasGoogleAnalyticsReadonlyScope(token.scope)) {
+    throw new HttpError(400, "invalid_scope", `Google Analytics read-only scope was not granted (${GOOGLE_ANALYTICS_READONLY_SCOPE}).`);
+  }
 
   const { ciphertextB64, ivB64 } = await encryptString(token.refresh_token, c.env.ENCRYPTION_KEY_B64);
-  const configJson = JSON.stringify({ scope: token.scope ?? null });
+  const userInfo = await getGoogleAnalyticsUserInfo(token.access_token);
+  const accountEmail = userInfo?.email?.trim() || null;
+  const accountName = userInfo?.name?.trim() || null;
+  const configJson = JSON.stringify({
+    scope: token.scope ?? null,
+    accountEmail,
+    accountName
+  });
+
+  if (parsed.data.connectorId) {
+    const existing = await getConnectorById(c.env, parsed.data.connectorId);
+    if (existing.type !== "google-analytics") {
+      throw new HttpError(400, "unsupported_connector", "Unsupported connector type");
+    }
+    const connector = await updateGoogleAnalyticsConnectorSecret(c.env, {
+      id: existing.id,
+      config_json: configJson,
+      secret_ciphertext_b64: ciphertextB64,
+      secret_iv_b64: ivB64,
+      updated_at_ms: Date.now()
+    });
+    return c.json({ connector }, 200);
+  }
 
   const connector = await insertGoogleAnalyticsConnector(c.env, {
     id: crypto.randomUUID(),
-    name: "Google Analytics",
+    name: accountEmail || accountName || "Google Analytics",
     config_json: configJson,
     secret_ciphertext_b64: ciphertextB64,
     secret_iv_b64: ivB64,
@@ -252,23 +350,7 @@ app.post("/api/connectors/google-analytics/properties", async (c) => {
     throw new HttpError(400, "unsupported_connector", "Unsupported connector type");
   }
 
-  const clientId = c.env.GOOGLE_CLIENT_ID?.trim();
-  if (!clientId) throw new HttpError(500, "missing_config", "GOOGLE_CLIENT_ID is not set");
-  if (!connector.secret_ciphertext_b64 || !connector.secret_iv_b64) {
-    throw new HttpError(400, "missing_secret", "Connector is missing credentials");
-  }
-
-  const refreshToken = await decryptString(
-    connector.secret_ciphertext_b64,
-    connector.secret_iv_b64,
-    c.env.ENCRYPTION_KEY_B64
-  );
-
-  const access = await refreshGoogleAnalyticsAccessToken({
-    refreshToken,
-    clientId,
-    clientSecret: c.env.GOOGLE_CLIENT_SECRET?.trim()
-  });
+  const access = await refreshGoogleAnalyticsAccessForConnector(c.env, connector);
 
   const propertiesResult = await listGoogleAnalyticsProperties({
     accessToken: access.access_token,
@@ -304,11 +386,18 @@ app.post("/api/connectors/google-sheets/auth/exchange", async (c) => {
   }
 
   const { ciphertextB64, ivB64 } = await encryptString(token.refresh_token, c.env.ENCRYPTION_KEY_B64);
-  const configJson = JSON.stringify({ scope: token.scope ?? null });
+  const userInfo = await getGoogleSheetsUserInfo(token.access_token);
+  const accountEmail = userInfo?.email?.trim() || null;
+  const accountName = userInfo?.name?.trim() || null;
+  const configJson = JSON.stringify({
+    scope: token.scope ?? null,
+    accountEmail,
+    accountName
+  });
 
   const connector = await insertGoogleSheetsConnector(c.env, {
     id: crypto.randomUUID(),
-    name: "Google Sheets",
+    name: accountEmail || accountName || "Google Sheets",
     config_json: configJson,
     secret_ciphertext_b64: ciphertextB64,
     secret_iv_b64: ivB64,
@@ -330,23 +419,7 @@ app.post("/api/query/google-analytics", async (c) => {
     throw new HttpError(400, "unsupported_connector", "Unsupported connector type");
   }
 
-  const clientId = c.env.GOOGLE_CLIENT_ID?.trim();
-  if (!clientId) throw new HttpError(500, "missing_config", "GOOGLE_CLIENT_ID is not set");
-  if (!connector.secret_ciphertext_b64 || !connector.secret_iv_b64) {
-    throw new HttpError(400, "missing_secret", "Connector is missing credentials");
-  }
-
-  const refreshToken = await decryptString(
-    connector.secret_ciphertext_b64,
-    connector.secret_iv_b64,
-    c.env.ENCRYPTION_KEY_B64
-  );
-
-  const access = await refreshGoogleAnalyticsAccessToken({
-    refreshToken,
-    clientId,
-    clientSecret: c.env.GOOGLE_CLIENT_SECRET?.trim()
-  });
+  const access = await refreshGoogleAnalyticsAccessForConnector(c.env, connector);
 
   const maxRows = getMaxRows(c.env);
   const normalizedPropertyId = parsed.data.propertyId.replace(/^properties\//i, "");
@@ -436,11 +509,7 @@ app.post('/api/connectors/google-analytics/metadata', async (c) => {
   if (!parsed.success) return c.json({ error: { code: 'bad_request', message: parsed.error.message } }, 400);
   const connector = await getConnectorById(c.env, parsed.data.connectorId);
   if (connector.type !== 'google-analytics') throw new HttpError(400, 'unsupported_connector', 'Unsupported connector type');
-  const clientId = c.env.GOOGLE_CLIENT_ID?.trim();
-  if (!clientId) throw new HttpError(500, 'missing_config', 'GOOGLE_CLIENT_ID is not set');
-  if (!connector.secret_ciphertext_b64 || !connector.secret_iv_b64) throw new HttpError(400, 'missing_secret', 'Connector is missing credentials');
-  const refreshToken = await decryptString(connector.secret_ciphertext_b64, connector.secret_iv_b64, c.env.ENCRYPTION_KEY_B64);
-  const access = await refreshGoogleAnalyticsAccessToken({ refreshToken, clientId, clientSecret: c.env.GOOGLE_CLIENT_SECRET?.trim() });
+  const access = await refreshGoogleAnalyticsAccessForConnector(c.env, connector);
   const result = await getGoogleAnalyticsMetadata({ accessToken: access.access_token, propertyId: parsed.data.propertyId });
   return c.json(result);
 });

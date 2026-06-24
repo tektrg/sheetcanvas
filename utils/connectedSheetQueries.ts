@@ -84,6 +84,8 @@ export async function refreshConnectedSheetFromQuery(
     size: next.size,
     cells: next.cells,
     connectorConfig: buildConnectorConfigWithQuery(config, query, {
+      healthStatus: 'healthy',
+      healthErrorCode: '',
       lastRefreshedAt: Date.now(),
       truncated: sourceTruncated || next.truncated,
       lastError: '',

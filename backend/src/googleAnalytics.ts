@@ -1,12 +1,14 @@
 import { HttpError } from "./errors";
 import {
   exchangeGoogleOAuthCode,
+  getGoogleOAuthUserInfo,
   refreshGoogleOAuthAccessToken,
   type GoogleOAuthTokenResponse
 } from "./googleOAuth";
 
 const REPORT_URL_BASE = "https://analyticsdata.googleapis.com/v1beta";
 const ADMIN_URL_BASE = "https://analyticsadmin.googleapis.com/v1beta";
+export const GOOGLE_ANALYTICS_READONLY_SCOPE = "https://www.googleapis.com/auth/analytics.readonly";
 
 export type GoogleAnalyticsReport = {
   dateRanges?: Array<{ startDate: string; endDate: string }>;
@@ -37,6 +39,10 @@ export type GoogleAnalyticsPropertiesResult = {
   truncated: boolean;
 };
 
+export function hasGoogleAnalyticsReadonlyScope(scope: string | undefined | null) {
+  return new Set((scope ?? "").split(/\s+/).filter(Boolean)).has(GOOGLE_ANALYTICS_READONLY_SCOPE);
+}
+
 export async function exchangeGoogleAnalyticsCode(args: {
   code: string;
   codeVerifier: string;
@@ -53,6 +59,10 @@ export async function refreshGoogleAnalyticsAccessToken(args: {
   clientSecret?: string;
 }): Promise<GoogleOAuthTokenResponse> {
   return refreshGoogleOAuthAccessToken(args);
+}
+
+export async function getGoogleAnalyticsUserInfo(accessToken: string) {
+  return getGoogleOAuthUserInfo(accessToken);
 }
 
 function normalizeReport(report: GoogleAnalyticsReport | undefined, maxRows: number) {

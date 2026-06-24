@@ -163,6 +163,8 @@ export interface ConnectorConfig {
   query?: ConnectorQueryEnvelope;
   derivation?: string;
   brief?: ConnectorQueryBrief;
+  healthStatus?: 'healthy' | 'needs_reconnect' | 'error';
+  healthErrorCode?: string;
   lastRefreshedAt?: number;
   truncated?: boolean;
   lastError?: string;
