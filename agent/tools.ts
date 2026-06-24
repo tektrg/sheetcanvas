@@ -364,7 +364,7 @@ export const toolDefs = {
 
   describeConnection: {
     description:
-      'Describe a data connection and return a schemaToken required by createQuerySheet, plus a queryShape describing the exact queryPayload to build (payloadSchema, requiredFields, worked examples). ClickHouse without table returns tables[] only; with table returns columns[] and schemaToken. Google Analytics requires propertyId and returns a bounded dimensions[]/metrics[] catalog. Google Sheets returns read-only URL/ID and range requirements. Always read queryShape before constructing queryPayload.',
+      'Describe a data connection and return a schemaToken required by queryConnection or createQuerySheet, plus a queryShape describing the exact queryPayload to build (payloadSchema, requiredFields, worked examples). ClickHouse without table returns tables[] only; with table returns columns[] and schemaToken. Google Analytics requires propertyId and returns a bounded dimensions[]/metrics[] catalog. Google Sheets returns read-only URL/ID and range requirements. Always read queryShape before constructing queryPayload.',
     inputSchema: z.object({
       connectionId: z.string().min(1),
       table: z.string().min(1).optional(),
@@ -377,7 +377,7 @@ export const toolDefs = {
 
   createQuerySheet: {
     description:
-      'Create a new sheet by querying a previously described data connection. Pass schemaToken from describeConnection. The connector-specific query goes in queryPayload, whose exact shape, required fields, and worked examples come from describeConnection\'s queryShape — build the payload to match it rather than guessing. Always provide derivation and a structured brief that summarizes query logic, data scope, sources/tables, and judgment caveats without raw data. Returns sheetId + headers for immediate createChart use.',
+      'Create a visible sheet by querying a previously described data connection. Use this only when the query result should be shown to the user, inspected as a table, or used as visible lineage for charts/derived tables. For private exploration or answer-only analytics, prefer queryConnection first. Pass schemaToken from describeConnection. The connector-specific query goes in queryPayload, whose exact shape, required fields, and worked examples come from describeConnection\'s queryShape — build the payload to match it rather than guessing. Always provide derivation and a structured brief that summarizes query logic, data scope, sources/tables, and judgment caveats without raw data. Returns sheetId + headers for immediate createChart use.',
     inputSchema: z.object({
       connectionId: z.string().min(1),
       schemaToken: z.string().min(8),
@@ -387,6 +387,31 @@ export const toolDefs = {
         .describe('Connector-owned query payload. Build it to match the queryShape returned by describeConnection (payloadSchema + examples) for this connector type.'),
       derivation: z.string().min(1),
       brief: QueryBriefSchema,
+      title: z.string().optional(),
+    }),
+  },
+
+  queryConnection: {
+    description:
+      'Run a connector query privately for agent analysis without creating a visible sheet, chart, or derived table. Use this for exploration, validation, follow-up calculations, and answer-only analytics. Pass schemaToken from describeConnection and a queryPayload that matches queryShape. Always provide derivation and a structured brief. Returns resultId, headers, sampleRows, inferredTypes, and rowCount. Hidden results are not valid chart/table lineage; if the result should become user-visible or feed a visible chart/table, call createQuerySheetFromResult.',
+    inputSchema: z.object({
+      connectionId: z.string().min(1),
+      schemaToken: z.string().min(8),
+      type: z.enum(['clickhouse', 'google-analytics', 'google-sheets']),
+      queryPayload: z
+        .record(z.string(), z.unknown())
+        .describe('Connector-owned query payload. Build it to match the queryShape returned by describeConnection (payloadSchema + examples) for this connector type.'),
+      derivation: z.string().min(1),
+      brief: QueryBriefSchema,
+      title: z.string().optional(),
+    }),
+  },
+
+  createQuerySheetFromResult: {
+    description:
+      'Create a visible connector sheet from a previous private queryConnection result. Use resultId from the queryConnection response or from context.privateQueryResults. Use this when the agent decides hidden analysis should become a user-visible table or needs visible sheet lineage before creating a chart or derived table. Does not re-query the connector; it materializes the stored private result as a normal connector sheet.',
+    inputSchema: z.object({
+      resultId: z.string().min(1),
       title: z.string().optional(),
     }),
   },

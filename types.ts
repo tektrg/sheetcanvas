@@ -177,6 +177,19 @@ export interface ConnectorResult {
   truncated?: boolean;
 }
 
+export interface PrivateQueryResult {
+  id: string;
+  title: string;
+  connectionId: string;
+  type: QueryableConnectorType;
+  matrix: string[][];
+  connectorConfig: ConnectorConfig;
+  rowCount: number;
+  createdAt: number;
+  updatedAt: number;
+  queryDiagnostics?: unknown;
+}
+
 export interface SheetData {
   id: string;
   position: Position;

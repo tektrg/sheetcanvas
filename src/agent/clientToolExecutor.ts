@@ -27,6 +27,8 @@ import {
 } from './gaMcpTools';
 import {
   handleCreateQuerySheet,
+  handleCreateQuerySheetFromResult,
+  handleQueryConnection,
   handleUpdateQuerySheet,
   rewriteClickhouseSqlForDescribedTable,
 } from './querySheetTools';
@@ -868,12 +870,20 @@ export async function executeClientTool(
         return handleCreateQuerySheet(store, input);
       }
 
+      case 'queryConnection': {
+        return handleQueryConnection(store, input);
+      }
+
+      case 'createQuerySheetFromResult': {
+        return handleCreateQuerySheetFromResult(store, input);
+      }
+
       case 'updateQuerySheet': {
         return handleUpdateQuerySheet(store, input);
       }
 
       case 'createGaTrendBySource': {
-        return createGaTrendBySourceSheet({ input, store, generateId });
+        return createGaTrendBySourceSheet({ input, store, generateId }) as Promise<ToolResult>;
       }
 
       default:

@@ -1,14 +1,15 @@
 
 import { openDB } from 'idb';
-import { SheetData, ChartData, NoteData, CanvasTransform } from '../types';
+import { SheetData, ChartData, NoteData, CanvasTransform, PrivateQueryResult } from '../types';
 
 const DB_NAME = 'infini-calc-db';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 export interface AppState {
   sheets: SheetData[];
   charts: ChartData[];
   notes: NoteData[];
+  privateQueryResults?: PrivateQueryResult[];
   transform: CanvasTransform | null;
   defaultChartColor?: string;
   customColors?: string[];
@@ -20,6 +21,7 @@ const initDB = async () => {
       if (!db.objectStoreNames.contains('sheets')) db.createObjectStore('sheets', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('charts')) db.createObjectStore('charts', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('notes')) db.createObjectStore('notes', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('privateQueryResults')) db.createObjectStore('privateQueryResults', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta');
     },
   });
@@ -30,12 +32,13 @@ export const saveFullState = async (
   charts: ChartData[],
   notes: NoteData[],
   transform: CanvasTransform,
+  privateQueryResults: PrivateQueryResult[] = [],
   defaultChartColor?: string,
   customColors?: string[]
 ) => {
   try {
     const db = await initDB();
-    const tx = db.transaction(['sheets', 'charts', 'notes', 'meta'], 'readwrite');
+    const tx = db.transaction(['sheets', 'charts', 'notes', 'privateQueryResults', 'meta'], 'readwrite');
     
     // Clear stores for a full clean state save
     await tx.objectStore('sheets').clear();
@@ -46,7 +49,10 @@ export const saveFullState = async (
 
     await tx.objectStore('notes').clear();
     for (const note of notes) await tx.objectStore('notes').put(note);
-    
+
+    await tx.objectStore('privateQueryResults').clear();
+    for (const result of privateQueryResults) await tx.objectStore('privateQueryResults').put(result);
+
     await tx.objectStore('meta').put(transform, 'transform');
     if (defaultChartColor) await tx.objectStore('meta').put(defaultChartColor, 'defaultChartColor');
     if (customColors) await tx.objectStore('meta').put(customColors, 'customColors');
@@ -62,9 +68,11 @@ export const saveIncrementalState = async (
         sheets?: SheetData[];
         charts?: ChartData[];
         notes?: NoteData[];
+        privateQueryResults?: PrivateQueryResult[];
         deletedSheetIds?: string[];
         deletedChartIds?: string[];
         deletedNoteIds?: string[];
+        deletedPrivateQueryResultIds?: string[];
         transform?: CanvasTransform;
         defaultChartColor?: string;
         customColors?: string[];
@@ -72,7 +80,7 @@ export const saveIncrementalState = async (
 ) => {
     try {
         const db = await initDB();
-        const tx = db.transaction(['sheets', 'charts', 'notes', 'meta'], 'readwrite');
+        const tx = db.transaction(['sheets', 'charts', 'notes', 'privateQueryResults', 'meta'], 'readwrite');
 
         if (updates.sheets) {
             const store = tx.objectStore('sheets');
@@ -101,6 +109,15 @@ export const saveIncrementalState = async (
             for (const id of updates.deletedNoteIds) await store.delete(id);
         }
 
+        if (updates.privateQueryResults) {
+            const store = tx.objectStore('privateQueryResults');
+            for (const result of updates.privateQueryResults) await store.put(result);
+        }
+        if (updates.deletedPrivateQueryResultIds) {
+            const store = tx.objectStore('privateQueryResults');
+            for (const id of updates.deletedPrivateQueryResultIds) await store.delete(id);
+        }
+
         if (updates.transform) await tx.objectStore('meta').put(updates.transform, 'transform');
         if (updates.defaultChartColor) await tx.objectStore('meta').put(updates.defaultChartColor, 'defaultChartColor');
         if (updates.customColors) await tx.objectStore('meta').put(updates.customColors, 'customColors');
@@ -118,6 +135,9 @@ export const loadAppState = async (id: string = 'default'): Promise<AppState> =>
     const sheets = await db.getAll('sheets');
     const charts = await db.getAll('charts');
     const notes = await db.getAll('notes');
+    const privateQueryResults = db.objectStoreNames.contains('privateQueryResults')
+      ? await db.getAll('privateQueryResults')
+      : [];
     const transform = await db.get('meta', 'transform');
     const defaultChartColor = await db.get('meta', 'defaultChartColor');
     const customColors = await db.get('meta', 'customColors');
@@ -172,12 +192,13 @@ export const loadAppState = async (id: string = 'default'): Promise<AppState> =>
       sheets: migratedSheets,
       charts: charts || [],
       notes: notes || [],
+      privateQueryResults: privateQueryResults || [],
       transform: transform || null,
       defaultChartColor,
       customColors
     };
   } catch (err) {
     console.error('Failed to load state from IndexedDB:', err);
-    return { sheets: [], charts: [], notes: [], transform: null };
+    return { sheets: [], charts: [], notes: [], privateQueryResults: [], transform: null };
   }
 };

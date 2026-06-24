@@ -3,6 +3,9 @@ import { computeDateAnchors } from '../../utils/dates';
 import type { SelectionContext } from '../../types';
 import { getColumnIdForIndex, getColumnIdSpan, getSheetDataBounds } from './sheetBounds';
 
+const MAX_PRIVATE_RESULTS_IN_CONTEXT = 10;
+const MAX_PRIVATE_RESULT_HEADERS_IN_CONTEXT = 20;
+
 export function buildAgentContextLine(
   selection: SelectionContext,
   options: { attachSelection?: boolean } = {},
@@ -39,8 +42,30 @@ export function buildAgentContextLine(
   });
   const nowStr = new Date().toISOString();
   const dateAnchors = computeDateAnchors(nowStr);
+  const privateQueryResults = state.privateQueryResultIds.slice(-MAX_PRIVATE_RESULTS_IN_CONTEXT).flatMap((id) => {
+    const result = state.privateQueryResults[id];
+    if (!result) return [];
+    const headers = (result.matrix[0] ?? [])
+      .slice(0, MAX_PRIVATE_RESULT_HEADERS_IN_CONTEXT)
+      .map((header, index) => ({
+        columnId: getColumnIdForIndex(index),
+        header: String(header).slice(0, 48),
+      }));
+    return {
+      resultId: result.id,
+      title: result.title,
+      type: result.type,
+      rowCount: result.rowCount,
+      headers,
+      brief: result.connectorConfig.brief ?? null,
+      truncated: !!result.connectorConfig.truncated,
+      createdAt: result.createdAt,
+      updatedAt: result.updatedAt,
+    };
+  });
   return JSON.stringify({
     sheets,
+    privateQueryResults,
     selection: attachSelection ? selection : null,
     now: nowStr,
     dateAnchors,

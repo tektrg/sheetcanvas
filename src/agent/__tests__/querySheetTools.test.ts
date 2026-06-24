@@ -55,6 +55,8 @@ afterEach(() => {
     chartIds: initialState.chartIds,
     notes: initialState.notes,
     noteIds: initialState.noteIds,
+    privateQueryResults: initialState.privateQueryResults,
+    privateQueryResultIds: initialState.privateQueryResultIds,
     selectedIds: initialState.selectedIds,
     transform: initialState.transform,
     history: initialState.history,
@@ -64,6 +66,100 @@ afterEach(() => {
     connectionSchemaTokens: initialState.connectionSchemaTokens,
   });
   vi.unstubAllGlobals();
+});
+
+describe('executeClientTool private connector queries', () => {
+  it('stores connector query results invisibly until explicitly emitted as a sheet', async () => {
+    const sql = 'SELECT month, total_profit FROM hq_report.sales LIMIT 2';
+    useStore.setState({
+      sheets: {},
+      sheetIds: [],
+      privateQueryResults: {},
+      privateQueryResultIds: [],
+      connectionSchemaTokens: {
+        schema1234: {
+          connectionId: 'clickhouse-1',
+          type: 'clickhouse',
+          table: 'hq_report.sales',
+          createdAt: Date.now(),
+        },
+      },
+    });
+    vi.stubGlobal('window', { innerWidth: 1400, innerHeight: 900 });
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe('http://localhost:8787/api/query/clickhouse');
+      expect(JSON.parse(String(init?.body))).toEqual({
+        connectorId: 'clickhouse-1',
+        sql,
+      });
+      return {
+        ok: true,
+        json: async () => ({
+          columns: [
+            { name: 'month', type: 'String' },
+            { name: 'total_profit', type: 'Float64' },
+          ],
+          rows: [['2026-05', 1000]],
+          rowCount: 1,
+          truncated: false,
+        }),
+      };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const privateResult = await executeClientTool(
+      'queryConnection',
+      {
+        connectionId: 'clickhouse-1',
+        schemaToken: 'schema1234',
+        type: 'clickhouse',
+        queryPayload: { sql },
+        derivation: 'Reads monthly profit for analysis without showing a table.',
+        brief: makeBrief('Reads monthly profit for private analysis.'),
+        title: 'Private profit probe',
+      },
+      emptySelectionResolver,
+    );
+
+    expect(privateResult.ok).toBe(true);
+    expect(privateResult.visibleSheetCreated).toBe(false);
+    expect(privateResult.resultId).toEqual(expect.any(String));
+    const resultId = privateResult.resultId as string;
+    let state = useStore.getState();
+    expect(state.sheetIds).toEqual([]);
+    expect(state.privateQueryResultIds).toEqual([resultId]);
+    expect(state.privateQueryResults[resultId].matrix).toEqual([
+      ['month', 'total_profit'],
+      ['2026-05', '1000'],
+    ]);
+
+    const emitted = await executeClientTool(
+      'createQuerySheetFromResult',
+      {
+        resultId,
+        title: 'Visible profit result',
+      },
+      emptySelectionResolver,
+    );
+
+    expect(emitted.ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const sheetId = emitted.sheetId as string;
+    state = useStore.getState();
+    expect(state.privateQueryResultIds).toEqual([resultId]);
+    expect(state.sheetIds).toEqual([sheetId]);
+    const sheet = state.sheets[sheetId];
+    expect(sheet.title).toBe('Visible profit result');
+    expect(sheet.connectorConfig).toEqual(
+      expect.objectContaining({
+        name: 'Visible profit result',
+        connectionId: 'clickhouse-1',
+        query: { version: 1, payload: { sql } },
+      }),
+    );
+    expect(sheet.cells.A1.raw).toBe('month');
+    expect(sheet.cells.B2.raw).toBe('1000');
+  });
 });
 
 describe('executeClientTool updateQuerySheet', () => {

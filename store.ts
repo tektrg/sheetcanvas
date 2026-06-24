@@ -1,6 +1,6 @@
 
 import { create } from 'zustand';
-import { SheetData, ChartData, NoteData, CanvasTransform, ToolMode, CellData, ConnectionSchemaScope } from './types';
+import { SheetData, ChartData, NoteData, CanvasTransform, ToolMode, CellData, ConnectionSchemaScope, PrivateQueryResult } from './types';
 import { refreshPivotTable } from './utils/pivotHelpers';
 import { refreshSparklineTable } from './utils/sparklineHelpers';
 import { saveFullState, saveIncrementalState, loadAppState } from './utils/persistence';
@@ -10,9 +10,11 @@ export interface AppState {
   sheets: Record<string, SheetData>;
   charts: Record<string, ChartData>;
   notes: Record<string, NoteData>;
+  privateQueryResults: Record<string, PrivateQueryResult>;
   sheetIds: string[];
   chartIds: string[];
   noteIds: string[];
+  privateQueryResultIds: string[];
   
   transform: CanvasTransform;
   selectedIds: Set<string>;
@@ -40,6 +42,9 @@ export interface AppState {
   addNote: (note: NoteData) => void;
   updateNote: (id: string, updates: Partial<NoteData>) => void;
   deleteNote: (id: string) => void;
+
+  addPrivateQueryResult: (result: PrivateQueryResult) => void;
+  deletePrivateQueryResult: (id: string) => void;
   
   deleteSelected: () => void;
   undo: () => void;
@@ -63,9 +68,11 @@ const dirtyFlags = {
     sheets: new Set<string>(),
     charts: new Set<string>(),
     notes: new Set<string>(),
+    privateQueryResults: new Set<string>(),
     deletedSheets: new Set<string>(),
     deletedCharts: new Set<string>(),
     deletedNotes: new Set<string>(),
+    deletedPrivateQueryResults: new Set<string>(),
     transform: false,
     colors: false
 };
@@ -96,12 +103,28 @@ const markFullSync = () => {
     dirtyFlags.sheets.clear();
     dirtyFlags.charts.clear();
     dirtyFlags.notes.clear();
+    dirtyFlags.privateQueryResults.clear();
     dirtyFlags.deletedSheets.clear();
     dirtyFlags.deletedCharts.clear();
     dirtyFlags.deletedNotes.clear();
+    dirtyFlags.deletedPrivateQueryResults.clear();
     dirtyFlags.transform = false;
     dirtyFlags.colors = false;
 };
+
+export function hasPersistedWorkspaceState(loaded: {
+    sheets: unknown[];
+    charts: unknown[];
+    notes: unknown[];
+    privateQueryResults?: unknown[];
+} | null | undefined): boolean {
+    return !!loaded && (
+        loaded.sheets.length > 0 ||
+        loaded.charts.length > 0 ||
+        loaded.notes.length > 0 ||
+        (loaded.privateQueryResults?.length ?? 0) > 0
+    );
+}
 
 const materializeDerivedSheet = (
     sheet: SheetData,
@@ -130,9 +153,11 @@ export const useStore = create<AppState>((set, get) => ({
   sheets: {},
   charts: {},
   notes: {},
+  privateQueryResults: {},
   sheetIds: [],
   chartIds: [],
   noteIds: [],
+  privateQueryResultIds: [],
   
   transform: { scale: 1, offset: { x: 0, y: 0 } },
   selectedIds: new Set<string>(),
@@ -147,8 +172,8 @@ export const useStore = create<AppState>((set, get) => ({
 
   init: async () => {
       const loaded = await loadAppState('default');
-      
-      if (loaded && loaded.sheets.length > 0) {
+
+      if (loaded && hasPersistedWorkspaceState(loaded)) {
           const sheets: Record<string, SheetData> = {};
           const sheetIds: string[] = [];
           
@@ -171,10 +196,18 @@ export const useStore = create<AppState>((set, get) => ({
           const noteIds: string[] = [];
           loaded.notes.forEach(n => { notes[n.id] = n; noteIds.push(n.id); });
 
+          const privateQueryResults: Record<string, PrivateQueryResult> = {};
+          const privateQueryResultIds: string[] = [];
+          (loaded.privateQueryResults ?? []).forEach(result => {
+              privateQueryResults[result.id] = result;
+              privateQueryResultIds.push(result.id);
+          });
+
           set({
               sheets, sheetIds,
               charts, chartIds,
               notes, noteIds,
+              privateQueryResults, privateQueryResultIds,
               transform: loaded.transform || { scale: 1, offset: { x: 0, y: 0 } }
           });
       } else {
@@ -250,7 +283,8 @@ export const useStore = create<AppState>((set, get) => ({
                   Object.values(s.sheets),
                   Object.values(s.charts),
                   Object.values(s.notes),
-                  s.transform
+                  s.transform,
+                  Object.values(s.privateQueryResults)
               );
               dirtyFlags.fullSync = false;
               return;
@@ -258,12 +292,14 @@ export const useStore = create<AppState>((set, get) => ({
 
           // Check if any incremental changes
           const hasChanges = 
-              dirtyFlags.sheets.size > 0 || 
-              dirtyFlags.charts.size > 0 || 
+              dirtyFlags.sheets.size > 0 ||
+              dirtyFlags.charts.size > 0 ||
               dirtyFlags.notes.size > 0 ||
+              dirtyFlags.privateQueryResults.size > 0 ||
               dirtyFlags.deletedSheets.size > 0 ||
               dirtyFlags.deletedCharts.size > 0 ||
               dirtyFlags.deletedNotes.size > 0 ||
+              dirtyFlags.deletedPrivateQueryResults.size > 0 ||
               dirtyFlags.transform ||
               dirtyFlags.colors;
 
@@ -271,14 +307,17 @@ export const useStore = create<AppState>((set, get) => ({
               const sheetsToSave = Array.from(dirtyFlags.sheets).map(id => s.sheets[id]).filter(Boolean);
               const chartsToSave = Array.from(dirtyFlags.charts).map(id => s.charts[id]).filter(Boolean);
               const notesToSave = Array.from(dirtyFlags.notes).map(id => s.notes[id]).filter(Boolean);
-              
+              const privateQueryResultsToSave = Array.from(dirtyFlags.privateQueryResults).map(id => s.privateQueryResults[id]).filter(Boolean);
+
               saveIncrementalState({
                   sheets: sheetsToSave.length > 0 ? sheetsToSave : undefined,
                   charts: chartsToSave.length > 0 ? chartsToSave : undefined,
                   notes: notesToSave.length > 0 ? notesToSave : undefined,
+                  privateQueryResults: privateQueryResultsToSave.length > 0 ? privateQueryResultsToSave : undefined,
                   deletedSheetIds: dirtyFlags.deletedSheets.size > 0 ? Array.from(dirtyFlags.deletedSheets) : undefined,
                   deletedChartIds: dirtyFlags.deletedCharts.size > 0 ? Array.from(dirtyFlags.deletedCharts) : undefined,
                   deletedNoteIds: dirtyFlags.deletedNotes.size > 0 ? Array.from(dirtyFlags.deletedNotes) : undefined,
+                  deletedPrivateQueryResultIds: dirtyFlags.deletedPrivateQueryResults.size > 0 ? Array.from(dirtyFlags.deletedPrivateQueryResults) : undefined,
                   transform: dirtyFlags.transform ? s.transform : undefined
               });
 
@@ -286,9 +325,11 @@ export const useStore = create<AppState>((set, get) => ({
               dirtyFlags.sheets.clear();
               dirtyFlags.charts.clear();
               dirtyFlags.notes.clear();
+              dirtyFlags.privateQueryResults.clear();
               dirtyFlags.deletedSheets.clear();
               dirtyFlags.deletedCharts.clear();
               dirtyFlags.deletedNotes.clear();
+              dirtyFlags.deletedPrivateQueryResults.clear();
               dirtyFlags.transform = false;
               dirtyFlags.colors = false;
           }
@@ -488,6 +529,30 @@ export const useStore = create<AppState>((set, get) => ({
               notes: newNotes,
               noteIds: state.noteIds.filter(nid => nid !== id),
               selectedIds: new Set(Array.from(state.selectedIds).filter(sid => sid !== id))
+          };
+      });
+  },
+
+  addPrivateQueryResult: (result) => {
+      dirtyFlags.privateQueryResults.add(result.id);
+      dirtyFlags.deletedPrivateQueryResults.delete(result.id);
+      set(state => ({
+          privateQueryResults: { ...state.privateQueryResults, [result.id]: result },
+          privateQueryResultIds: state.privateQueryResultIds.includes(result.id)
+              ? state.privateQueryResultIds
+              : [...state.privateQueryResultIds, result.id],
+      }));
+  },
+
+  deletePrivateQueryResult: (id) => {
+      dirtyFlags.privateQueryResults.delete(id);
+      dirtyFlags.deletedPrivateQueryResults.add(id);
+      set(state => {
+          const nextResults = { ...state.privateQueryResults };
+          delete nextResults[id];
+          return {
+              privateQueryResults: nextResults,
+              privateQueryResultIds: state.privateQueryResultIds.filter(resultId => resultId !== id),
           };
       });
   },

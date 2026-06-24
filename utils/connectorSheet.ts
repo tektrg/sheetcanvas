@@ -8,18 +8,23 @@ export interface MatrixResult {
   truncated: boolean;
 }
 
-export function applyMatrixToSheet(matrix: string[][]): MatrixResult {
-  let finalMatrix = matrix;
+export function limitConnectorMatrix(matrix: string[][]): { matrix: string[][]; truncated: boolean } {
+  let limitedMatrix = matrix;
   let truncated = false;
-  if (finalMatrix.length > MAX_IMPORT_ROWS) {
-    finalMatrix = finalMatrix.slice(0, MAX_IMPORT_ROWS);
+  if (limitedMatrix.length > MAX_IMPORT_ROWS) {
+    limitedMatrix = limitedMatrix.slice(0, MAX_IMPORT_ROWS);
     truncated = true;
   }
-  const widestColumnCount = finalMatrix.reduce((max, row) => Math.max(max, row.length), 0);
+  const widestColumnCount = limitedMatrix.reduce((max, row) => Math.max(max, row.length), 0);
   if (widestColumnCount > MAX_CONNECTED_IMPORT_COLS) {
-    finalMatrix = finalMatrix.map(row => row.slice(0, MAX_CONNECTED_IMPORT_COLS));
+    limitedMatrix = limitedMatrix.map(row => row.slice(0, MAX_CONNECTED_IMPORT_COLS));
     truncated = true;
   }
+  return { matrix: limitedMatrix, truncated };
+}
+
+export function applyMatrixToSheet(matrix: string[][]): MatrixResult {
+  const { matrix: finalMatrix, truncated } = limitConnectorMatrix(matrix);
   const rows = finalMatrix.length;
   const cols = finalMatrix.reduce((max, row) => Math.max(max, row.length), 0);
   const finalCols = Math.max(cols, INITIAL_COLS);

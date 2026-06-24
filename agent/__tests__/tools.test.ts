@@ -83,6 +83,36 @@ describe('sheet inspection tool descriptions', () => {
     expect(result.success).toBe(true);
   });
 
+  it('separates private connector queries from visible query sheet emission', () => {
+    expect(toolDefs.queryConnection.description).toContain('without creating a visible sheet');
+    expect(toolDefs.queryConnection.description).toContain('answer-only analytics');
+    expect(toolDefs.queryConnection.description).toContain('createQuerySheetFromResult');
+    expect(toolDefs.createQuerySheet.description).toContain('visible sheet');
+    expect(toolDefs.createQuerySheetFromResult.description).toContain('visible connector sheet');
+    expect(toolDefs.createQuerySheetFromResult.description).toContain('Does not re-query');
+
+    const privateResult = toolDefs.queryConnection.inputSchema.safeParse({
+      connectionId: 'clickhouse-1',
+      schemaToken: 'schema_abc123',
+      type: 'clickhouse',
+      queryPayload: { sql: 'SELECT month, count() AS rows FROM sales GROUP BY month' },
+      derivation: 'Counts sales rows by month for private analysis.',
+      brief: {
+        logic: 'Counts sales rows by month.',
+        scope: ['Grouped by month'],
+        sources: ['sales'],
+        judgmentNotes: ['Private result is not visible until explicitly emitted.'],
+      },
+    });
+    expect(privateResult.success).toBe(true);
+
+    const visibleResult = toolDefs.createQuerySheetFromResult.inputSchema.safeParse({
+      resultId: 'private-result-1',
+      title: 'Monthly sales rows',
+    });
+    expect(visibleResult.success).toBe(true);
+  });
+
   it('lets applyFormat use first-class presets, custom d3, and derived-sheet guidance', () => {
     expect(toolDefs.applyFormat.description).toContain('derived pivot/sparkline');
     expect(toolDefs.applyFormat.description).toContain('compactNumber');

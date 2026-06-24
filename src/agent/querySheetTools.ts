@@ -1,7 +1,7 @@
-import type { ConnectorConfig, SheetData } from '../../types';
+import type { ConnectorConfig, PrivateQueryResult, QueryableConnectorType, SheetData } from '../../types';
 import { MAX_CONNECTED_IMPORT_COLS } from '../../constants';
-import { applyMatrixToSheet } from '../../utils/connectorSheet';
-import { getConnectorQueryProvider, rewriteClickhouseSqlForDescribedTable } from '../../utils/connectorQuery';
+import { applyMatrixToSheet, limitConnectorMatrix } from '../../utils/connectorSheet';
+import { getConnectorQueryProvider, rewriteClickhouseSqlForDescribedTable, type NormalizedConnectorQuery } from '../../utils/connectorQuery';
 import {
   buildConnectorConfigWithQuery,
   refreshConnectedSheetFromQuery,
@@ -13,16 +13,24 @@ import type { ToolResult } from './clientToolExecutor';
 import { accumulateSheetFocus } from './agentFocusAccumulator';
 import { useStore } from '../../store';
 import { normalizeConnectorQueryBrief, type ConnectorQueryBriefInput } from './queryBrief';
+import { isConnectorNeedsReconnectError } from '../../utils/backendApi';
 
 type StoreState = ReturnType<typeof useStore.getState>;
 
 type CreateQuerySheetInput = {
   connectionId: string;
   schemaToken: string;
-  type: 'clickhouse' | 'google-analytics' | 'google-sheets';
+  type: QueryableConnectorType;
   queryPayload: Record<string, unknown>;
   derivation: string;
   brief?: ConnectorQueryBriefInput;
+  title?: string;
+};
+
+type QueryConnectionInput = CreateQuerySheetInput;
+
+type CreateQuerySheetFromResultInput = {
+  resultId: string;
   title?: string;
 };
 
@@ -37,7 +45,7 @@ type UpdateQuerySheetInput = {
 // Re-exported from the ClickHouse provider so the agent tool surface and tests share one rewrite.
 export { rewriteClickhouseSqlForDescribedTable };
 
-function summarizeImportedMatrix(matrix: string[][], derivation: string, truncated: boolean) {
+function summarizeImportedMatrix(matrix: string[][], derivation: string, truncated: boolean, rowCount = matrix.length - 1) {
   const importedHeaders = matrix[0].slice(0, MAX_CONNECTED_IMPORT_COLS);
   const headers = importedHeaders.map((h, i) => ({
     columnId: getCellId(i, 0).replace(/\d+$/, ''),
@@ -59,7 +67,7 @@ function summarizeImportedMatrix(matrix: string[][], derivation: string, truncat
   });
 
   return {
-    rowCount: matrix.length - 1,
+    rowCount,
     headers,
     inferredTypes,
     sampleRows,
@@ -68,7 +76,32 @@ function summarizeImportedMatrix(matrix: string[][], derivation: string, truncat
   };
 }
 
-export async function handleCreateQuerySheet(store: StoreState, input: CreateQuerySheetInput): Promise<ToolResult> {
+type ExecutedConnectorQuery = {
+  connectionId: string;
+  type: QueryableConnectorType;
+  title: string;
+  derivation: string;
+  matrix: string[][];
+  sourceTruncated: boolean;
+  rowCount: number;
+  connectorConfig: ConnectorConfig;
+  queryDiagnostics?: unknown;
+};
+
+async function getEmptyQueryDiagnostics(connectionId: string, query: NormalizedConnectorQuery) {
+  if (query?.type !== 'google-analytics') return null;
+  return summarizeGaReportDiagnostics({
+    propertyId: query.propertyId,
+    report: query.report as Record<string, unknown> | undefined,
+    topHostnames: await getGaTopHostnames({
+      connectionId,
+      propertyId: query.propertyId,
+      report: query.report as Record<string, unknown> | undefined,
+    }),
+  });
+}
+
+async function executeConnectorQueryForAgent(store: StoreState, input: CreateQuerySheetInput): Promise<ToolResult | ExecutedConnectorQuery> {
   const { connectionId, schemaToken, type: connType, queryPayload, derivation, title } = input;
   const normalizedBrief = normalizeConnectorQueryBrief(input.brief);
   if (normalizedBrief.error || !normalizedBrief.brief) {
@@ -93,28 +126,7 @@ export async function handleCreateQuerySheet(store: StoreState, input: CreateQue
 
   const { matrix, truncated: sourceTruncated } = await provider.execute(connectionId, query);
   const sheetTitle = title ?? provider.defaultTitle(query);
-
-  if (matrix.length < 2) {
-    const queryDiagnostics =
-      query.type === 'google-analytics'
-        ? summarizeGaReportDiagnostics({
-            propertyId: query.propertyId,
-            report: query.report as Record<string, unknown> | undefined,
-            topHostnames: await getGaTopHostnames({
-              connectionId,
-              propertyId: query.propertyId,
-              report: query.report as Record<string, unknown> | undefined,
-            }),
-          })
-        : null;
-    return {
-      ok: false,
-      error: 'Query returned no data rows. No sheet or chart was created; explain the empty result and stop.',
-      queryDiagnostics,
-    };
-  }
-
-  const applied = applyMatrixToSheet(matrix);
+  const rowCount = Math.max(0, matrix.length - 1);
   const connectorConfig = buildConnectorConfigWithQuery(
     { type: connType, name: sheetTitle, connectionId } as ConnectorConfig,
     query,
@@ -122,13 +134,42 @@ export async function handleCreateQuerySheet(store: StoreState, input: CreateQue
       derivation,
       brief: normalizedBrief.brief,
       lastRefreshedAt: Date.now(),
-      truncated: sourceTruncated || applied.truncated,
+      truncated: sourceTruncated,
       lastError: '',
     },
   );
+
+  return {
+    connectionId,
+    type: connType,
+    title: sheetTitle,
+    derivation,
+    matrix,
+    sourceTruncated,
+    rowCount,
+    connectorConfig,
+    queryDiagnostics: matrix.length < 2 ? await getEmptyQueryDiagnostics(connectionId, query) : undefined,
+  };
+}
+
+function isToolError(result: ToolResult | ExecutedConnectorQuery): result is ToolResult {
+  return (result as ToolResult).ok === false;
+}
+
+function createVisibleQuerySheet(store: StoreState, args: {
+  title: string;
+  matrix: string[][];
+  connectorConfig: ConnectorConfig;
+}) {
+  const applied = applyMatrixToSheet(args.matrix);
+  const connectorConfig = {
+    ...args.connectorConfig,
+    name: args.title,
+    truncated: !!args.connectorConfig.truncated || applied.truncated,
+  };
   const newSheet: SheetData = {
     id: Math.random().toString(36).slice(2, 11),
-    title: sheetTitle,
+    title: args.title,
     position: store.getNextSheetPosition(),
     size: applied.size,
     cells: applied.cells,
@@ -137,12 +178,96 @@ export async function handleCreateQuerySheet(store: StoreState, input: CreateQue
   };
   store.addSheet(newSheet);
   accumulateSheetFocus(newSheet);
+  return { sheet: newSheet, applied };
+}
+
+export async function handleQueryConnection(store: StoreState, input: QueryConnectionInput): Promise<ToolResult> {
+  const executed = await executeConnectorQueryForAgent(store, input);
+  if (isToolError(executed)) return executed;
+
+  if (executed.matrix.length < 2) {
+    return {
+      ok: false,
+      error: 'Query returned no data rows. No private result, sheet, or chart was created; explain the empty result and stop.',
+      queryDiagnostics: executed.queryDiagnostics,
+    };
+  }
+
+  const limited = limitConnectorMatrix(executed.matrix);
+  const now = Date.now();
+  const connectorConfig = {
+    ...executed.connectorConfig,
+    truncated: executed.sourceTruncated || limited.truncated,
+  };
+  const result: PrivateQueryResult = {
+    id: Math.random().toString(36).slice(2, 11),
+    title: executed.title,
+    connectionId: executed.connectionId,
+    type: executed.type,
+    matrix: limited.matrix,
+    connectorConfig,
+    rowCount: executed.rowCount,
+    createdAt: now,
+    updatedAt: now,
+    queryDiagnostics: executed.queryDiagnostics,
+  };
+  store.addPrivateQueryResult(result);
   return {
     ok: true,
-    sheetId: newSheet.id,
-    title: sheetTitle,
-    brief: connectorConfig.brief,
-    ...summarizeImportedMatrix(matrix, derivation, applied.truncated),
+    resultId: result.id,
+    title: result.title,
+    brief: result.connectorConfig.brief,
+    privateResult: true,
+    visibleSheetCreated: false,
+    nextVisibleStep: 'Use createQuerySheetFromResult when the result should become a visible sheet for charts or user inspection.',
+    ...summarizeImportedMatrix(result.matrix, executed.derivation, !!connectorConfig.truncated, result.rowCount),
+  };
+}
+
+export async function handleCreateQuerySheetFromResult(store: StoreState, input: CreateQuerySheetFromResultInput): Promise<ToolResult> {
+  const privateResult = store.privateQueryResults[input.resultId];
+  if (!privateResult) return { ok: false, error: `Unknown private query result: ${input.resultId}` };
+
+  const title = input.title ?? privateResult.title;
+  const { sheet } = createVisibleQuerySheet(store, {
+    title,
+    matrix: privateResult.matrix,
+    connectorConfig: privateResult.connectorConfig,
+  });
+  return {
+    ok: true,
+    sheetId: sheet.id,
+    title,
+    resultId: privateResult.id,
+    brief: sheet.connectorConfig?.brief,
+    visibleSheetCreated: true,
+    ...summarizeImportedMatrix(privateResult.matrix, sheet.connectorConfig?.derivation ?? '', !!sheet.connectorConfig?.truncated, privateResult.rowCount),
+  };
+}
+
+export async function handleCreateQuerySheet(store: StoreState, input: CreateQuerySheetInput): Promise<ToolResult> {
+  const executed = await executeConnectorQueryForAgent(store, input);
+  if (isToolError(executed)) return executed;
+
+  if (executed.matrix.length < 2) {
+    return {
+      ok: false,
+      error: 'Query returned no data rows. No sheet or chart was created; explain the empty result and stop.',
+      queryDiagnostics: executed.queryDiagnostics,
+    };
+  }
+
+  const { sheet } = createVisibleQuerySheet(store, {
+    title: executed.title,
+    matrix: executed.matrix,
+    connectorConfig: executed.connectorConfig,
+  });
+  return {
+    ok: true,
+    sheetId: sheet.id,
+    title: executed.title,
+    brief: sheet.connectorConfig?.brief,
+    ...summarizeImportedMatrix(executed.matrix, executed.derivation, !!sheet.connectorConfig?.truncated, executed.rowCount),
   };
 }
 
@@ -196,10 +321,14 @@ export async function handleUpdateQuerySheet(store: StoreState, input: UpdateQue
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    const needsReconnect = isConnectorNeedsReconnectError(err);
     store.updateSheet(sheet.id, {
       connectorConfig: {
         ...baseConfig,
         brief: baseConfig.brief ? { ...baseConfig.brief, status: 'stale' } : undefined,
+        ...(needsReconnect
+          ? { healthStatus: 'needs_reconnect' as const, healthErrorCode: 'connector_needs_reconnect' }
+          : {}),
         lastError: message,
       },
     });
