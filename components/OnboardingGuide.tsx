@@ -90,7 +90,7 @@ export const OnboardingGuide: React.FC<OnboardingGuideProps> = ({ isOpen, onClos
       const clickedLink = clickedElement?.closest('a');
       const linkText = clickedLink?.textContent?.replace(/\s+/g, ' ').trim().toLowerCase() ?? '';
 
-      if (linkText.startsWith('launch sheetcanvas')) {
+      if (linkText.startsWith('launch sheetcanvas') || linkText.startsWith('open sheetcanvas')) {
         event.preventDefault();
         onClose();
       }

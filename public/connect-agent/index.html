@@ -3,21 +3,21 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Connect Claude or Codex to SheetCanvas - Durable analytics artifacts</title>
-    <meta name="description" content="Connect Claude or Codex to SheetCanvas with MCP so your agent can turn large datasets into durable tables, charts, pivots, notes, and dashboards.">
+    <title>Connect your agent to SheetCanvas - Agent-native analytics canvas</title>
+    <meta name="description" content="Connect Claude, Codex, or another MCP-capable agent to SheetCanvas so messy business data becomes durable tables, charts, pivots, notes, and dashboards.">
     <link rel="canonical" href="https://sheetcanvas.com/connect-agent/">
     <link rel="alternate" type="application/rss+xml" title="SheetCanvas Blog RSS" href="https://sheetcanvas.com/rss.xml">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="SheetCanvas">
-    <meta property="og:title" content="Connect Claude or Codex to SheetCanvas">
-    <meta property="og:description" content="Use Claude or Codex to turn massive data into durable, shareable SheetCanvas artifacts.">
+    <meta property="og:title" content="Connect your agent to SheetCanvas">
+    <meta property="og:description" content="Use Claude, Codex, or another MCP-capable agent to turn messy business data into durable SheetCanvas artifacts.">
     <meta property="og:url" content="https://sheetcanvas.com/connect-agent/">
     <meta property="og:image" content="https://sheetcanvas.com/brand/sheetcanvas-og.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta property="og:image:alt" content="SheetCanvas spreadsheet canvas preview">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Connect Claude or Codex to SheetCanvas">
+    <meta name="twitter:title" content="Connect your agent to SheetCanvas">
     <meta name="twitter:description" content="Create persistent analytics tables, charts, pivots, notes, and dashboards from agent workflows.">
     <meta name="twitter:image" content="https://sheetcanvas.com/brand/sheetcanvas-og.png">
     <meta name="theme-color" content="#0f766e">
@@ -45,10 +45,10 @@
           },
           {
             "@type": "WebPage",
-            "name": "Connect Claude or Codex to SheetCanvas",
+            "name": "Connect your agent to SheetCanvas",
             "url": "https://sheetcanvas.com/connect-agent/",
-            "description": "Guide to connecting Claude or Codex to SheetCanvas through MCP so agent-created analytics artifacts persist on the canvas.",
-            "dateModified": "2026-06-14",
+            "description": "Guide to connecting Claude, Codex, or another MCP-capable agent to SheetCanvas so agent-created analytics artifacts persist on the canvas.",
+            "dateModified": "2026-06-21",
             "isPartOf": {
               "@type": "WebSite",
               "@id": "https://sheetcanvas.com/#website",
@@ -264,12 +264,110 @@
         color: var(--ink);
       }
 
-      .hero-image {
+      .proof-card {
         width: 100%;
-        border: 1px solid var(--line);
         border-radius: 8px;
         background: var(--panel);
+        padding: 18px;
         box-shadow: 0 24px 70px rgba(18, 23, 23, 0.12);
+        outline: 1px solid rgba(0, 0, 0, 0.1);
+        outline-offset: -1px;
+      }
+
+      .proof-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 16px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .proof-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--teal-dark);
+        font-weight: 700;
+      }
+
+      .proof-status::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: var(--teal);
+        box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.14);
+      }
+
+      .proof-dialog {
+        margin-bottom: 16px;
+        padding: 16px;
+        border-radius: 8px;
+        background: #f7faf8;
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+      }
+
+      .proof-dialog h3 {
+        margin-bottom: 6px;
+        font-size: 18px;
+      }
+
+      .proof-url {
+        margin-top: 12px;
+        padding: 10px 12px;
+        border-radius: 6px;
+        background: var(--code);
+        color: var(--muted);
+        font-size: 13px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .proof-canvas {
+        display: grid;
+        grid-template-columns: 1fr 0.8fr;
+        gap: 12px;
+      }
+
+      .proof-table,
+      .proof-note {
+        min-height: 126px;
+        padding: 14px;
+        border-radius: 8px;
+        background: #ffffff;
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+      }
+
+      .proof-table-title,
+      .proof-note-title {
+        margin-bottom: 10px;
+        color: var(--teal-dark);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .proof-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 12px;
+        padding: 7px 0;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .proof-row:first-of-type { border-top: 0; }
+
+      .proof-note p {
+        margin-bottom: 10px;
+        color: var(--muted);
+        font-size: 14px;
+        text-wrap: pretty;
       }
 
       .section {
@@ -361,10 +459,12 @@
           padding-top: 48px;
         }
 
-        .grid { grid-template-columns: 1fr; }
+	        .grid { grid-template-columns: 1fr; }
 
-        .button { width: 100%; }
-      }
+	        .proof-canvas { grid-template-columns: 1fr; }
+
+	        .button { width: 100%; }
+	      }
     </style>
     <script src="/seo-support-analytics.js" defer></script>
   </head>
@@ -390,22 +490,44 @@
       <section class="hero" aria-labelledby="hero-title">
         <div>
           <p class="eyebrow">Agent-native SheetCanvas</p>
-          <h1 id="hero-title">Turn massive data into durable, shareable insights with Claude or Codex.</h1>
-          <p class="hero-copy">Charts and tables created inside an AI chat are easy to lose. SheetCanvas gives your agent a persistent canvas for tables, charts, pivots, notes, and dashboards that business teams can inspect and share.</p>
-          <p class="reviewed">Last reviewed: June 14, 2026</p>
+          <h1 id="hero-title">Connect your agent to a canvas for business data.</h1>
+          <p class="hero-copy">Messy exports, GA4 reports, spreadsheet tabs, and warehouse queries should not end as disposable chat attachments. SheetCanvas gives Claude, Codex, or another MCP-capable agent a persistent place to build tables, charts, pivots, notes, and dashboards your team can inspect.</p>
+          <p class="reviewed">Last reviewed: June 21, 2026</p>
           <div class="actions">
-            <a class="button button-primary" href="/">Open SheetCanvas</a>
-            <a class="button button-secondary" href="#setup">Connect your agent</a>
+            <a class="button button-primary" href="#setup">Connect your agent</a>
+            <a class="button button-secondary" href="/">Open SheetCanvas</a>
           </div>
         </div>
-        <img class="hero-image" src="/brand/sheetcanvas-og.png" alt="SheetCanvas canvas with tables and charts">
+        <div class="proof-card" aria-label="Connect Agent setup and agent-created canvas artifact">
+          <div class="proof-top">
+            <strong>SheetCanvas</strong>
+            <span class="proof-status">Agent Connected</span>
+          </div>
+          <div class="proof-dialog">
+            <h3>Connect Claude or Codex</h3>
+            <p>Generate an MCP URL, keep this tab open, and let your agent work on the live canvas.</p>
+            <div class="proof-url">https://sheetcanvas.com/mcp/••••••••••••</div>
+          </div>
+          <div class="proof-canvas">
+            <div class="proof-table">
+              <div class="proof-table-title">Agent-built dashboard</div>
+              <div class="proof-row"><span>Channel winners</span><strong>APAC</strong></div>
+              <div class="proof-row"><span>Revenue delta</span><strong>+18%</strong></div>
+              <div class="proof-row"><span>Next review</span><strong>Finance</strong></div>
+            </div>
+            <div class="proof-note">
+              <div class="proof-note-title">Decision note</div>
+              <p>Claude summarized the campaign export, created the chart, and left the source table beside the recommendation.</p>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section class="section" aria-labelledby="why-title">
         <div class="section-head">
           <p class="eyebrow">Why it matters</p>
           <h2 id="why-title">Your agent should leave behind a real analytics artifact.</h2>
-          <p class="lede">Product managers, marketers, founders, and CEOs often need an answer they can revisit later. SheetCanvas lets Claude or Codex transform messy data into a persistent workspace instead of a temporary chat attachment.</p>
+          <p class="lede">Product managers, marketers, founders, and CEOs often need an answer they can defend later. SheetCanvas lets an agent transform business data into a persistent workspace instead of another temporary chat response.</p>
         </div>
         <div class="grid">
           <article class="card">
@@ -430,20 +552,20 @@
         <div class="section-head">
           <p class="eyebrow">Setup</p>
           <h2 id="setup-title">Connect your agent from the SheetCanvas app.</h2>
-          <p class="lede">The connection is separate from data connectors. Data connectors bring data into SheetCanvas; the agent connector lets Claude or Codex operate the canvas.</p>
+          <p class="lede">The guided path is short: open the app, generate a URL, connect the MCP-capable agent you already use, and ask for the business readout you need.</p>
         </div>
         <ol class="list">
           <li>Open <a href="/">SheetCanvas</a> and choose <strong>Connect Agent</strong> from the bottom-right control.</li>
           <li>Generate an agent connection URL and keep the <strong>Expose to agents</strong> toggle on while your agent works.</li>
           <li>Copy the MCP server URL into Claude Code, Codex, or another MCP-capable client.</li>
-          <li>Ask the agent to create a table, chart, pivot, note, or dashboard from the data you are analyzing.</li>
+          <li>Ask the agent to turn your export, connector result, or open canvas data into a table, chart, pivot, note, or dashboard.</li>
         </ol>
       </section>
 
       <section id="examples" class="section" aria-labelledby="examples-title">
         <div class="section-head">
           <p class="eyebrow">Examples</p>
-          <h2 id="examples-title">Prompt Claude or Codex for a shareable decision surface.</h2>
+          <h2 id="examples-title">Prompt your agent for a shareable decision surface.</h2>
         </div>
         <div class="grid">
           <article class="card">
@@ -465,8 +587,8 @@
       <section class="section" aria-labelledby="next-title">
         <div class="band">
           <p class="eyebrow">Start now</p>
-          <h2 id="next-title">Use Claude or Codex while built-in Copilot is coming soon.</h2>
-          <p>SheetCanvas Copilot will become one built-in client. The MCP connector remains the flagship power path for agent-native analytics work.</p>
+          <h2 id="next-title">Connect your own agent now. Built-in Copilot is coming soon.</h2>
+          <p>MCP is the available power path today. SheetCanvas Copilot will become one built-in client later, without replacing the bring-your-own-agent workflow.</p>
           <div class="actions">
             <a class="button button-primary" href="/">Open SheetCanvas</a>
             <a class="button button-secondary" href="/docs/">Read the docs</a>

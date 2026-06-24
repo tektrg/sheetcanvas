@@ -604,6 +604,17 @@ em{ font-style: italic; font-family: "Instrument Serif", "Geist", serif; font-we
 .obj--spark .obj__name{ color: var(--ink-2); font-size: 10.5px; }
 .obj--spark .num{ font-size: 11px; color: var(--moss); font-weight: 500; }
 
+.obj--agent{
+  right: 6%; bottom: 33%; width: 38%;
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px;
+  color: var(--ink);
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--teal) 18%, transparent),
+    0 16px 28px -16px rgba(14,15,15,.24);
+}
+.obj--agent .obj__rows{ font-size: 9.5px; }
+
 .obj--cmd{
   position: absolute; left: 50%; transform: translateX(-50%);
   bottom: 4%;
