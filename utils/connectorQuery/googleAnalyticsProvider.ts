@@ -51,7 +51,8 @@ export const googleAnalyticsQueryProvider: ConnectorQueryProvider<GaNormalizedQu
       summary: 'A Google Analytics query is a GA4 runReport spec: a propertyId plus a nested report object.',
       payloadSchema: [
         '{ propertyId: string, report: {',
-        '  dateRanges?: [{ startDate: string, endDate: string }],   // dates: "YYYY-MM-DD", "30daysAgo", "today", "yesterday"',
+        '  dateRanges?: [{ startDate: string, endDate: string }],   // GA dates: "YYYY-MM-DD", "30daysAgo", "today", "yesterday".',
+        '  // The backend normalizes legacy variants like "10weeksAgo" to "70daysAgo".',
         '  dimensions?: [{ name: string }],   // GA4 dimension apiNames, e.g. { name: "date" }, { name: "sessionSource" }',
         '  metrics?: [{ name: string }],      // GA4 metric apiNames, e.g. { name: "activeUsers" }, { name: "sessions" }',
         '  dimensionFilter?: object,          // GA4 FilterExpression (optional)',

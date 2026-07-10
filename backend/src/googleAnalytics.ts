@@ -43,6 +43,32 @@ export function hasGoogleAnalyticsReadonlyScope(scope: string | undefined | null
   return new Set((scope ?? "").split(/\s+/).filter(Boolean)).has(GOOGLE_ANALYTICS_READONLY_SCOPE);
 }
 
+function normalizeGoogleAnalyticsRelativeDate(value: string) {
+  const input = value.trim();
+  const match = /^(\d+)\s*(day|days|week|weeks|month|months|quarter|quarters|year|years)Ago$/i.exec(input);
+  if (!match) return input;
+
+  const amount = Number.parseInt(match[1], 10);
+  if (!Number.isFinite(amount) || amount <= 0) return input;
+
+  const unit = match[2].toLowerCase();
+  if (unit.startsWith("day")) return `${amount}daysAgo`;
+  if (unit.startsWith("week")) return `${amount * 7}daysAgo`;
+  if (unit.startsWith("month")) return `${amount * 30}daysAgo`;
+  if (unit.startsWith("quarter")) return `${amount * 90}daysAgo`;
+  if (unit.startsWith("year")) return `${amount * 365}daysAgo`;
+  return input;
+}
+
+function normalizeGoogleAnalyticsReportDates(report: GoogleAnalyticsReport) {
+  if (!report.dateRanges || report.dateRanges.length === 0) return;
+  report.dateRanges = report.dateRanges.map((range) => ({
+    ...range,
+    startDate: normalizeGoogleAnalyticsRelativeDate(range.startDate),
+    endDate: normalizeGoogleAnalyticsRelativeDate(range.endDate),
+  }));
+}
+
 export async function exchangeGoogleAnalyticsCode(args: {
   code: string;
   codeVerifier: string;
@@ -71,6 +97,7 @@ function normalizeReport(report: GoogleAnalyticsReport | undefined, maxRows: num
   if (!normalized.dateRanges || normalized.dateRanges.length === 0) {
     normalized.dateRanges = [{ startDate: "30daysAgo", endDate: "today" }];
   }
+  normalizeGoogleAnalyticsReportDates(normalized);
 
   if (!normalized.dimensions || normalized.dimensions.length === 0) {
     normalized.dimensions = [{ name: "date" }];
