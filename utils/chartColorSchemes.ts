@@ -83,6 +83,24 @@ const buildMonoPalette = (baseColor: string, darkMode: boolean) => {
   return amounts.map((amount, index) => mix(base, targets[index], amount));
 };
 
+/**
+ * Build a smooth single-hue ramp for mono charts, sized to the exact number of
+ * segments. Darkest = the base color (first series), lightening toward near-white
+ * (last series) — the classic dark→light stacked-bar look. In dark mode the dark
+ * end is lifted off the panel background so it stays visible.
+ */
+export const buildMonoRamp = (baseColor: string, darkMode: boolean, count: number): string[] => {
+  const base = normalizeHexColor(baseColor) || DEFAULT_CHART_COLOR_SETTINGS.monoBaseColor;
+  const n = Math.max(1, Math.floor(count));
+  const startAmount = darkMode ? 0.28 : 0;   // 0 = pure base color at the dark end
+  const endAmount = darkMode ? 0.9 : 0.85;   // near-white at the light end
+  if (n === 1) return [mix(base, '#ffffff', startAmount)];
+  return Array.from({ length: n }, (_, index) => {
+    const t = startAmount + (endAmount - startAmount) * (index / (n - 1));
+    return mix(base, '#ffffff', t);
+  });
+};
+
 const adjustCustomPaletteForMode = (colors: string[], darkMode: boolean) => {
   if (!darkMode) return colors;
   return colors.map(color => mix(color, '#ffffff', 0.18));

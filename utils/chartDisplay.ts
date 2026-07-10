@@ -6,6 +6,16 @@ const TITLE_CASE_EXCEPTIONS = new Set(['app', 'api', 'www']);
 
 export type ChartLegendVisibility = 'visible' | 'hidden';
 
+export function getChartLabelIconUrl(rawLabel: string): string | null {
+  const domain = getChartLabelIconDomain(rawLabel);
+  if (!domain) return null;
+  return `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
+}
+
+export function getChartLabelIconDomain(rawLabel: string): string | null {
+  return getDomainFromLabel(rawLabel);
+}
+
 export function normalizeChartSeriesLabel(rawLabel: string): string {
   const trimmedLabel = rawLabel.trim();
   if (!trimmedLabel) return 'Series';
@@ -69,7 +79,8 @@ export function getChartLegendVisibility(args: {
 }
 
 function normalizeDomainLabel(rawDomain: string): string {
-  const host = rawDomain.replace(/^https?:\/\//i, '').split('/')[0].toLowerCase();
+  const host = getChartLabelIconDomain(rawDomain);
+  if (!host) return compactLongLabel(rawDomain);
   const parts = host.split('.');
   const baseDomain = parts.length >= 2 ? parts.slice(-2).join('.') : host;
   const subdomainParts = parts.slice(0, -2).filter(part => part !== 'www');
@@ -99,4 +110,13 @@ function humanizeDomainPart(value: string): string {
 function compactLongLabel(label: string): string {
   if (label.length <= 28) return label;
   return `${label.slice(0, 25).trimEnd()}...`;
+}
+
+function getDomainFromLabel(rawLabel: string): string | null {
+  if (!rawLabel || typeof rawLabel !== 'string') return null;
+  const candidate = rawLabel.trim().replace(METRIC_SUFFIX_PATTERN, '').trim();
+  if (!candidate || candidate.includes(' ')) return null;
+  if (/^[\d.,-]+$/.test(candidate)) return null;
+  if (!DOMAIN_PATTERN.test(candidate)) return null;
+  return candidate.replace(/^https?:\/\//i, '').split('/')[0].toLowerCase();
 }

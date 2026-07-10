@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { 
+import {
   ComposedChart, Line, Bar, Area, PieChart, Pie, Cell, Scatter, Treemap,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList
 } from 'recharts';
@@ -8,16 +8,25 @@ import { extractChartData, getSheetHeaders } from '../utils/chartHelpers';
 import { formatValue } from '../utils/formatting';
 import { getCellId } from '../utils/formulas';
 import { ChartColorSettings } from '../types';
-import { buildSeriesPalette, getChartPrimaryColor, getEffectiveChartPalette } from '../utils/chartColorSchemes';
-import { GitBranch, GripHorizontal, Trash2, Settings2, X, Download, Video, Play, Copy, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { buildMonoRamp, buildSeriesPalette, getChartPrimaryColor, getEffectiveChartPalette, getEffectiveChartScheme } from '../utils/chartColorSchemes';
+import { GitBranch, GripHorizontal, Trash2, Settings2, X, Download, Video, Play, Copy, Image as ImageIcon, Loader2, MoreHorizontal } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { ChartConfigPanel } from './ChartConfigPanel';
+import { HeaderDropdownMenu } from './HeaderDropdownMenu';
 import { useStore } from '../store';
 import {
   buildChartSeriesDisplayNames,
+  getChartLabelIconDomain,
+  getChartLabelIconUrl,
   getChartLegendVisibility,
   normalizeChartSeriesLabel,
 } from '../utils/chartDisplay';
+import { getBackendBaseUrl } from '../utils/backendApi';
+import {
+  buildGradientId,
+  getAreaGradientStops,
+  getChartVisualTheme,
+} from '../utils/chartVisualTheme';
 
 interface ChartNodeProps {
   id: string;
@@ -31,29 +40,35 @@ interface ChartNodeProps {
   lineageVisible?: boolean;
   onToggleLineage?: (id: string) => void;
   onMouseDown: (e: React.MouseEvent) => void;
+  // When true, the chart renders inline inside a document (a markdown note):
+  // it fills its parent, drops all canvas chrome (drag grip, toolbar, resize,
+  // selection ring) and is non-interactive. Used by the MDX-lite <CanvasChart>.
+  embedded?: boolean;
 }
 
-const getFaviconUrl = (label: string) => {
-    if (!label || typeof label !== 'string') return null;
-    const cleanLabel = label.trim();
-    if (cleanLabel.includes(' ')) return null; 
-    
-    // Check for domain-like structure
-    // Must contain a dot, no spaces, and look like a domain/url
-    // Exclude simple numbers that might look like 1.2
-    if (/^[\d.,-]+$/.test(cleanLabel)) return null;
+const readBlobAsDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+});
 
-    const isUrl = /^(https?:\/\/)?([a-z0-9-]+\.)+[a-z]{2,}(\/.*)?$/i.test(cleanLabel);
-    
-    if (isUrl) {
-        let domain = cleanLabel.replace(/^(https?:\/\/)/, '').split('/')[0];
-        return `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
-    }
-    return null;
+const loadFaviconDataUrl = async (domain: string) => {
+    const res = await fetch(`${getBackendBaseUrl()}/api/favicon?domain=${encodeURIComponent(domain)}`);
+    if (!res.ok) throw new Error(`Favicon fetch failed (${res.status})`);
+    return readBlobAsDataUrl(await res.blob());
 };
 
-const CustomXAxisTick = ({ x, y, payload, fill, chartId }: any) => {
-    const favicon = getFaviconUrl(payload.value);
+const getResolvedChartIconUrl = (rawLabel: string, faviconDataUrls: Record<string, string>) => {
+    const domain = getChartLabelIconDomain(rawLabel);
+    if (!domain) return null;
+    return faviconDataUrls[domain] || getChartLabelIconUrl(rawLabel);
+};
+
+const CustomXAxisTick = ({ x, y, payload, fill, chartId, faviconDataUrls }: any) => {
+    const rawLabel = String(payload.value || '');
+    const displayLabel = normalizeChartSeriesLabel(rawLabel);
+    const favicon = getResolvedChartIconUrl(rawLabel, faviconDataUrls || {});
     const clipId = `clip-axis-${chartId}-${payload.index}`;
 
     return (
@@ -62,21 +77,31 @@ const CustomXAxisTick = ({ x, y, payload, fill, chartId }: any) => {
                 <>
                     <defs>
                         <clipPath id={clipId}>
-                            <rect x={-8} y={8} width={16} height={16} rx={3} ry={3} />
+                            <rect x={-22} y={8} width={16} height={16} rx={3} ry={3} />
                         </clipPath>
                     </defs>
-                    <image 
-                        x={-8} 
-                        y={8} 
-                        href={favicon} 
-                        width={16} 
-                        height={16} 
+                    <image
+                        x={-22}
+                        y={8}
+                        href={favicon}
+                        width={16}
+                        height={16}
                         clipPath={`url(#${clipId})`}
                         style={{ pointerEvents: 'none' }}
                     />
+                    <text
+                        x={-2}
+                        y={0}
+                        dy={21}
+                        textAnchor="start"
+                        fill={fill}
+                        fontSize={11}
+                    >
+                        {displayLabel}
+                    </text>
                 </>
             ) : (
-                <text 
+                <text
                     x={0} 
                     y={0} 
                     dy={10} 
@@ -84,28 +109,94 @@ const CustomXAxisTick = ({ x, y, payload, fill, chartId }: any) => {
                     fill={fill} 
                     fontSize={11}
                 >
-                    {payload.value}
+                    {displayLabel}
                 </text>
             )}
         </g>
     );
 };
 
-const makeCompactLegendContent = (textColor: string, visible: boolean) => ({ payload }: any) => {
+const makeCompactLegendContent = (
+    textColor: string,
+    visible: boolean,
+    rawLabelsByDataKey: Record<string, string> = {},
+    faviconDataUrls: Record<string, string> = {},
+) => ({ payload }: any) => {
     if (!visible || !payload?.length) return null;
 
     return (
         <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-2 pt-2 text-[11px] font-medium leading-tight" style={{ color: textColor }}>
             {payload.map((entry: any, index: number) => {
-                const label = normalizeChartSeriesLabel(String(entry.value || entry.dataKey || 'Series'));
+                const dataKey = String(entry.dataKey || '');
+                const rawLabel = rawLabelsByDataKey[dataKey] || String(entry.value || entry.dataKey || 'Series');
+                const label = normalizeChartSeriesLabel(String(entry.value || rawLabel));
+                const favicon = getResolvedChartIconUrl(rawLabel, faviconDataUrls);
                 return (
-                    <span key={`${entry.dataKey || entry.value}-${index}`} className="inline-flex min-w-0 max-w-[132px] items-center gap-1.5" title={String(entry.value || '')}>
+                    <span key={`${entry.dataKey || entry.value}-${index}`} className="inline-flex min-w-0 max-w-[164px] items-center gap-1.5" title={String(entry.value || rawLabel)}>
                         <span className="h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: entry.color }} />
+                        {favicon && (
+                            <img
+                                src={favicon}
+                                alt=""
+                                className="h-3.5 w-3.5 flex-shrink-0 rounded-[3px]"
+                                loading="lazy"
+                                referrerPolicy="no-referrer"
+                            />
+                        )}
                         <span className="truncate">{label}</span>
                     </span>
                 );
             })}
         </div>
+    );
+};
+
+const makeCustomPieLabel = (
+    chartId: string,
+    fill: string,
+    faviconDataUrls: Record<string, string>,
+) => (props: any) => {
+    const rawLabel = String(props.name || props.payload?.name || '');
+    const label = normalizeChartSeriesLabel(rawLabel);
+    const favicon = getResolvedChartIconUrl(rawLabel, faviconDataUrls);
+    const textAnchor = favicon ? 'start' : props.textAnchor || 'start';
+    const labelStartX = props.textAnchor === 'end' ? props.x - 26 : props.x - 10;
+    const iconX = labelStartX;
+    const textX = favicon ? labelStartX + 20 : props.x;
+    const clipId = `clip-pie-label-${chartId}-${props.index}`;
+
+    return (
+        <g>
+            {favicon && (
+                <>
+                    <defs>
+                        <clipPath id={clipId}>
+                            <rect x={iconX} y={props.y - 8} width={16} height={16} rx={3} ry={3} />
+                        </clipPath>
+                    </defs>
+                    <image
+                        x={iconX}
+                        y={props.y - 8}
+                        href={favicon}
+                        width={16}
+                        height={16}
+                        clipPath={`url(#${clipId})`}
+                        style={{ pointerEvents: 'none' }}
+                    />
+                </>
+            )}
+            <text
+                x={textX}
+                y={props.y}
+                fill={fill}
+                fontSize={10}
+                fontWeight={500}
+                textAnchor={textAnchor}
+                dominantBaseline="central"
+            >
+                {label}
+            </text>
+        </g>
     );
 };
 
@@ -119,7 +210,22 @@ const ChartLegendHint: React.FC<{ count: number; darkMode?: boolean }> = ({ coun
     </div>
 );
 
-export const ChartNode: React.FC<ChartNodeProps> = ({
+const areChartNodePropsEqual = (prev: ChartNodeProps, next: ChartNodeProps) => (
+  prev.id === next.id &&
+  prev.darkMode === next.darkMode &&
+  prev.isPendingDelete === next.isPendingDelete &&
+  prev.recentColors === next.recentColors &&
+  prev.colorSettings === next.colorSettings &&
+  prev.onColorSettingsChange === next.onColorSettingsChange &&
+  prev.onAddCustomColor === next.onAddCustomColor &&
+  prev.hasLineage === next.hasLineage &&
+  prev.lineageVisible === next.lineageVisible &&
+  prev.onToggleLineage === next.onToggleLineage &&
+  prev.onMouseDown === next.onMouseDown &&
+  prev.embedded === next.embedded
+);
+
+const ChartNodeComponent: React.FC<ChartNodeProps> = ({
   id,
   darkMode,
   isPendingDelete,
@@ -131,6 +237,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
   lineageVisible,
   onToggleLineage,
   onMouseDown,
+  embedded = false,
 }) => {
   const data = useStore(state => state.charts[id]);
   const selected = useStore(state => state.selectedIds.has(id));
@@ -143,9 +250,14 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
 
   const [showConfig, setShowConfig] = useState(false);
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const downloadBtnRef = useRef<HTMLButtonElement>(null);
+  const moreBtnRef = useRef<HTMLButtonElement>(null);
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [overrideData, setOverrideData] = useState<any[] | null>(null);
+  const [faviconDataUrls, setFaviconDataUrls] = useState<Record<string, string>>({});
+  const faviconDataUrlsRef = useRef<Record<string, string>>({});
   
   // Local state for setup mode
   const [tempConfig, setTempConfig] = useState<ChartConfig>(data?.config || {} as any);
@@ -231,6 +343,25 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
       }
       return data.config.dataColumns.map(getSeriesLabel);
   }, [data.config, dynamicSeriesKeys, seriesDisplayNames]);
+
+  const legendRawLabelsByDataKey = useMemo<Record<string, string>>(() => {
+      if (data.config.mode === 'group') {
+          if (dynamicSeriesKeys) {
+              return dynamicSeriesKeys.reduce<Record<string, string>>((labels, key) => {
+                  labels[key] = key;
+                  return labels;
+              }, {});
+          }
+          return {
+              value_0: getSeriesRawLabel(data.config.valueCol || ''),
+          };
+      }
+
+      return data.config.dataColumns.reduce<Record<string, string>>((labels, colId, index) => {
+          labels[`value_${index}`] = getSeriesRawLabel(colId);
+          return labels;
+      }, {});
+  }, [data.config, dynamicSeriesKeys, headers]);
 
   const getFormatForSeries = (colId: string) => {
       if (!sourceSheet) return undefined;
@@ -360,6 +491,54 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
   const activeData = overrideData || processedData;
   const isAnimationActive = !overrideData && data.config.animation;
 
+  const chartFaviconDomains = useMemo(() => {
+      const domains = new Set<string>();
+      Object.keys(legendRawLabelsByDataKey).forEach(dataKey => {
+          const label = legendRawLabelsByDataKey[dataKey];
+          const domain = getChartLabelIconDomain(label);
+          if (domain) domains.add(domain);
+      });
+      activeData.forEach((row: any) => {
+          const domain = getChartLabelIconDomain(String(row?.name || ''));
+          if (domain) domains.add(domain);
+      });
+      return Array.from(domains).sort();
+  }, [activeData, legendRawLabelsByDataKey]);
+
+  useEffect(() => {
+      faviconDataUrlsRef.current = faviconDataUrls;
+  }, [faviconDataUrls]);
+
+  const ensureFaviconDataUrls = async () => {
+      const missingDomains = chartFaviconDomains.filter(domain => !faviconDataUrlsRef.current[domain]);
+      if (missingDomains.length === 0) return;
+
+      const loadedEntries = await Promise.all(
+          missingDomains.map(async (domain) => {
+              try {
+                  return [domain, await loadFaviconDataUrl(domain)] as const;
+              } catch (err) {
+                  console.warn('Favicon proxy failed', domain, err);
+                  return null;
+              }
+          }),
+      );
+      const nextEntries = loadedEntries.filter((entry): entry is readonly [string, string] => !!entry);
+      if (nextEntries.length === 0) return;
+
+      const nextUrls = nextEntries.reduce<Record<string, string>>((urls, [domain, dataUrl]) => {
+          urls[domain] = dataUrl;
+          return urls;
+      }, {});
+      faviconDataUrlsRef.current = { ...faviconDataUrlsRef.current, ...nextUrls };
+      setFaviconDataUrls(faviconDataUrlsRef.current);
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  };
+
+  useEffect(() => {
+      void ensureFaviconDataUrls();
+  }, [chartFaviconDomains.join('|')]);
+
   const activePalette = useMemo(
       () => getEffectiveChartPalette(data.config, colorSettings, !!darkMode),
       [data.config, colorSettings, darkMode],
@@ -368,9 +547,30 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
       () => getChartPrimaryColor(data.config, activePalette),
       [data.config, activePalette],
   );
+  const activeScheme = useMemo(
+      () => getEffectiveChartScheme(data.config, colorSettings),
+      [data.config, colorSettings],
+  );
+  // How many colored segments this chart draws — the mono ramp is fit to this count
+  // so it spans the full dark→light range regardless of series count.
+  const monoRampCount = useMemo(() => {
+      const type = data.config.type;
+      if (type === 'treemap') return Math.min(16, Math.max(1, activeData.length));
+      if (type === 'pie') return Math.max(1, activeData.length);
+      if (data.config.mode === 'group') return dynamicSeriesKeys ? Math.max(1, dynamicSeriesKeys.length) : 1;
+      return Math.max(1, data.config.dataColumns.length);
+  }, [data.config.type, data.config.mode, data.config.dataColumns, dynamicSeriesKeys, activeData]);
   const seriesPalette = useMemo(() => {
+      // Mono renders as a smooth dark→light ramp for fill-by-index charts (bar, area,
+      // pie, treemap). Lines/scatter keep the high-contrast alternating order so
+      // adjacent series stay distinguishable (no separators to help there).
+      const rampEligible = data.config.type !== 'line' && data.config.type !== 'scatter';
+      if (activeScheme === 'mono' && rampEligible) {
+          return buildMonoRamp(primaryColor, !!darkMode, monoRampCount);
+      }
       return buildSeriesPalette(primaryColor, activePalette);
-  }, [primaryColor, activePalette]);
+  }, [activeScheme, data.config.type, primaryColor, activePalette, darkMode, monoRampCount]);
+  const chartTheme = useMemo(() => getChartVisualTheme(!!darkMode, selected), [darkMode, selected]);
 
   useEffect(() => {
     if (!resizing) return;
@@ -423,7 +623,12 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
     if (!chartAreaRef.current) return;
     setExporting(true);
     try {
-        const canvas = await html2canvas(chartAreaRef.current, { backgroundColor: darkMode ? '#262626' : '#ffffff', scale: 2 });
+        await ensureFaviconDataUrls();
+        const canvas = await html2canvas(chartAreaRef.current, {
+            backgroundColor: darkMode ? '#262626' : '#ffffff',
+            scale: 2,
+            useCORS: true,
+        });
         canvas.toBlob(async (blob) => {
             if (blob) {
                 await navigator.clipboard.write([
@@ -442,7 +647,12 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
     if (!chartAreaRef.current) return;
     setExporting(true);
     try {
-      const canvas = await html2canvas(chartAreaRef.current, { backgroundColor: darkMode ? '#262626' : '#ffffff', scale: 2 });
+      await ensureFaviconDataUrls();
+      const canvas = await html2canvas(chartAreaRef.current, {
+        backgroundColor: darkMode ? '#262626' : '#ffffff',
+        scale: 2,
+        useCORS: true,
+      });
       const link = document.createElement('a');
       link.download = `${data.title}.png`;
       link.href = canvas.toDataURL();
@@ -467,6 +677,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
      const element = chartAreaRef.current;
 
      try {
+         await ensureFaviconDataUrls();
          const finalData = processedData;
          const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
 
@@ -557,7 +768,8 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
     if (depth < 1) return null;
 
     const color = seriesPalette[index % seriesPalette.length];
-    const favicon = getFaviconUrl(name);
+    const displayName = normalizeChartSeriesLabel(String(name || ''));
+    const favicon = getResolvedChartIconUrl(String(name || ''), faviconDataUrls);
     const clipId = `clip-tree-${id}-${index}`;
     
     // Safety check
@@ -571,12 +783,12 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
             <stop offset="100%" stopColor={color} stopOpacity={0.65} />
           </linearGradient>
           <clipPath id={clipId}>
-             <rect 
-                x={x + width / 2 - 12} 
-                y={y + height / 2 - 12} 
-                width={24} 
-                height={24} 
-                rx={4} 
+             <rect
+                x={x + width / 2 - 12}
+                y={y + height / 2 - 19}
+                width={24}
+                height={24}
+                rx={4}
                 ry={4} 
              />
           </clipPath>
@@ -592,23 +804,21 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
           stroke="none"
           className="transition-all duration-300 hover:brightness-110"
         />
-        {favicon ? (
-             width > 24 && height > 24 && (
+        {favicon && width > 72 && height > 44 && (
                  <image
                     x={x + width / 2 - 12}
-                    y={y + height / 2 - 12}
+                    y={y + height / 2 - 19}
                     width={24}
                     height={24}
                     href={favicon}
                     clipPath={`url(#${clipId})`}
                     style={{ pointerEvents: 'none' }}
                  />
-             )
-        ) : (
-            width > 40 && height > 24 && (
+        )}
+        {width > 40 && height > 24 && (
             <text
                 x={x + width / 2}
-                y={y + height / 2}
+                y={y + height / 2 + (favicon && width > 72 && height > 44 ? 14 : 0)}
                 textAnchor="middle"
                 dominantBaseline="middle"
                 fill="#fff"
@@ -616,14 +826,13 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
                 fontWeight={600}
                 style={{ textShadow: '0 1px 2px rgba(0,0,0,0.3)', pointerEvents: 'none' }}
             >
-                {name}
+                {displayName}
             </text>
-            )
         )}
         {width > 60 && height > 40 && payload && payload.value && (
           <text
             x={x + width / 2}
-            y={y + height / 2 + (favicon ? 20 : 14)}
+            y={y + height / 2 + (favicon && width > 72 && height > 44 ? 28 : 14)}
             textAnchor="middle"
             dominantBaseline="middle"
             fill="rgba(255,255,255,0.9)"
@@ -649,17 +858,13 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
         animationEasing: 'ease-out' as const
     };
 
-    const textColor = darkMode ? '#a3a3a3' : '#787774';
-    const gridColor = darkMode ? '#404040' : '#f0f0f0';
-    const tooltipStyle = {
-        backgroundColor: darkMode ? '#1f1f1f' : '#fff',
-        border: `1px solid ${darkMode ? '#404040' : '#e5e5e5'}`,
-        color: darkMode ? '#fff' : '#37352f',
-        borderRadius: '8px',
-        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-    };
+    const textColor = chartTheme.textColor;
+    const tooltipStyle = chartTheme.tooltipStyle;
 
     const isGroupMode = data.config.mode === 'group';
+    // Hairline dividers between mono stacked segments so touching shades stay separable.
+    const monoStackSeparator = !!data.config.stacked && activeScheme === 'mono';
+    const stackSeparatorColor = darkMode ? '#262626' : '#ffffff';
     const hasRightAxis = !isGroupMode && data.config.dataColumns.some(col => data.config.rightAxisColumns?.includes(col));
     const isScatter = data.config.type === 'scatter';
     const showLegend = getChartLegendVisibility({
@@ -667,7 +872,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
         chartWidth: data.size.width,
         chartHeight: data.size.height,
     }) === 'visible';
-    const compactLegendContent = makeCompactLegendContent(textColor, showLegend);
+    const compactLegendContent = makeCompactLegendContent(textColor, showLegend, legendRawLabelsByDataKey, faviconDataUrls);
     const effectiveSeriesCount = chartLegendLabels.length;
     const showValueLabels = !!data.config.showLabels && effectiveSeriesCount <= 1;
 
@@ -708,37 +913,40 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
       const seriesName = isGroupMode
             ? `${data.config.operation || 'SUM'} of ${data.config.valueCol}`
             : getSeriesLabel(data.config.dataColumns[0]);
-      const showPieLegend = getChartLegendVisibility({
-          labels: activeData.map((item: any) => normalizeChartSeriesLabel(String(item.name || ''))),
-          chartWidth: data.size.width,
-          chartHeight: data.size.height,
-      }) === 'visible';
+      const showPieLegend = activeData.length > 1;
+      const pieOuterRadius = Math.max(32, Math.min(data.size.width, data.size.height - 88) / 3);
 
       return (
-        <PieChart {...CommonProps}>
+        <PieChart {...CommonProps} margin={{ top: 16, right: 20, left: 20, bottom: showPieLegend ? 56 : 20 }}>
            <Pie
               data={activeData}
               dataKey={isGroupMode && dynamicSeriesKeys ? dynamicSeriesKeys[0] : "value_0"}
               nameKey="name"
               name={seriesName}
               cx="50%"
-              cy="50%"
-              outerRadius={data.size.height / 3}
+              cy={showPieLegend ? "44%" : "50%"}
+              outerRadius={pieOuterRadius}
               fill={primaryColor}
-              label={showValueLabels}
+              label={showValueLabels && !showPieLegend ? makeCustomPieLabel(data.id, textColor, faviconDataUrls) : false}
               {...animProps}
            >
              {activeData.map((entry: any, index: number) => (
-                <Cell 
-                  key={`cell-${index}`} 
-                  fill={index === data.config.highlightIndex ? '#f2c94c' : seriesPalette[index % seriesPalette.length]} 
-                  stroke={index === data.config.highlightIndex ? '#fff' : 'none'}
-                  strokeWidth={index === data.config.highlightIndex ? 2 : 0}
+                <Cell
+                  key={`cell-${index}`}
+                  fill={index === data.config.highlightIndex ? '#f2c94c' : seriesPalette[index % seriesPalette.length]}
+                  stroke={index === data.config.highlightIndex ? '#fff' : chartTheme.pieStroke}
+                  strokeWidth={index === data.config.highlightIndex ? 2 : chartTheme.pieStrokeWidth}
                 />
              ))}
            </Pie>
            <Tooltip contentStyle={tooltipStyle} formatter={(v: number, n: string) => [formatValue(v, format0), n]} />
-           {showPieLegend && <Legend content={makeCompactLegendContent(textColor, true)} />}
+           {showPieLegend && (
+             <Legend
+               verticalAlign="bottom"
+               align="center"
+               content={makeCompactLegendContent(textColor, true, {}, faviconDataUrls)}
+             />
+           )}
         </PieChart>
       );
     }
@@ -748,7 +956,14 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
     const defs: React.ReactNode[] = [];
 
     // 1. Grid & Axes
-    chartChildren.push(<CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} key="grid" />);
+    chartChildren.push(
+        <CartesianGrid
+            strokeDasharray="4 6"
+            stroke={chartTheme.gridColor}
+            vertical={false}
+            key="grid"
+        />
+    );
     
     // X Axis Configuration
     if (isScatter) {
@@ -756,7 +971,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
             <XAxis 
                 type="number" 
                 dataKey="x_raw" 
-                tick={<CustomXAxisTick fill={textColor} chartId={data.id} />} 
+                tick={<CustomXAxisTick fill={textColor} chartId={data.id} faviconDataUrls={faviconDataUrls} />}
                 axisLine={false} 
                 tickLine={false} 
                 dy={10} 
@@ -768,7 +983,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
         chartChildren.push(
             <XAxis 
                 dataKey="name" 
-                tick={<CustomXAxisTick fill={textColor} chartId={data.id} />} 
+                tick={<CustomXAxisTick fill={textColor} chartId={data.id} faviconDataUrls={faviconDataUrls} />}
                 axisLine={false} 
                 tickLine={false} 
                 dy={10} 
@@ -805,7 +1020,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
             />
         );
     }
-    chartChildren.push(<Tooltip contentStyle={tooltipStyle} cursor={{fill: darkMode ? '#404040' : '#f7f7f5'}} formatter={tooltipFormatter} labelFormatter={tooltipLabelFormatter} key="tooltip" />);
+    chartChildren.push(<Tooltip contentStyle={tooltipStyle} cursor={{fill: chartTheme.cursorFill}} formatter={tooltipFormatter} labelFormatter={tooltipLabelFormatter} key="tooltip" />);
     if (showLegend) {
         chartChildren.push(<Legend content={compactLegendContent} key="legend" />);
     }
@@ -815,23 +1030,24 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
         if (dynamicSeriesKeys) {
             dynamicSeriesKeys.forEach((key, index) => {
                 const color = seriesPalette[index % seriesPalette.length];
-                
                 if (data.config.type === 'bar') {
                     chartChildren.push(
-                        <Bar 
+                        <Bar
                             key={key}
                             dataKey={key}
                             name={getSeriesLabel(key)}
                             fill={color}
                             yAxisId="left"
-                            radius={data.config.stacked ? [0,0,0,0] : [4, 4, 0, 0]}
+                            radius={data.config.stacked ? chartTheme.stackedBarRadius : chartTheme.barRadius}
                             stackId={data.config.stacked ? 'a' : undefined}
+                            stroke={monoStackSeparator ? stackSeparatorColor : undefined}
+                            strokeWidth={monoStackSeparator ? 1 : 0}
                             {...animProps}
                         >
                             {showValueLabels && (
-                                <LabelList 
+                                <LabelList
                                     dataKey={key}
-                                    position={data.config.stacked ? "inside" : "top"} 
+                                    position={data.config.stacked ? "inside" : "top"}
                                     fill={data.config.stacked ? '#fff' : textColor}
                                     fontSize={10}
                                     fontWeight={500}
@@ -841,11 +1057,12 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
                         </Bar>
                     );
                 } else if (data.config.type === 'area') {
-                    const gradId = `grad-${data.id}-${String(key).replace(/[^a-zA-Z0-9]/g, '')}`;
+                    const gradId = buildGradientId(data.id, 'area-grad', key);
+                    const areaGradient = getAreaGradientStops(color, !!darkMode);
                     defs.push(
                         <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1" key={gradId}>
-                            <stop offset="5%" stopColor={color} stopOpacity={0.8}/>
-                            <stop offset="95%" stopColor="#ffffff" stopOpacity={0.1}/>
+                            <stop offset="5%" stopColor={areaGradient.startColor} stopOpacity={areaGradient.startOpacity}/>
+                            <stop offset="95%" stopColor={areaGradient.endColor} stopOpacity={areaGradient.endOpacity}/>
                         </linearGradient>
                     );
                     chartChildren.push(
@@ -857,7 +1074,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
                             stroke={color}
                             fill={`url(#${gradId})`}
                             yAxisId="left"
-                            strokeWidth={2}
+                            strokeWidth={chartTheme.lineStrokeWidth}
                             stackId={data.config.stacked ? 'a' : undefined}
                             {...animProps}
                         >
@@ -902,9 +1119,9 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
                             name={getSeriesLabel(key)}
                             stroke={color}
                             yAxisId="left"
-                            strokeWidth={3}
-                            dot={{ r: 4, fill: '#fff', stroke: color, strokeWidth: 2 }}
-                            activeDot={{ r: 6, strokeWidth: 0 }}
+                            strokeWidth={chartTheme.lineStrokeWidth}
+                            dot={{ ...chartTheme.dotStyle, stroke: color }}
+                            activeDot={chartTheme.activeDotStyle}
                             {...animProps}
                         >
                             {showValueLabels && (
@@ -927,22 +1144,21 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
             const color = primaryColor;
             const key = "value_0";
             const name = getSeriesLabel(data.config.valueCol || '');
-
             if (data.config.type === 'bar') {
                 chartChildren.push(
-                    <Bar 
+                    <Bar
                         key={key}
                         yAxisId="left"
                         dataKey={key}
                         name={name}
                         fill={color}
-                        radius={[4, 4, 0, 0]}
+                        radius={chartTheme.barRadius}
                         {...animProps}
                     >
                         {activeData.map((entry: any, i: number) => (
-                                <Cell 
-                                    key={`cell-${i}`} 
-                                    fill={i === data.config.highlightIndex ? '#f2c94c' : seriesPalette[0]} 
+                                <Cell
+                                    key={`cell-${i}`}
+                                    fill={i === data.config.highlightIndex ? '#f2c94c' : color}
                                 />
                         ))}
                         {showValueLabels && (
@@ -958,11 +1174,12 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
                     </Bar>
                 );
             } else if (data.config.type === 'area') {
-                const gradId = `grad-${data.id}-val0`;
+                const gradId = buildGradientId(data.id, 'area-grad', key);
+                const areaGradient = getAreaGradientStops(color, !!darkMode);
                 defs.push(
                     <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1" key={gradId}>
-                        <stop offset="5%" stopColor={color} stopOpacity={0.8}/>
-                        <stop offset="95%" stopColor="#ffffff" stopOpacity={0.1}/>
+                        <stop offset="5%" stopColor={areaGradient.startColor} stopOpacity={areaGradient.startOpacity}/>
+                        <stop offset="95%" stopColor={areaGradient.endColor} stopOpacity={areaGradient.endOpacity}/>
                     </linearGradient>
                 );
                 chartChildren.push(
@@ -974,7 +1191,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
                         name={name}
                         stroke={color}
                         fill={`url(#${gradId})`}
-                        strokeWidth={2}
+                        strokeWidth={chartTheme.lineStrokeWidth}
                         {...animProps}
                     >
                         {showValueLabels && (
@@ -1018,9 +1235,9 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
                         dataKey={key}
                         name={name}
                         stroke={color}
-                        strokeWidth={3}
-                        dot={{ r: 4, fill: '#fff', stroke: color, strokeWidth: 2 }}
-                        activeDot={{ r: 6, strokeWidth: 0 }}
+                        strokeWidth={chartTheme.lineStrokeWidth}
+                        dot={{ ...chartTheme.dotStyle, stroke: color }}
+                        activeDot={chartTheme.activeDotStyle}
                         {...animProps}
                     >
                         {showValueLabels && (
@@ -1049,23 +1266,24 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
             const seriesFormat = getFormatForSeries(colId);
             const key = `value_${index}`;
             const name = getSeriesLabel(colId);
-
             if (seriesType === 'bar') {
                 chartChildren.push(
-                    <Bar 
+                    <Bar
                         key={key}
                         yAxisId={axisId}
                         dataKey={key}
                         name={name}
                         fill={color}
-                        radius={data.config.stacked ? [0,0,0,0] : [4, 4, 0, 0]}
+                        radius={data.config.stacked ? chartTheme.stackedBarRadius : chartTheme.barRadius}
                         stackId={stackId}
+                        stroke={monoStackSeparator && stackId ? stackSeparatorColor : undefined}
+                        strokeWidth={monoStackSeparator && stackId ? 1 : 0}
                         {...animProps}
                     >
                         {data.config.dataColumns.length === 1 && activeData.map((entry: any, i: number) => (
-                            <Cell 
-                                key={`cell-${i}`} 
-                                fill={i === data.config.highlightIndex ? '#f2c94c' : seriesPalette[0]} 
+                            <Cell
+                                key={`cell-${i}`}
+                                fill={i === data.config.highlightIndex ? '#f2c94c' : color}
                             />
                         ))}
                         {showValueLabels && (
@@ -1081,11 +1299,12 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
                     </Bar>
                 );
             } else if (seriesType === 'area') {
-                const gradId = `grad-${data.id}-${index}`;
+                const gradId = buildGradientId(data.id, 'area-grad', key);
+                const areaGradient = getAreaGradientStops(color, !!darkMode);
                 defs.push(
                     <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1" key={gradId}>
-                        <stop offset="5%" stopColor={color} stopOpacity={0.8}/>
-                        <stop offset="95%" stopColor="#ffffff" stopOpacity={0.1}/>
+                        <stop offset="5%" stopColor={areaGradient.startColor} stopOpacity={areaGradient.startOpacity}/>
+                        <stop offset="95%" stopColor={areaGradient.endColor} stopOpacity={areaGradient.endOpacity}/>
                     </linearGradient>
                 );
                 chartChildren.push(
@@ -1097,7 +1316,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
                         name={name}
                         stroke={color}
                         fill={`url(#${gradId})`}
-                        strokeWidth={2}
+                        strokeWidth={chartTheme.lineStrokeWidth}
                         stackId={stackId}
                         {...animProps}
                     >
@@ -1142,22 +1361,22 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
                         dataKey={key} 
                         name={name}
                         stroke={color} 
-                        strokeWidth={3}
+                        strokeWidth={chartTheme.lineStrokeWidth}
                         dot={(props: any) => {
                             if (data.config.dataColumns.length === 1) {
                                 const isHighlighted = props.index === data.config.highlightIndex;
                                 return (
                                     <circle 
                                         cx={props.cx} cy={props.cy} r={isHighlighted ? 6 : 4} 
-                                        fill={isHighlighted ? '#f2c94c' : '#fff'} 
+                                        fill={isHighlighted ? '#f2c94c' : chartTheme.dotStyle.fill}
                                         stroke={color}
-                                        strokeWidth={2}
+                                        strokeWidth={chartTheme.dotStyle.strokeWidth}
                                     />
                                 );
                             }
-                            return <circle cx={props.cx} cy={props.cy} r={4} fill="#fff" stroke={color} strokeWidth={2} />;
+                            return <circle cx={props.cx} cy={props.cy} r={chartTheme.dotStyle.r} fill={chartTheme.dotStyle.fill} stroke={color} strokeWidth={chartTheme.dotStyle.strokeWidth} />;
                         }}
-                        activeDot={{ r: 6, strokeWidth: 0 }}
+                        activeDot={chartTheme.activeDotStyle}
                         {...animProps}
                     >
                             {showValueLabels && (
@@ -1186,49 +1405,37 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
   };
 
   return (
-    <div 
+    <div
       id={`chart-${data.id}`}
-      className={`absolute flex flex-col bg-white dark:bg-neutral-850 rounded-xl transition-shadow duration-200 overflow-hidden group border animate-scale-in
+      className={embedded
+        ? `relative flex flex-col rounded-lg overflow-hidden border border-neutral-200 dark:border-neutral-700 w-full h-full ${chartTheme.chartFrameClassName}`
+        : `absolute flex flex-col rounded-xl transition-shadow duration-200 overflow-hidden group border animate-scale-in ${chartTheme.chartFrameClassName}
         ${selected ? 'border-teal-400 shadow-md ring-1 ring-teal-400 z-50' : 'border-neutral-200 dark:border-neutral-700 shadow-sm hover:shadow-lg z-40'}
         ${isPendingDelete ? 'animate-delete-pulse' : ''}
       `}
-      style={{ 
-        left: data.position.x, 
+      style={embedded ? chartTheme.frameStyle : {
+        left: data.position.x,
         top: data.position.y,
         width: data.size.width,
         height: data.size.height,
+        ...(selected ? chartTheme.selectedFrameStyle : chartTheme.frameStyle),
       }}
       onMouseDown={(e) => e.stopPropagation()}
       onDoubleClick={(e) => e.stopPropagation()}
     >
-       <div 
-        className="h-10 bg-transparent flex items-center justify-between px-3 cursor-grab active:cursor-grabbing select-none"
-        onMouseDown={onMouseDown}
+       <div
+        className={`relative h-10 flex items-center px-3 select-none ${embedded ? '' : 'cursor-grab active:cursor-grabbing'} ${chartTheme.headerClassName}`}
+        onMouseDown={embedded ? undefined : onMouseDown}
       >
-        <div className="flex items-center gap-2 text-sm font-medium text-neutral-700 dark:text-neutral-200">
-          <GripHorizontal size={14} className="text-neutral-300 dark:text-neutral-600" />
-          <span className="truncate max-w-[140px]">{data.title}</span>
+        <div className="flex items-center gap-2 min-w-0 flex-1 text-sm font-medium text-neutral-700 dark:text-neutral-200">
+          {!embedded && <GripHorizontal size={14} className="text-neutral-300 dark:text-neutral-600 shrink-0" />}
+          <span className="truncate min-w-0" title={data.title}>{data.title}</span>
         </div>
-        {!isSetup && (
-            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                {hasLineage && (
-                    <button
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onToggleLineage?.(data.id);
-                        }}
-                        className={`group/btn relative p-1.5 rounded-md transition-colors ${lineageVisible ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 dark:text-neutral-500 hover:text-neutral-600'}`}
-                    >
-                        <GitBranch size={14} />
-                        <span className="absolute top-full mt-2 left-1/2 -translate-x-1/2 px-2 py-1 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 text-[10px] font-medium rounded-md opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-sm z-50">
-                            Lineage
-                        </span>
-                    </button>
-                )}
+        {!embedded && !isSetup && (
+            <div className={`absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 p-1 rounded-lg bg-white/95 dark:bg-neutral-900/95 backdrop-blur-sm transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto ${(showDownloadMenu || showMoreMenu) ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
                 <button
                     onClick={handleCopyImage}
-                    className="group/btn relative p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-md text-neutral-400 dark:text-neutral-500 hover:text-neutral-600" 
+                    className="group/btn relative p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-md text-neutral-400 dark:text-neutral-500 hover:text-neutral-600"
                 >
                     <Copy size={14} />
                     <span className="absolute top-full mt-2 left-1/2 -translate-x-1/2 px-2 py-1 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 text-[10px] font-medium rounded-md opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-sm z-50">
@@ -1237,8 +1444,9 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
                 </button>
 
                 <div className="relative">
-                    <button 
-                        onClick={() => setShowDownloadMenu(!showDownloadMenu)} 
+                    <button
+                        ref={downloadBtnRef}
+                        onClick={() => setShowDownloadMenu(!showDownloadMenu)}
                         className={`group/btn relative p-1.5 rounded-md transition-colors flex items-center gap-0.5 ${showDownloadMenu ? 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 dark:text-neutral-500'}`}
                     >
                         <Download size={14} />
@@ -1246,39 +1454,62 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
                             Download
                         </span>
                     </button>
-                    {showDownloadMenu && (
-                        <>
-                        <div className="fixed inset-0 z-40" onClick={() => setShowDownloadMenu(false)} />
-                        <div className="absolute top-full right-0 mt-1 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-xl z-50 w-36 flex flex-col py-1">
-                            <button 
-                                onClick={handleDownloadImage} 
-                                className="px-3 py-2 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 flex items-center gap-2 w-full"
-                            >
-                                <ImageIcon size={14} /> PNG Image
-                            </button>
-                            <button 
-                                onClick={handleDownloadVideo} 
-                                className="px-3 py-2 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 flex items-center gap-2 w-full"
-                            >
-                                <Video size={14} /> WebM Video
-                            </button>
-                        </div>
-                        </>
-                    )}
+                    <HeaderDropdownMenu anchorRef={downloadBtnRef} isOpen={showDownloadMenu} onClose={() => setShowDownloadMenu(false)} width={144}>
+                        <button
+                            onClick={handleDownloadImage}
+                            className="px-3 py-2 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 flex items-center gap-2 w-full"
+                        >
+                            <ImageIcon size={14} /> PNG Image
+                        </button>
+                        <button
+                            onClick={handleDownloadVideo}
+                            className="px-3 py-2 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 flex items-center gap-2 w-full"
+                        >
+                            <Video size={14} /> WebM Video
+                        </button>
+                    </HeaderDropdownMenu>
                 </div>
 
-                <button onClick={() => setPlaybackKey(k => k + 1)} className="group/btn relative p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-md text-neutral-400 dark:text-neutral-500 hover:text-neutral-600">
-                    <Play size={14} />
-                    <span className="absolute top-full mt-2 left-1/2 -translate-x-1/2 px-2 py-1 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 text-[10px] font-medium rounded-md opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-sm z-50">
-                        Replay
-                    </span>
-                </button>
-                <button onClick={() => setShowConfig(!showConfig)} className={`group/btn relative p-1.5 rounded-md transition-colors ${showConfig ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 dark:text-neutral-500'}`}>
-                    <Settings2 size={14} />
-                    <span className="absolute top-full mt-2 left-1/2 -translate-x-1/2 px-2 py-1 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 text-[10px] font-medium rounded-md opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-sm z-50">
-                        Settings
-                    </span>
-                </button>
+                <div className="relative">
+                    <button
+                        ref={moreBtnRef}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={() => setShowMoreMenu(!showMoreMenu)}
+                        className={`group/btn relative p-1.5 rounded-md transition-colors ${showMoreMenu ? 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 dark:text-neutral-500'}`}
+                    >
+                        <MoreHorizontal size={14} />
+                        <span className="absolute top-full mt-2 left-1/2 -translate-x-1/2 px-2 py-1 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 text-[10px] font-medium rounded-md opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-sm z-50">
+                            More
+                        </span>
+                    </button>
+                    <HeaderDropdownMenu anchorRef={moreBtnRef} isOpen={showMoreMenu} onClose={() => setShowMoreMenu(false)} width={160}>
+                        {hasLineage && (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setShowMoreMenu(false);
+                                    onToggleLineage?.(data.id);
+                                }}
+                                className={`px-3 py-2 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 flex items-center gap-2 w-full ${lineageVisible ? 'text-teal-600 dark:text-teal-400' : 'text-neutral-700 dark:text-neutral-200'}`}
+                            >
+                                <GitBranch size={14} /> Lineage
+                            </button>
+                        )}
+                        <button
+                            onClick={() => { setShowMoreMenu(false); setPlaybackKey(k => k + 1); }}
+                            className="px-3 py-2 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 flex items-center gap-2 w-full"
+                        >
+                            <Play size={14} /> Replay
+                        </button>
+                        <button
+                            onClick={() => { setShowMoreMenu(false); setShowConfig(!showConfig); }}
+                            className={`px-3 py-2 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 flex items-center gap-2 w-full ${showConfig ? 'text-teal-600 dark:text-teal-400' : 'text-neutral-700 dark:text-neutral-200'}`}
+                        >
+                            <Settings2 size={14} /> Settings
+                        </button>
+                    </HeaderDropdownMenu>
+                </div>
+
                 <button onClick={() => deleteChart(data.id)} className="group/btn relative p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 text-neutral-400 hover:text-red-500 rounded-md">
                     <Trash2 size={14} />
                     <span className="absolute top-full mt-2 left-1/2 -translate-x-1/2 px-2 py-1 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 text-[10px] font-medium rounded-md opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-sm z-50">
@@ -1297,7 +1528,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
         )}
       </div>
 
-      <div className="flex-1 relative bg-white dark:bg-neutral-850">
+      <div className={`flex-1 relative ${chartTheme.bodyClassName}`}>
          
          {isSetup && (
              <div ref={setupPanelRef} className="absolute inset-0 z-50 overflow-hidden">
@@ -1327,7 +1558,7 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
             </div>
          )}
 
-         <div ref={chartAreaRef} className="w-full h-full px-4 pb-4 pt-0">
+         <div ref={chartAreaRef} className={`w-full h-full px-4 pb-4 pt-0 ${chartTheme.chartAreaClassName}`}>
             <ResponsiveContainer width="100%" height="100%">
                 {renderChart() || <div className="flex items-center justify-center h-full text-neutral-400 text-sm">No data selected</div>}
             </ResponsiveContainer>
@@ -1361,16 +1592,20 @@ export const ChartNode: React.FC<ChartNodeProps> = ({
          )}
       </div>
       
-      <div 
-        className="absolute bottom-0 right-0 w-5 h-5 cursor-nwse-resize z-20 flex items-center justify-center"
-        onMouseDown={(e) => {
-            e.stopPropagation();
-            saveSnapshot();
-            setResizing({ startX: e.clientX, startY: e.clientY, startW: data.size.width, startH: data.size.height });
-        }}
-      >
-          <div className="w-1.5 h-1.5 bg-neutral-300 dark:bg-neutral-600 rounded-full" />
-      </div>
+      {!embedded && (
+        <div
+          className="absolute bottom-0 right-0 w-5 h-5 cursor-nwse-resize z-20 flex items-center justify-center"
+          onMouseDown={(e) => {
+              e.stopPropagation();
+              saveSnapshot();
+              setResizing({ startX: e.clientX, startY: e.clientY, startW: data.size.width, startH: data.size.height });
+          }}
+        >
+            <div className="w-1.5 h-1.5 bg-neutral-300 dark:bg-neutral-600 rounded-full" />
+        </div>
+      )}
     </div>
   );
 };
+
+export const ChartNode = React.memo(ChartNodeComponent, areChartNodePropsEqual);

@@ -137,6 +137,23 @@ async function refreshGoogleAnalyticsAccessForConnector(env: Env, connector: Con
 }
 
 const app = new Hono<{ Bindings: Env }>();
+const FAVICON_DOMAIN_PATTERN = /^([a-z0-9-]+\.)+[a-z]{2,}$/i;
+const TRANSPARENT_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
+
+function imageResponse(body: ArrayBuffer | Uint8Array, contentType = "image/png") {
+  return new Response(body, {
+    headers: {
+      "content-type": contentType,
+      "cache-control": "public, max-age=604800, immutable",
+      "access-control-allow-origin": "*"
+    }
+  });
+}
+
+function transparentPngResponse() {
+  const bytes = Uint8Array.from(atob(TRANSPARENT_PNG_BASE64), (char) => char.charCodeAt(0));
+  return imageResponse(bytes);
+}
 
 app.use(
   "*",
@@ -182,6 +199,28 @@ app.onError((err, c) => {
 });
 
 app.get("/health", (c) => c.json({ ok: true }));
+
+app.get("/api/favicon", async (c) => {
+  const domain = c.req.query("domain")?.trim().toLowerCase() ?? "";
+  if (!FAVICON_DOMAIN_PATTERN.test(domain)) {
+    return c.json({ error: { code: "bad_request", message: "Invalid favicon domain" } }, 400);
+  }
+
+  const upstreamUrl = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`;
+  const upstream = await fetch(upstreamUrl, {
+    headers: { "User-Agent": "SheetCanvas favicon proxy" }
+  }).catch(() => null);
+  if (!upstream || !upstream.ok) {
+    return transparentPngResponse();
+  }
+
+  const contentType = upstream.headers.get("content-type") || "image/png";
+  if (!contentType.startsWith("image/")) {
+    return transparentPngResponse();
+  }
+
+  return imageResponse(await upstream.arrayBuffer(), contentType);
+});
 
 app.post("/api/agent", (c) => {
   requireBearerToken(c.req.raw, c.env);

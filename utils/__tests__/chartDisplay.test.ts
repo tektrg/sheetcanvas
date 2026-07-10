@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildChartSeriesDisplayNames,
+  getChartLabelIconDomain,
+  getChartLabelIconUrl,
   getChartLegendVisibility,
   normalizeChartSeriesLabel,
 } from '../chartDisplay';
@@ -10,6 +12,15 @@ describe('chartDisplay', () => {
     expect(normalizeChartSeriesLabel('(direct) (sessions)')).toBe('(direct)');
     expect(normalizeChartSeriesLabel('t.co (sessions)')).toBe('t.co');
     expect(normalizeChartSeriesLabel('47162e2d.theindieapp-website.pages.dev (sessions)')).toBe('theindie.app preview');
+  });
+
+  it('resolves favicon URLs from raw domain labels without changing readable labels', () => {
+    expect(getChartLabelIconDomain('t.co (sessions)')).toBe('t.co');
+    expect(getChartLabelIconDomain('https://example.com/path (users)')).toBe('example.com');
+    expect(getChartLabelIconUrl('t.co (sessions)')).toBe('https://www.google.com/s2/favicons?domain=t.co&sz=64');
+    expect(getChartLabelIconUrl('https://example.com/path (users)')).toBe('https://www.google.com/s2/favicons?domain=example.com&sz=64');
+    expect(getChartLabelIconUrl('theindie.app preview')).toBeNull();
+    expect(getChartLabelIconUrl('1.25')).toBeNull();
   });
 
   it('keeps normalized duplicate source labels distinct', () => {
