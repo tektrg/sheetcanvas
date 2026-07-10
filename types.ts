@@ -12,12 +12,20 @@ export interface Size {
   height: number;
 }
 
+// `heatmapColor` selects the heatmap palette. Single-hue ('red' | 'green' | 'yellow')
+// shades by rank between the column/row min and max. 'diverging' is sign-aware:
+// zero is the neutral anchor, negatives shade red and positives shade green, each
+// side scaled independently to its own extreme. `heatmapFlip` swaps the diverging
+// polarity (green negative / red positive) for metrics where lower is better.
+export type HeatmapColor = 'red' | 'green' | 'yellow' | 'diverging';
+export type CellVisual = 'bar' | 'bar-row' | 'heatmap' | 'heatmap-row' | 'sparkline';
+
 export type CellFormat =
-  | { type: 'number'; decimals?: number; d3Format?: string; visual?: 'bar' | 'bar-row' | 'heatmap' | 'heatmap-row' | 'sparkline'; heatmapColor?: 'red' | 'green' | 'yellow' }
-  | { type: 'currency'; symbol?: string; decimals?: number; d3Format?: string; visual?: 'bar' | 'bar-row' | 'heatmap' | 'heatmap-row' | 'sparkline'; heatmapColor?: 'red' | 'green' | 'yellow' }
-  | { type: 'percent'; decimals?: number; d3Format?: string; visual?: 'bar' | 'bar-row' | 'heatmap' | 'heatmap-row' | 'sparkline'; heatmapColor?: 'red' | 'green' | 'yellow' }
-  | { type: 'date'; dateFormat?: string; visual?: 'bar' | 'bar-row' | 'heatmap' | 'heatmap-row' | 'sparkline'; heatmapColor?: 'red' | 'green' | 'yellow' }
-  | { type: 'text'; visual?: 'bar' | 'bar-row' | 'heatmap' | 'heatmap-row' | 'sparkline'; heatmapColor?: 'red' | 'green' | 'yellow' };
+  | { type: 'number'; decimals?: number; d3Format?: string; visual?: CellVisual; heatmapColor?: HeatmapColor; heatmapFlip?: boolean }
+  | { type: 'currency'; symbol?: string; decimals?: number; d3Format?: string; visual?: CellVisual; heatmapColor?: HeatmapColor; heatmapFlip?: boolean }
+  | { type: 'percent'; decimals?: number; d3Format?: string; visual?: CellVisual; heatmapColor?: HeatmapColor; heatmapFlip?: boolean }
+  | { type: 'date'; dateFormat?: string; visual?: CellVisual; heatmapColor?: HeatmapColor; heatmapFlip?: boolean }
+  | { type: 'text'; visual?: CellVisual; heatmapColor?: HeatmapColor; heatmapFlip?: boolean };
 
 export interface SheetFormatRule {
   range: string;
@@ -271,12 +279,20 @@ export interface ChartData {
 
 export type NoteColor = 'yellow' | 'blue' | 'green' | 'pink' | 'purple' | 'gray';
 
+export type NoteContentFormat = 'html' | 'markdown';
+
 export interface NoteData {
   id: string;
   position: Position;
   size: Size; // In pixels
   content: string;
   color: NoteColor;
+  // Undefined = legacy HTML note (contentEditable). 'markdown' = MDX-lite note
+  // rendered via markdown-to-jsx with a whitelist of live components.
+  format?: NoteContentFormat;
+  // Original HTML preserved when a legacy note is migrated to markdown, so a
+  // bad conversion can be recovered / rendered as a fallback.
+  legacyHtml?: string;
 }
 
 export interface SelectionContext {

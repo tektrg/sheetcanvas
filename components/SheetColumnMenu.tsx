@@ -5,9 +5,10 @@ import {
   AlignLeft, ArrowDownAZ, ArrowUpAZ, Filter, 
   BarChart3, Table, TrendingUp, Hash, Minimize2, Maximize2, 
   DollarSign, Percent, Calendar, ChevronRight, Type, Code, 
-  Palette, ArrowLeft, ArrowRight, Trash2, Eraser
+  ArrowLeft, ArrowRight, Trash2, Eraser
 } from 'lucide-react';
 import { CellFormat } from '../types';
+import { HeatmapMenuRow } from './HeatmapMenuRow';
 
 interface SheetColumnMenuProps {
   colIndex: number;
@@ -124,29 +125,8 @@ export const SheetColumnMenu: React.FC<SheetColumnMenuProps> = ({
             <AlignLeft size={12} className="text-neutral-400" /> Bar
         </button>
         
-        {/* Heatmap with Color Selection */}
-        <div className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 flex items-center justify-between group">
-            <button onClick={() => onAction('heatmap')} className="flex items-center gap-2 flex-1 text-left">
-                    <Palette size={12} className="text-neutral-400" /> Heatmap
-            </button>
-            <div className="flex gap-1 ml-2">
-                <button 
-                    onClick={(e) => { e.stopPropagation(); onAction('heatmap', 'red'); }} 
-                    className={`w-2.5 h-2.5 rounded-full bg-red-500 hover:scale-125 transition-transform ring-1 ring-neutral-200 dark:ring-neutral-600 ${currentFormat?.heatmapColor === 'red' ? 'ring-2 ring-offset-1 ring-neutral-400' : ''}`} 
-                    title="Red"
-                />
-                <button 
-                    onClick={(e) => { e.stopPropagation(); onAction('heatmap', 'yellow'); }} 
-                    className={`w-2.5 h-2.5 rounded-full bg-yellow-400 hover:scale-125 transition-transform ring-1 ring-neutral-200 dark:ring-neutral-600 ${currentFormat?.heatmapColor === 'yellow' ? 'ring-2 ring-offset-1 ring-neutral-400' : ''}`} 
-                    title="Yellow"
-                />
-                <button 
-                    onClick={(e) => { e.stopPropagation(); onAction('heatmap', 'green'); }} 
-                    className={`w-2.5 h-2.5 rounded-full bg-teal-500 hover:scale-125 transition-transform ring-1 ring-neutral-200 dark:ring-neutral-600 ${currentFormat?.heatmapColor === 'green' || (!currentFormat?.heatmapColor && currentFormat?.visual === 'heatmap') ? 'ring-2 ring-offset-1 ring-neutral-400' : ''}`} 
-                    title="Green"
-                />
-            </div>
-        </div>
+        {/* Heatmap with Color Selection (single-hue + diverging) */}
+        <HeatmapMenuRow heatmapVisual="heatmap" actionName="heatmap" currentFormat={currentFormat} onAction={onAction} />
 
         <div className="h-px bg-neutral-100 dark:bg-neutral-700 my-1"></div>
 

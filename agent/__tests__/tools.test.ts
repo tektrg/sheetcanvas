@@ -117,6 +117,7 @@ describe('sheet inspection tool descriptions', () => {
     expect(toolDefs.applyFormat.description).toContain('derived pivot/sparkline');
     expect(toolDefs.applyFormat.description).toContain('compactNumber');
     expect(toolDefs.applyFormat.description).toContain('visual:"bar"');
+    expect(toolDefs.applyFormat.description).toContain('heatmapColor:"diverging"');
     expect(toolDefs.applyFormat.description).toContain('formatDecisions');
 
     const compactResult = toolDefs.applyFormat.inputSchema.safeParse({
@@ -143,6 +144,131 @@ describe('sheet inspection tool descriptions', () => {
     });
 
     expect(result.success).toBe(true);
+  });
+
+  it('accepts diverging heatmap with an optional polarity flip', () => {
+    const diverging = toolDefs.applyFormat.inputSchema.safeParse({
+      sheetId: 'source-1',
+      range: 'C2:C20',
+      format: { type: 'number', visual: 'heatmap', heatmapColor: 'diverging', heatmapFlip: true },
+    });
+    expect(diverging.success).toBe(true);
+
+    const viaPreset = toolDefs.applyFormat.inputSchema.safeParse({
+      sheetId: 'source-1',
+      range: 'C2:C20',
+      preset: { preset: 'currency', visual: 'heatmap', heatmapColor: 'diverging' },
+    });
+    expect(viaPreset.success).toBe(true);
+  });
+
+  it('rejects unknown heatmap colors', () => {
+    const result = toolDefs.applyFormat.inputSchema.safeParse({
+      sheetId: 'source-1',
+      range: 'C2:C20',
+      format: { type: 'number', visual: 'heatmap', heatmapColor: 'purple' },
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('createSheet tool schema', () => {
+  it('accepts a blank sheet with no data', () => {
+    expect(toolDefs.createSheet.inputSchema.safeParse({}).success).toBe(true);
+    expect(toolDefs.createSheet.inputSchema.safeParse({ title: 'Scratch' }).success).toBe(true);
+  });
+
+  it('accepts a pre-filled data grid including formula cells', () => {
+    const result = toolDefs.createSheet.inputSchema.safeParse({
+      title: 'Regional summary',
+      data: [
+        ['Region', 'Q1', 'Total'],
+        ['West', '100', '=B2*2'],
+        ['East', '200', '=B3*2'],
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects oversized sheets at the schema boundary', () => {
+    const tooManyRows = { data: Array.from({ length: 5001 }, () => ['x']) };
+    expect(toolDefs.createSheet.inputSchema.safeParse(tooManyRows).success).toBe(false);
+    const tooWide = { data: [Array.from({ length: 257 }, () => 'x')] };
+    expect(toolDefs.createSheet.inputSchema.safeParse(tooWide).success).toBe(false);
+  });
+
+  it('self-documents the no-source guardrail and the createQuerySheet alternative for MCP agents', () => {
+    expect(toolDefs.createSheet.description).toContain('does NOT auto-refresh');
+    expect(toolDefs.createSheet.description).toContain('createQuerySheet');
+    expect(toolDefs.createSheet.description).toContain('header row');
+  });
+});
+
+describe('createNote tool schema', () => {
+  it('accepts a minimal markdown note', () => {
+    const result = toolDefs.createNote.inputSchema.safeParse({
+      content: 'Revenue is up this quarter.',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts title and color options', () => {
+    const result = toolDefs.createNote.inputSchema.safeParse({
+      content: 'Summary body',
+      title: 'Q2 Report',
+      color: 'blue',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects empty content and unknown colors', () => {
+    expect(toolDefs.createNote.inputSchema.safeParse({ content: '' }).success).toBe(false);
+    expect(
+      toolDefs.createNote.inputSchema.safeParse({ content: 'x', color: 'teal' }).success
+    ).toBe(false);
+  });
+
+  it('self-documents the whitelisted live components and the id-sourcing rule for MCP agents', () => {
+    // External MCP agents get no system prompt, so the description must be the manual.
+    expect(toolDefs.createNote.description).toContain('<CellValue');
+    expect(toolDefs.createNote.description).toContain('<CanvasChart');
+    expect(toolDefs.createNote.description).toContain('<Sparkline');
+    expect(toolDefs.createNote.description).toContain('Never invent ids');
+    expect(toolDefs.createNote.description).toContain('listSheets');
+  });
+});
+
+describe('note read/update/delete tool schemas', () => {
+  it('readNote and deleteNote require a noteId', () => {
+    expect(toolDefs.readNote.inputSchema.safeParse({ noteId: 'n1' }).success).toBe(true);
+    expect(toolDefs.readNote.inputSchema.safeParse({}).success).toBe(false);
+    expect(toolDefs.deleteNote.inputSchema.safeParse({ noteId: 'n1' }).success).toBe(true);
+    expect(toolDefs.deleteNote.inputSchema.safeParse({ noteId: '' }).success).toBe(false);
+  });
+
+  it('listNotes takes no arguments', () => {
+    expect(toolDefs.listNotes.inputSchema.safeParse({}).success).toBe(true);
+  });
+
+  it('updateNote requires at least one of content or color', () => {
+    expect(
+      toolDefs.updateNote.inputSchema.safeParse({ noteId: 'n1', content: 'new body' }).success
+    ).toBe(true);
+    expect(toolDefs.updateNote.inputSchema.safeParse({ noteId: 'n1', color: 'blue' }).success).toBe(
+      true
+    );
+    // noteId alone is not a valid update.
+    expect(toolDefs.updateNote.inputSchema.safeParse({ noteId: 'n1' }).success).toBe(false);
+    // Unknown color rejected.
+    expect(
+      toolDefs.updateNote.inputSchema.safeParse({ noteId: 'n1', color: 'teal' }).success
+    ).toBe(false);
+  });
+
+  it('updateNote self-documents full-content-replace semantics for MCP agents', () => {
+    expect(toolDefs.updateNote.description).toContain('REPLACES');
+    expect(toolDefs.updateNote.description).toContain('readNote');
+    expect(toolDefs.deleteNote.description).toContain('destructive');
   });
 });
 

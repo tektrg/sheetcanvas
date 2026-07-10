@@ -3,6 +3,7 @@ import React, { useRef, useState, useMemo, useEffect } from 'react';
 import { CellData } from '../types';
 import { formatValue } from '../utils/formatting';
 import { parseCellId, getCellId } from '../utils/formulas';
+import { heatmapCellColor } from '../utils/heatmap';
 import { CELL_HEIGHT } from '../constants';
 
 // Interactive Sparkline Component
@@ -201,19 +202,12 @@ const SheetCellInternal: React.FC<SheetCellProps> = ({
     const showHeatmap = cellData?.format?.visual === 'heatmap';
     const showHeatmapRow = cellData?.format?.visual === 'heatmap-row';
     let heatmapColor = 'transparent';
-    
+
     if (showHeatmap || showHeatmapRow) {
         const min = showHeatmap ? colMin : rowMin;
         const max = showHeatmap ? colMax : rowMax;
         const val = parseFloat(String(cellData?.value));
-        if (!isNaN(val) && max !== min) {
-            const ratio = Math.max(0, Math.min(1, (val - min) / (max - min)));
-            const opacity = 0.1 + (ratio * 0.5);
-            
-            const colorKey = cellData?.format?.heatmapColor || 'green';
-            const baseColor = colorKey === 'red' ? '239, 68, 68' : (colorKey === 'yellow' ? '234, 179, 8' : '13, 148, 136');
-            heatmapColor = `rgba(${baseColor}, ${opacity})`;
-        }
+        heatmapColor = heatmapCellColor(val, min, max, cellData?.format?.heatmapColor, cellData?.format?.heatmapFlip);
     }
 
     return (

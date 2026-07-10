@@ -10,6 +10,7 @@ type FormatPresetInput = {
   dateFormat?: string;
   visual?: CellFormat['visual'];
   heatmapColor?: CellFormat['heatmapColor'];
+  heatmapFlip?: CellFormat['heatmapFlip'];
 };
 
 export type ApplyFormatInput = {
@@ -24,6 +25,7 @@ function resolvePresetFormat(presetInput: FormatPresetInput): CellFormat {
   const visualProps = {
     visual: presetInput.visual,
     heatmapColor: presetInput.heatmapColor,
+    heatmapFlip: presetInput.heatmapFlip,
   };
 
   switch (presetInput.preset) {

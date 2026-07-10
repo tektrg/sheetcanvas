@@ -1,10 +1,12 @@
 
 import React from 'react';
-import { 
-  ArrowUp, ArrowDown, AlignVerticalJustifyCenter, Palette, 
-  Hash, Minimize2, Maximize2, DollarSign, Percent, 
+import {
+  ArrowUp, ArrowDown, AlignVerticalJustifyCenter,
+  Hash, Minimize2, Maximize2, DollarSign, Percent,
   Calendar, ChevronRight, Type, Code, Trash2, Eraser
 } from 'lucide-react';
+import { CellFormat } from '../types';
+import { HeatmapMenuRow } from './HeatmapMenuRow';
 
 interface SheetRowMenuProps {
   rowIndex: number;
@@ -13,6 +15,7 @@ interface SheetRowMenuProps {
   onAction: (action: string, param?: any) => void;
   isHeaderRow: boolean;
   isReadOnly: boolean;
+  currentFormat?: CellFormat;
 }
 
 export const SheetRowMenu: React.FC<SheetRowMenuProps> = ({
@@ -21,7 +24,8 @@ export const SheetRowMenu: React.FC<SheetRowMenuProps> = ({
   onClose,
   onAction,
   isHeaderRow,
-  isReadOnly
+  isReadOnly,
+  currentFormat
 }) => {
   if (!isOpen) return null;
 
@@ -54,7 +58,7 @@ export const SheetRowMenu: React.FC<SheetRowMenuProps> = ({
 
         <div className="px-3 py-1 text-[10px] text-neutral-400 uppercase font-medium">Visualize</div>
         <button onClick={() => onAction('bar-row')} className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 flex items-center gap-2"><AlignVerticalJustifyCenter size={12} /> Vertical Bar</button>
-        <button onClick={() => onAction('heatmap-row')} className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 flex items-center gap-2"><Palette size={12} /> Heatmap</button>
+        <HeatmapMenuRow heatmapVisual="heatmap-row" actionName="heatmap-row" currentFormat={currentFormat} onAction={onAction} />
         <div className="h-px bg-neutral-100 dark:bg-neutral-700 my-1"></div>
         <div className="px-3 py-1 text-[10px] text-neutral-400 uppercase font-medium">Format</div>
         

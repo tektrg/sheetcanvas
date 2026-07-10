@@ -450,6 +450,22 @@ export const useCommandService = ({
             action: () => applyFormat({ visual: 'heatmap', heatmapColor: 'yellow' })
           },
           {
+            id: 'vis-heat-diverging',
+            label: 'Visual: Heatmap (Diverging red/green)',
+            category: 'Cell',
+            icon: <Palette size={18} />,
+            action: () => applyFormat({ visual: 'heatmap', heatmapColor: 'diverging', heatmapFlip: false }),
+            keywords: ['positive', 'negative', 'diverging', 'sign']
+          },
+          {
+            id: 'vis-heat-diverging-flip',
+            label: 'Visual: Heatmap (Diverging flipped green/red)',
+            category: 'Cell',
+            icon: <Palette size={18} />,
+            action: () => applyFormat({ visual: 'heatmap', heatmapColor: 'diverging', heatmapFlip: true }),
+            keywords: ['positive', 'negative', 'diverging', 'sign', 'flip', 'invert']
+          },
+          {
             id: 'create-chart-bar',
             label: 'Create Bar Chart',
             category: 'Chart',
