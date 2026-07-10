@@ -6,14 +6,15 @@ import { formatValue } from '../utils/formatting';
 import { parseClipboardData } from '../utils/clipboard';
 import { getFilteredRows } from '../utils/dataAnalysis';
 import { serializeSheetSelection } from '../utils/sheetClipboard';
-import { CELL_WIDTH, CELL_HEIGHT, HEADER_COL_WIDTH, HEADER_ROW_HEIGHT, MIN_COL_WIDTH, MAX_RENDER_ROWS } from '../constants';
-import { GitBranch, GripHorizontal, Trash2, BarChart3, ChevronDown, MoreVertical, Table, Settings2, X, Image as ImageIcon, Loader2, AlertCircle, AlertTriangle, Filter, TrendingUp, Link, RefreshCcw, Code2 } from 'lucide-react';
+import { CELL_WIDTH, CELL_HEIGHT, HEADER_COL_WIDTH, HEADER_ROW_HEIGHT, MIN_COL_WIDTH, MAX_RENDER_ROWS, SHEET_CANVAS_SCROLL_PASSTHROUGH_SCALE } from '../constants';
+import { GitBranch, GripHorizontal, Trash2, BarChart3, ChevronDown, MoreVertical, MoreHorizontal, Table, Settings2, X, Image as ImageIcon, Loader2, AlertCircle, AlertTriangle, Filter, TrendingUp, Link, RefreshCcw, Code2 } from 'lucide-react';
 import { PivotConfigPanel } from './PivotConfigPanel';
 import { SparklineConfigPanel } from './SparklineConfigPanel';
 import { FilterPanel } from './FilterPanel';
 import { SheetColumnMenu } from './SheetColumnMenu';
 import { SheetRowMenu } from './SheetRowMenu';
 import { SheetCell } from './SheetCell';
+import { HeaderDropdownMenu } from './HeaderDropdownMenu';
 import html2canvas from 'html2canvas';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useStore } from '../store';
@@ -53,7 +54,21 @@ const ConnectedSheetError = ({ message }: { message: string }) => (
   </div>
 );
 
-export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot, onAddSparkline, onToast, isPendingDelete, hasLineage, lineageVisible, onToggleLineage, onSelectionContextChange, onMouseDown }) => {
+const areSheetNodePropsEqual = (prev: SheetNodeProps, next: SheetNodeProps) => (
+  prev.id === next.id &&
+  prev.onAddChart === next.onAddChart &&
+  prev.onAddPivot === next.onAddPivot &&
+  prev.onAddSparkline === next.onAddSparkline &&
+  prev.onToast === next.onToast &&
+  prev.isPendingDelete === next.isPendingDelete &&
+  prev.hasLineage === next.hasLineage &&
+  prev.lineageVisible === next.lineageVisible &&
+  prev.onToggleLineage === next.onToggleLineage &&
+  prev.onSelectionContextChange === next.onSelectionContextChange &&
+  prev.onMouseDown === next.onMouseDown
+);
+
+const SheetNodeComponent: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot, onAddSparkline, onToast, isPendingDelete, hasLineage, lineageVisible, onToggleLineage, onSelectionContextChange, onMouseDown }) => {
   const data = useStore(state => state.sheets[id]);
   const selected = useStore(state => state.selectedIds.has(id));
   const scale = useStore(state => state.transform.scale);
@@ -100,6 +115,8 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
   const [showSparklineConfig, setShowSparklineConfig] = useState(false);
   const [showConnectorQueryPanel, setShowConnectorQueryPanel] = useState(false);
   const [isConnectorRefreshing, setIsConnectorRefreshing] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const moreBtnRef = useRef<HTMLButtonElement>(null);
   
   const showFilterPanel = !!data?.showFilterPanel;
   const [preselectedFilterCol, setPreselectedFilterCol] = useState<string | null>(null);
@@ -111,6 +128,8 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
   const dataRef = useRef(data);
   const updateSheetRef = useRef(updateSheet);
   const scaleRef = useRef(scale);
+  const isEditingRef = useRef(isEditing);
+  const isEditingTitleRef = useRef(isEditingTitle);
   const colResizingRef = useRef<{ index: number; startX: number; startWidth: number } | null>(null);
   const resizingRef = useRef<{
     type: 'right' | 'bottom' | 'corner';
@@ -141,6 +160,12 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
   useEffect(() => {
       scaleRef.current = scale;
   }, [scale]);
+  useEffect(() => {
+      isEditingRef.current = isEditing;
+  }, [isEditing]);
+  useEffect(() => {
+      isEditingTitleRef.current = isEditingTitle;
+  }, [isEditingTitle]);
   useEffect(() => {
       colResizingRef.current = colResizing;
   }, [colResizing]);
@@ -212,12 +237,34 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
   useEffect(() => {
     const grid = gridRef.current;
     if (!grid) return;
-	    const handleWheel = (e: WheelEvent) => {
-	        e.stopPropagation();
-	    };
-	    grid.addEventListener('wheel', handleWheel, { passive: true });
-	    return () => grid.removeEventListener('wheel', handleWheel);
-	  }, []);
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) return;
+
+      const target = e.target as HTMLElement | null;
+      const isTextInteraction =
+        isEditingRef.current ||
+        isEditingTitleRef.current ||
+        !!target?.closest('input, textarea, [contenteditable="true"]');
+      const hasOpenSheetControl =
+        showFilterPanel ||
+        showPivotConfig ||
+        showSparklineConfig ||
+        showConnectorQueryPanel ||
+        headerMenuOpen !== null ||
+        rowMenuOpen !== null ||
+        suggestions.length > 0;
+      const shouldKeepSheetScroll =
+        isTextInteraction ||
+        hasOpenSheetControl ||
+        scaleRef.current > SHEET_CANVAS_SCROLL_PASSTHROUGH_SCALE;
+
+      if (shouldKeepSheetScroll) {
+        e.stopPropagation();
+      }
+    };
+    grid.addEventListener('wheel', handleWheel, { passive: true });
+    return () => grid.removeEventListener('wheel', handleWheel);
+  }, [headerMenuOpen, rowMenuOpen, showConnectorQueryPanel, showFilterPanel, showPivotConfig, showSparklineConfig, suggestions.length]);
 
   // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
@@ -723,8 +770,13 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
         applyColumnFormat(targetCols, { visual: isActive ? null : 'bar' });
     } else if (action === 'heatmap') {
         const isActive = clickedColFormat?.visual === 'heatmap';
-        if (param) applyColumnFormat(targetCols, { visual: 'heatmap', heatmapColor: param });
-        else applyColumnFormat(targetCols, { visual: isActive ? null : 'heatmap' });
+        if (param === 'flip') {
+            applyColumnFormat(targetCols, { visual: 'heatmap', heatmapColor: 'diverging', heatmapFlip: !clickedColFormat?.heatmapFlip });
+        } else if (param) {
+            applyColumnFormat(targetCols, { visual: 'heatmap', heatmapColor: param, heatmapFlip: false });
+        } else {
+            applyColumnFormat(targetCols, { visual: isActive ? null : 'heatmap' });
+        }
     } else if (action === 'date') {
         applyColumnFormat(targetCols, { type: 'date', dateFormat: param });
     } else if (action === 'number-compact') {
@@ -819,8 +871,18 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
   };
 
   const handleRowMenuAction = (rowIndex: number, action: string, param?: any) => {
+    const clickedRowFormat = data.cells[getCellId(0, rowIndex)]?.format;
     if (action === 'bar-row') applyRowFormat(rowIndex, { visual: 'bar-row' });
-    else if (action === 'heatmap-row') applyRowFormat(rowIndex, { visual: 'heatmap-row' });
+    else if (action === 'heatmap-row') {
+        const isActive = clickedRowFormat?.visual === 'heatmap-row';
+        if (param === 'flip') {
+            applyRowFormat(rowIndex, { visual: 'heatmap-row', heatmapColor: 'diverging', heatmapFlip: !clickedRowFormat?.heatmapFlip });
+        } else if (param) {
+            applyRowFormat(rowIndex, { visual: 'heatmap-row', heatmapColor: param, heatmapFlip: false });
+        } else {
+            applyRowFormat(rowIndex, { visual: isActive ? null : 'heatmap-row' });
+        }
+    }
     else if (action === 'date') applyRowFormat(rowIndex, { type: 'date', dateFormat: param });
     else if (action === 'number-compact') applyRowFormat(rowIndex, { type: 'number', d3Format: '.2s' });
     else if (action === 'number-expand') applyRowFormat(rowIndex, { type: 'number', d3Format: '' });
@@ -1199,8 +1261,8 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
       }}
     >
       <div className="flex flex-col rounded-t-xl overflow-hidden">
-        <div 
-            className="h-9 flex items-center justify-between px-3 cursor-grab active:cursor-grabbing bg-white dark:bg-neutral-850 border-b border-neutral-100 dark:border-neutral-800"
+        <div
+            className="relative h-9 flex items-center px-3 cursor-grab active:cursor-grabbing bg-white dark:bg-neutral-850 border-b border-neutral-100 dark:border-neutral-800"
             onMouseDown={(e) => { onMouseDown(e); setActiveCell(null); setSelectionRange(null); setIsEditing(false); setHeaderMenuOpen(null); setRowMenuOpen(null); }}
         >
             <div className="flex items-center gap-2 text-sm font-medium text-neutral-700 dark:text-neutral-200 flex-1 min-w-0">
@@ -1236,94 +1298,101 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                         onMouseDown={(e) => e.stopPropagation()}
                     />
                 ) : (
-                    <span className="truncate cursor-text hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded px-1.5 py-0.5 -ml-1.5 transition-colors" onDoubleClick={(e) => { e.stopPropagation(); setIsEditingTitle(true); }}>
+                    <span className="truncate cursor-text hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded px-1.5 py-0.5 -ml-1.5 transition-colors" title={data.title} onDoubleClick={(e) => { e.stopPropagation(); setIsEditingTitle(true); }}>
                         {data.title}
                     </span>
                 )}
             </div>
-            <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                {hasLineage && (
-                    <button
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onToggleLineage?.(data.id);
-                        }}
-                        className={`group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md transition-colors ${lineageVisible ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
-                        title="Show lineage"
-                    >
-                        <GitBranch size={14} />
-                    </button>
-                )}
+            <div className={`absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 p-1 rounded-lg bg-white/95 dark:bg-neutral-900/95 backdrop-blur-sm transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto ${showMoreMenu ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+                {(lastRefreshedAt && ((isGoogleAnalyticsConnected && !isGoogleAnalyticsSimulated) || (isGoogleSheetsConnected && !isGoogleSheetsSimulated) || isClickhouseConnected)) && (() => {
+                  const diffMs = Date.now() - lastRefreshedAt;
+                  const m = Math.floor(diffMs / 60000);
+                  const label = m < 1 ? 'just now' : m < 60 ? `${m}m ago` : Math.floor(m / 60) < 24 ? `${Math.floor(m / 60)}h ago` : `${Math.floor(m / 1440)}d ago`;
+                  return <span className="text-xs text-gray-400 dark:text-gray-500 mr-1 select-none">{label}</span>;
+                })()}
                 <button onClick={() => updateSheet(data.id, { showFilterPanel: !showFilterPanel })} className={`group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md transition-colors ${showFilterPanel || (data.filters && data.filters.length > 0) ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}>
                     <Filter size={14} />
                 </button>
                 <button onClick={handleCopyImage} className="group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors" disabled={isExporting}>
                     {isExporting ? <Loader2 size={14} className="animate-spin" /> : <ImageIcon size={14} />}
                 </button>
-                {lastRefreshedAt && ((isGoogleAnalyticsConnected && !isGoogleAnalyticsSimulated) || (isGoogleSheetsConnected && !isGoogleSheetsSimulated)) && (() => {
-                  const diffMs = Date.now() - lastRefreshedAt;
-                  const m = Math.floor(diffMs / 60000);
-                  const label = m < 1 ? 'just now' : m < 60 ? `${m}m ago` : Math.floor(m / 60) < 24 ? `${Math.floor(m / 60)}h ago` : `${Math.floor(m / 1440)}d ago`;
-                  return <span className="text-xs text-gray-400 dark:text-gray-500 mr-1 select-none">{label}</span>;
-                })()}
-                {canEditConnectorQuery && (
-                  <>
-                    <button
-                        onClick={() => refreshConnectedSheetQuery({ showToasts: true })}
-                        disabled={isConnectorRefreshing}
-                        className={`group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md transition-colors ${
-                            isConnectorRefreshing
-                              ? 'bg-neutral-100 dark:bg-neutral-800 cursor-not-allowed'
-                              : connectorNeedsReconnect
-                                ? 'text-amber-600 bg-amber-50 hover:bg-amber-100 dark:text-amber-300 dark:bg-amber-950/30 dark:hover:bg-amber-950/50'
-                                : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
-                        }`}
-                        title={connectorNeedsReconnect ? 'Reconnect this source, then refresh again' : lastRefreshedAt ? `Refresh (last: ${new Date(lastRefreshedAt).toLocaleString()})` : 'Refresh'}
-                    >
-                        {isConnectorRefreshing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCcw size={14} />}
-                    </button>
-                    <button
-                        onClick={() => setShowConnectorQueryPanel(!showConnectorQueryPanel)}
-                        className={`group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md transition-colors ${
-                            showConnectorQueryPanel ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
-                        }`}
-                        title="Edit query"
-                    >
-                        <Code2 size={14} />
-                    </button>
-                  </>
-                )}
-                {lastRefreshedAt && isClickhouseConnected && (() => {
-                  const diffMs = Date.now() - lastRefreshedAt;
-                  const m = Math.floor(diffMs / 60000);
-                  const label = m < 1 ? 'just now' : m < 60 ? `${m}m ago` : Math.floor(m / 60) < 24 ? `${Math.floor(m / 60)}h ago` : `${Math.floor(m / 1440)}d ago`;
-                  return <span className="text-xs text-gray-400 dark:text-gray-500 mr-1 select-none">{label}</span>;
-                })()}
-                {isPivot && (
-                    <button onClick={() => setShowPivotConfig(!showPivotConfig)} className={`group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md transition-colors ${showPivotConfig ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}>
-                        <Settings2 size={14} />
-                    </button>
-                )}
-                {isSparkline && (
-                     <button onClick={() => setShowSparklineConfig(!showSparklineConfig)} className={`group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md transition-colors ${showSparklineConfig ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}>
-                        <Settings2 size={14} />
-                    </button>
-                )}
-                {!isPivot && !isSparkline && (
-                    <>
-                        <button onClick={() => { const colIndex = activeCell ? parseCellId(activeCell)?.col : undefined; if(onAddPivot) onAddPivot(data.id, colIndex); }} className="group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors" title="Create Pivot Table">
-                            <Table size={14} />
-                        </button>
-                        <button onClick={() => { if(onAddSparkline) onAddSparkline(data.id); }} className="group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors" title="Create Sparklines">
-                            <TrendingUp size={14} />
-                        </button>
-                    </>
-                )}
-                <button onClick={() => { const colIndex = activeCell ? parseCellId(activeCell)?.col : undefined; const selectedCols = getSelectedColumns(); if (onAddChart) onAddChart(data.id, colIndex, selectedCols); }} className="group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors">
+                <button onClick={() => { const colIndex = activeCell ? parseCellId(activeCell)?.col : undefined; const selectedCols = getSelectedColumns(); if (onAddChart) onAddChart(data.id, colIndex, selectedCols); }} className="group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors" title="Create Chart">
                     <BarChart3 size={14} />
                 </button>
-                <button onClick={() => deleteSheet(data.id)} className="group/btn relative text-neutral-400 hover:text-neutral-600 p-1.5 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"><Trash2 size={14} /></button>
+
+                <div className="relative">
+                    <button
+                        ref={moreBtnRef}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={() => setShowMoreMenu(!showMoreMenu)}
+                        className={`group/btn relative p-1.5 rounded-md transition-colors ${showMoreMenu ? 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 dark:text-neutral-500'}`}
+                        title="More"
+                    >
+                        <MoreHorizontal size={14} />
+                    </button>
+                    <HeaderDropdownMenu anchorRef={moreBtnRef} isOpen={showMoreMenu} onClose={() => setShowMoreMenu(false)} width={180}>
+                        {hasLineage && (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); setShowMoreMenu(false); onToggleLineage?.(data.id); }}
+                                className={`px-3 py-2 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 flex items-center gap-2 w-full ${lineageVisible ? 'text-teal-600 dark:text-teal-400' : 'text-neutral-700 dark:text-neutral-200'}`}
+                            >
+                                <GitBranch size={14} /> Lineage
+                            </button>
+                        )}
+                        {canEditConnectorQuery && (
+                            <>
+                                <button
+                                    onClick={() => { setShowMoreMenu(false); refreshConnectedSheetQuery({ showToasts: true }); }}
+                                    disabled={isConnectorRefreshing}
+                                    className={`px-3 py-2 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 flex items-center gap-2 w-full ${connectorNeedsReconnect ? 'text-amber-600 dark:text-amber-400' : 'text-neutral-700 dark:text-neutral-200'}`}
+                                    title={connectorNeedsReconnect ? 'Reconnect this source, then refresh again' : lastRefreshedAt ? `Refresh (last: ${new Date(lastRefreshedAt).toLocaleString()})` : 'Refresh'}
+                                >
+                                    {isConnectorRefreshing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCcw size={14} />} Refresh
+                                </button>
+                                <button
+                                    onClick={() => { setShowMoreMenu(false); setShowConnectorQueryPanel(!showConnectorQueryPanel); }}
+                                    className={`px-3 py-2 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 flex items-center gap-2 w-full ${showConnectorQueryPanel ? 'text-teal-600 dark:text-teal-400' : 'text-neutral-700 dark:text-neutral-200'}`}
+                                >
+                                    <Code2 size={14} /> Edit query
+                                </button>
+                            </>
+                        )}
+                        {isPivot && (
+                            <button
+                                onClick={() => { setShowMoreMenu(false); setShowPivotConfig(!showPivotConfig); }}
+                                className={`px-3 py-2 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 flex items-center gap-2 w-full ${showPivotConfig ? 'text-teal-600 dark:text-teal-400' : 'text-neutral-700 dark:text-neutral-200'}`}
+                            >
+                                <Settings2 size={14} /> Pivot Settings
+                            </button>
+                        )}
+                        {isSparkline && (
+                            <button
+                                onClick={() => { setShowMoreMenu(false); setShowSparklineConfig(!showSparklineConfig); }}
+                                className={`px-3 py-2 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 flex items-center gap-2 w-full ${showSparklineConfig ? 'text-teal-600 dark:text-teal-400' : 'text-neutral-700 dark:text-neutral-200'}`}
+                            >
+                                <Settings2 size={14} /> Sparkline Settings
+                            </button>
+                        )}
+                        {!isPivot && !isSparkline && (
+                            <>
+                                <button
+                                    onClick={() => { setShowMoreMenu(false); const colIndex = activeCell ? parseCellId(activeCell)?.col : undefined; if (onAddPivot) onAddPivot(data.id, colIndex); }}
+                                    className="px-3 py-2 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 flex items-center gap-2 w-full"
+                                >
+                                    <Table size={14} /> Create Pivot Table
+                                </button>
+                                <button
+                                    onClick={() => { setShowMoreMenu(false); if (onAddSparkline) onAddSparkline(data.id); }}
+                                    className="px-3 py-2 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 flex items-center gap-2 w-full"
+                                >
+                                    <TrendingUp size={14} /> Create Sparklines
+                                </button>
+                            </>
+                        )}
+                    </HeaderDropdownMenu>
+                </div>
+
+                <button onClick={() => deleteSheet(data.id)} className="group/btn relative text-neutral-400 hover:text-red-500 p-1.5 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="Delete"><Trash2 size={14} /></button>
             </div>
         </div>
 
@@ -1561,6 +1630,7 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
                                     onAction={(action, param) => handleRowMenuAction(actualRowIdx, action, param)}
                                     isHeaderRow={isHeaderRow}
                                     isReadOnly={isReadOnly}
+                                    currentFormat={data.cells[getCellId(0, actualRowIdx)]?.format}
                                 />
                             </div>
                         );
@@ -1660,3 +1730,5 @@ export const SheetNode: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot
     </div>
   );
 };
+
+export const SheetNode = React.memo(SheetNodeComponent, areSheetNodePropsEqual);

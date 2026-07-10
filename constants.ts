@@ -21,6 +21,7 @@ export const MAX_INITIAL_VIEWPORT_COVERAGE = 0.5;
 
 export const MIN_SCALE = 0.1;
 export const MAX_SCALE = 3;
+export const SHEET_CANVAS_SCROLL_PASSTHROUGH_SCALE = 0.6;
 
 export const COLOR_PALETTE = {
   light: {
