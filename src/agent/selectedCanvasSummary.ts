@@ -172,11 +172,21 @@ function summarizeSelectedChart(
   };
 }
 
+// Notes may hold Markdown with embedded component tags (or legacy HTML). Strip
+// markup so the agent-facing preview reads as clean prose.
+function stripMarkupForPreview(content: string): string {
+  return content
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[#*_`>]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function summarizeSelectedNote(note: NoteData): SelectedCanvasNote {
   return {
     type: 'note',
     noteId: note.id,
-    preview: note.content.slice(0, NOTE_PREVIEW_MAX_LENGTH),
+    preview: stripMarkupForPreview(note.content).slice(0, NOTE_PREVIEW_MAX_LENGTH),
   };
 }
 

@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { NoteData } from '../types';
 import { GripVertical, Trash2, Bold, Italic, Underline, List, ListOrdered } from 'lucide-react';
 import { useStore } from '../store';
+import { MarkdownNote } from './mdx/MarkdownNote';
 
 interface NoteNodeProps {
   id: string;
@@ -12,7 +13,15 @@ interface NoteNodeProps {
   onMouseDown: (e: React.MouseEvent) => void;
 }
 
-export const NoteNode: React.FC<NoteNodeProps> = ({ id, darkMode, initialEditing, isPendingDelete, onMouseDown }) => {
+const areNoteNodePropsEqual = (prev: NoteNodeProps, next: NoteNodeProps) => (
+  prev.id === next.id &&
+  prev.darkMode === next.darkMode &&
+  prev.initialEditing === next.initialEditing &&
+  prev.isPendingDelete === next.isPendingDelete &&
+  prev.onMouseDown === next.onMouseDown
+);
+
+const NoteNodeComponent: React.FC<NoteNodeProps> = ({ id, darkMode, initialEditing, isPendingDelete, onMouseDown }) => {
   const data = useStore(state => state.notes[id]);
   const selected = useStore(state => state.selectedIds.has(id));
   const scale = useStore(state => state.transform.scale);
@@ -26,20 +35,26 @@ export const NoteNode: React.FC<NoteNodeProps> = ({ id, darkMode, initialEditing
   const [displayContent, setDisplayContent] = useState(data?.content || '');
 
   const editorRef = useRef<HTMLDivElement>(null);
+  const markdownEditorRef = useRef<HTMLTextAreaElement>(null);
 
   if (!data) return null;
+
+  // MDX-lite note: rendered as Markdown + whitelisted live components; edited as
+  // raw Markdown source (WYSIWYG editing lands in Phase 2). Legacy notes stay HTML.
+  const isMarkdown = data.format === 'markdown';
 
   useEffect(() => {
       setDisplayContent(data.content);
   }, [data.content]);
 
   useEffect(() => {
+    if (isMarkdown) return; // HTML-only: markdown notes edit via a textarea below.
     if (isEditing && editorRef.current) {
       if (editorRef.current.innerHTML !== displayContent) {
          editorRef.current.innerHTML = displayContent;
       }
       editorRef.current.focus();
-      
+
       const range = document.createRange();
       range.selectNodeContents(editorRef.current);
       range.collapse(false);
@@ -49,7 +64,7 @@ export const NoteNode: React.FC<NoteNodeProps> = ({ id, darkMode, initialEditing
         sel.addRange(range);
       }
     }
-  }, [isEditing, displayContent]);
+  }, [isEditing, displayContent, isMarkdown]);
 
   useEffect(() => {
     if (!resizing) return;
@@ -130,6 +145,18 @@ export const NoteNode: React.FC<NoteNodeProps> = ({ id, darkMode, initialEditing
       setIsEditing(false);
   };
 
+  const handleMarkdownBlur = () => {
+      if (markdownEditorRef.current) {
+          const currentMarkdown = markdownEditorRef.current.value;
+          if (currentMarkdown !== data.content) {
+              saveSnapshot();
+              setDisplayContent(currentMarkdown);
+              updateNote(data.id, { content: currentMarkdown });
+          }
+      }
+      setIsEditing(false);
+  };
+
   const ToolbarButton = ({ icon: Icon, cmd, arg }: { icon: any, cmd: string, arg?: string }) => (
     <button
         onMouseDown={(e) => {
@@ -167,7 +194,7 @@ export const NoteNode: React.FC<NoteNodeProps> = ({ id, darkMode, initialEditing
             <GripVertical size={16} />
          </div>
 
-         {isEditing && (
+         {isEditing && !isMarkdown && (
             <div className="absolute top-10 left-1/2 -translate-x-1/2 flex flex-col bg-white dark:bg-neutral-800 rounded-lg shadow-xl border border-neutral-100 dark:border-neutral-700 overflow-hidden z-[60] w-8 p-0.5">
                 <ToolbarButton icon={Bold} cmd="bold" />
                 <ToolbarButton icon={Italic} cmd="italic" />
@@ -190,19 +217,43 @@ export const NoteNode: React.FC<NoteNodeProps> = ({ id, darkMode, initialEditing
       </div>
 
       <div className="flex-1 relative h-full">
-         <div 
-            ref={editorRef}
-            className={`w-full h-full p-3 outline-none rich-text-content text-neutral-800 dark:text-neutral-200 leading-relaxed text-[15px] ${isEditing ? 'cursor-text' : 'cursor-default'}`}
-            contentEditable={isEditing}
-            suppressContentEditableWarning
-            onBlur={handleBlur}
-            dangerouslySetInnerHTML={!isEditing ? { __html: displayContent } : undefined}
-            onDoubleClick={() => setIsEditing(true)}
-            style={{ 
-                overflowWrap: 'break-word',
-                backgroundColor: 'transparent'
-            }}
-         />
+         {isMarkdown && isEditing && (
+            <textarea
+               ref={markdownEditorRef}
+               className="w-full h-full p-3 outline-none resize-none bg-transparent font-mono text-[13px] leading-relaxed text-neutral-800 dark:text-neutral-200 cursor-text"
+               defaultValue={displayContent}
+               onBlur={handleMarkdownBlur}
+               autoFocus
+            />
+         )}
+         {isMarkdown && !isEditing && (
+            <div
+               className="w-full h-full rich-text-content text-neutral-800 dark:text-neutral-200 leading-relaxed text-[15px] cursor-default"
+               onDoubleClick={() => setIsEditing(true)}
+               style={{ overflowWrap: 'break-word' }}
+            >
+               {displayContent
+                  ? <MarkdownNote content={displayContent} darkMode={darkMode} />
+                  : data.legacyHtml
+                     ? <div className="p-3" dangerouslySetInnerHTML={{ __html: data.legacyHtml }} />
+                     : null}
+            </div>
+         )}
+         {!isMarkdown && (
+            <div
+               ref={editorRef}
+               className={`w-full h-full p-3 outline-none rich-text-content text-neutral-800 dark:text-neutral-200 leading-relaxed text-[15px] ${isEditing ? 'cursor-text' : 'cursor-default'}`}
+               contentEditable={isEditing}
+               suppressContentEditableWarning
+               onBlur={handleBlur}
+               dangerouslySetInnerHTML={!isEditing ? { __html: displayContent } : undefined}
+               onDoubleClick={() => setIsEditing(true)}
+               style={{
+                   overflowWrap: 'break-word',
+                   backgroundColor: 'transparent'
+               }}
+            />
+         )}
          
          <div className={`absolute inset-0 border border-transparent rounded-lg pointer-events-none -z-10 transition-colors ${!selected ? 'group-hover:border-neutral-200 dark:group-hover:border-neutral-700' : ''}`} />
          
@@ -222,3 +273,5 @@ export const NoteNode: React.FC<NoteNodeProps> = ({ id, darkMode, initialEditing
     </div>
   );
 };
+
+export const NoteNode = React.memo(NoteNodeComponent, areNoteNodePropsEqual);

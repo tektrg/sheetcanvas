@@ -5,6 +5,7 @@ import { refreshPivotTable } from './utils/pivotHelpers';
 import { refreshSparklineTable } from './utils/sparklineHelpers';
 import { saveFullState, saveIncrementalState, loadAppState } from './utils/persistence';
 import { initSheetCalculation, updateSheetCalculation, deleteSheetCalculation } from './utils/calculationEngine';
+import { htmlToMarkdown } from './utils/htmlToMarkdown';
 
 export interface AppState {
   sheets: Record<string, SheetData>;
@@ -149,6 +150,32 @@ const materializeDerivedSheet = (
     return materializedSheet;
 };
 
+// Migrate a legacy HTML sticky note to the MDX-lite Markdown format on load.
+// The original HTML is preserved (legacyHtml) as a recovery net. Safety net:
+// if non-trivial HTML converts to nothing, keep the note as HTML so no content
+// is ever lost to a bad conversion.
+const migrateNoteToMarkdown = (note: NoteData): { note: NoteData; changed: boolean } => {
+    if (note.format === 'markdown') return { note, changed: false };
+
+    const original = note.content ?? '';
+    const hadContent = original.trim() !== '' && original.trim() !== '<br>';
+    const markdown = htmlToMarkdown(original);
+
+    if (hadContent && markdown.trim() === '') {
+        return { note, changed: false };
+    }
+
+    return {
+        note: {
+            ...note,
+            content: markdown,
+            format: 'markdown',
+            legacyHtml: hadContent ? original : undefined,
+        },
+        changed: true,
+    };
+};
+
 export const useStore = create<AppState>((set, get) => ({
   sheets: {},
   charts: {},
@@ -194,7 +221,12 @@ export const useStore = create<AppState>((set, get) => ({
 
           const notes: Record<string, NoteData> = {};
           const noteIds: string[] = [];
-          loaded.notes.forEach(n => { notes[n.id] = n; noteIds.push(n.id); });
+          loaded.notes.forEach(n => {
+              const { note: migratedNote, changed } = migrateNoteToMarkdown(n as NoteData);
+              notes[migratedNote.id] = migratedNote;
+              noteIds.push(migratedNote.id);
+              if (changed) markDirty('note', migratedNote.id);
+          });
 
           const privateQueryResults: Record<string, PrivateQueryResult> = {};
           const privateQueryResultIds: string[] = [];

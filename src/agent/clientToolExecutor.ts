@@ -1,5 +1,5 @@
 import { useStore } from '../../store';
-import type { CellData, ChartData, ChartConfig, SheetData, FilterCondition, SortConfig, SelectionContext, ChartType, PivotConfig, PivotValue, SparklineConfig, ConnectorType } from '../../types';
+import type { CellData, ChartData, ChartConfig, SheetData, NoteData, NoteColor, FilterCondition, SortConfig, SelectionContext, ChartType, PivotConfig, PivotValue, SparklineConfig, ConnectorType } from '../../types';
 import { parseCellId, getCellId } from '../../utils/formulas';
 import {
   CELL_HEIGHT,
@@ -7,8 +7,10 @@ import {
   DEFAULT_CHART_SIZE,
   HEADER_COL_WIDTH,
   HEADER_ROW_HEIGHT,
+  INITIAL_COLS,
+  INITIAL_ROWS,
 } from '../../constants';
-import { accumulateChartFocus, accumulateSheetFocus } from './agentFocusAccumulator';
+import { accumulateChartFocus, accumulateNoteFocus, accumulateSheetFocus } from './agentFocusAccumulator';
 import { runSheetQuery, sheetTableSchema } from './alasqlAdapter';
 import { getClickhouseSchema, describeClickhouseTable } from '../../utils/clickhouseBackend';
 import { getConnectorQueryProvider } from '../../utils/connectorQuery';
@@ -34,6 +36,57 @@ import {
 } from './querySheetTools';
 
 const generateId = () => Math.random().toString(36).slice(2, 11);
+
+const DEFAULT_NOTE_SIZE = { width: 420, height: 320 };
+
+// Upper bound on cells an agent may drop into one createSheet call. Guards
+// against a runaway paste; large/real datasets belong in a connector sheet.
+const MAX_CREATE_SHEET_CELLS = 20000;
+
+// Place a new agent-created object (note or sheet) just to the right of
+// everything already on the canvas, so it never lands on top of existing
+// objects. Falls back to a fixed spot on an empty canvas.
+const getCanvasPlacement = (store: ReturnType<typeof useStore.getState>): { x: number; y: number } => {
+  let maxRight = -Infinity;
+  let topY = Infinity;
+  const consider = (x: number, y: number, width: number) => {
+    maxRight = Math.max(maxRight, x + width);
+    topY = Math.min(topY, y);
+  };
+  store.sheetIds.forEach((id) => {
+    const s = store.sheets[id];
+    if (s) consider(s.position.x, s.position.y, s.size.width * CELL_WIDTH + HEADER_COL_WIDTH);
+  });
+  store.chartIds.forEach((id) => {
+    const c = store.charts[id];
+    if (c) consider(c.position.x, c.position.y, c.size.width);
+  });
+  store.noteIds.forEach((id) => {
+    const n = store.notes[id];
+    if (n) consider(n.position.x, n.position.y, n.size.width);
+  });
+  if (maxRight === -Infinity) return { x: 200, y: 200 };
+  return { x: maxRight + 60, y: topY === Infinity ? 200 : topY };
+};
+
+// Derive a short human-readable title from a note's raw content: the first
+// heading text, else the first non-empty line. Used by listNotes/readNote so
+// agents can recognize a note without re-parsing its whole body.
+const deriveNoteTitle = (content: string): string => {
+  for (const line of (content ?? '').split('\n')) {
+    const t = line.trim();
+    if (!t) continue;
+    const heading = t.match(/^#{1,6}\s+(.*)/);
+    return (heading ? heading[1] : t).slice(0, 120) || '(untitled note)';
+  }
+  return '(empty note)';
+};
+
+// Collapse a note's content into a one-line preview snippet for listNotes.
+const deriveNotePreview = (content: string): string => {
+  const flat = (content ?? '').replace(/\s+/g, ' ').trim();
+  return flat.length > 160 ? `${flat.slice(0, 157)}…` : flat;
+};
 
 export function centerCanvasOnSheet(
   sheet: SheetData,
@@ -497,6 +550,63 @@ export async function executeClientTool(
         return { ok: true, sheetId: sheet.id, updatedCount: Object.keys(updates).length };
       }
 
+      case 'createSheet': {
+        const createInput = input as { title?: string; data?: string[][] };
+        const rows = createInput.data;
+
+        if (rows && rows.length > 0) {
+          const columnCount = rows.reduce((max, row) => Math.max(max, row.length), 0);
+          const totalCells = rows.length * columnCount;
+          if (totalCells > MAX_CREATE_SHEET_CELLS) {
+            return {
+              ok: false,
+              error: `Too much data: ${rows.length} rows × ${columnCount} cols = ${totalCells} cells exceeds the ${MAX_CREATE_SHEET_CELLS}-cell limit for a single created sheet. Split the data or query it through a connector.`,
+            };
+          }
+
+          const cells: Record<string, CellData> = {};
+          rows.forEach((row, rowIndex) => {
+            row.forEach((raw, colIndex) => {
+              // Skip empty cells so the stored map stays sparse, matching how a
+              // hand-filled sheet only persists cells the user actually typed.
+              if (raw === '') return;
+              const id = getCellId(colIndex, rowIndex);
+              // Leave value null so the calc engine computes it (formulas resolve,
+              // numeric literals become numbers instead of the string "42").
+              cells[id] = { raw, value: null } as CellData;
+            });
+          });
+
+          const newSheet: SheetData = {
+            id: generateId(),
+            title: createInput.title ?? 'New Sheet',
+            position: getCanvasPlacement(store),
+            // Give the data room to breathe, like a normal spreadsheet: never
+            // smaller than the default blank grid.
+            size: {
+              width: Math.max(columnCount, INITIAL_COLS),
+              height: Math.max(rows.length, INITIAL_ROWS),
+            },
+            cells,
+          };
+          store.addSheet(newSheet);
+          accumulateSheetFocus(useStore.getState().sheets[newSheet.id] ?? newSheet);
+          return { ok: true, sheetId: newSheet.id, rowCount: rows.length, columnCount };
+        }
+
+        // No data → blank grid matching the app's own "New Sheet" button.
+        const blankSheet: SheetData = {
+          id: generateId(),
+          title: createInput.title ?? 'New Sheet',
+          position: getCanvasPlacement(store),
+          size: { width: INITIAL_COLS, height: INITIAL_ROWS },
+          cells: {},
+        };
+        store.addSheet(blankSheet);
+        accumulateSheetFocus(blankSheet);
+        return { ok: true, sheetId: blankSheet.id, rowCount: 0, columnCount: 0 };
+      }
+
       case 'applyFilter': {
         const sheet = store.sheets[input.sheetId];
         if (!sheet) return { ok: false, error: `Unknown sheetId: ${input.sheetId}` };
@@ -663,6 +773,83 @@ export async function executeClientTool(
           },
           labelSummary,
         };
+      }
+
+      case 'createNote': {
+        const noteInput = input as { content: string; title?: string; color?: NoteColor };
+        const trimmed = (noteInput.content ?? '').trim();
+        if (!trimmed) return { ok: false, error: 'content is required' };
+
+        const startsWithHeading = /^#{1,6}\s/.test(trimmed);
+        const content = noteInput.title && !startsWithHeading
+          ? `# ${noteInput.title}\n\n${trimmed}`
+          : trimmed;
+
+        const note: NoteData = {
+          id: generateId(),
+          position: getCanvasPlacement(store),
+          size: { ...DEFAULT_NOTE_SIZE },
+          content,
+          color: noteInput.color ?? 'yellow',
+          format: 'markdown',
+        };
+        store.addNote(note);
+        accumulateNoteFocus(note);
+        return { ok: true, noteId: note.id };
+      }
+
+      case 'listNotes': {
+        const notes = store.noteIds
+          .map((id) => store.notes[id])
+          .filter((n): n is NoteData => !!n)
+          .map((n) => ({
+            noteId: n.id,
+            title: deriveNoteTitle(n.content),
+            preview: deriveNotePreview(n.content),
+            color: n.color,
+            format: n.format ?? 'html',
+          }));
+        return { ok: true, notes };
+      }
+
+      case 'readNote': {
+        const { noteId } = input as { noteId: string };
+        const note = store.notes[noteId];
+        if (!note) return { ok: false, error: `Unknown noteId: ${noteId}` };
+        return {
+          ok: true,
+          noteId: note.id,
+          title: deriveNoteTitle(note.content),
+          content: note.content,
+          color: note.color,
+          format: note.format ?? 'html',
+        };
+      }
+
+      case 'updateNote': {
+        const upd = input as { noteId: string; content?: string; color?: NoteColor };
+        const note = store.notes[upd.noteId];
+        if (!note) return { ok: false, error: `Unknown noteId: ${upd.noteId}` };
+        const updates: Partial<NoteData> = {};
+        if (upd.content !== undefined) {
+          const trimmed = upd.content.trim();
+          if (!trimmed) return { ok: false, error: 'content cannot be empty' };
+          updates.content = trimmed;
+        }
+        if (upd.color !== undefined) updates.color = upd.color;
+        if (Object.keys(updates).length === 0) {
+          return { ok: false, error: 'Provide at least one of content or color to update.' };
+        }
+        store.updateNote(note.id, updates);
+        accumulateNoteFocus({ ...note, ...updates });
+        return { ok: true, noteId: note.id };
+      }
+
+      case 'deleteNote': {
+        const { noteId } = input as { noteId: string };
+        if (!store.notes[noteId]) return { ok: false, error: `Unknown noteId: ${noteId}` };
+        store.deleteNote(noteId);
+        return { ok: true, noteId };
       }
 
       case 'createPivot': {

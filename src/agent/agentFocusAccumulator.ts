@@ -1,6 +1,6 @@
 import { useStore } from '../../store';
 import { CELL_WIDTH, CELL_HEIGHT, HEADER_COL_WIDTH, HEADER_ROW_HEIGHT } from '../../constants';
-import type { ChartData, SheetData } from '../../types';
+import type { ChartData, NoteData, SheetData } from '../../types';
 
 const FOCUS_PADDING_PX = 60;
 // Keep scale within a comfortable viewing range when framing agent output.
@@ -29,6 +29,16 @@ export function accumulateChartFocus(chart: ChartData): void {
     y: chart.position.y,
     width: chart.size.width,
     height: chart.size.height,
+  });
+}
+
+export function accumulateNoteFocus(note: NoteData): void {
+  // A note's size is already in pixels, so its rect is position + size directly.
+  pendingRects.push({
+    x: note.position.x,
+    y: note.position.y,
+    width: note.size.width,
+    height: note.size.height,
   });
 }
 

@@ -1085,3 +1085,205 @@ describe('executeClientTool selected canvas context', () => {
     expect(useStore.getState().sheetIds).toEqual([]);
   });
 });
+
+describe('createSheet tool execution', () => {
+  const emptyCanvas = () =>
+    useStore.setState({ sheets: {}, sheetIds: [], charts: {}, chartIds: [], notes: {}, noteIds: [] });
+
+  it('creates a blank sheet with the default grid when no data is given', async () => {
+    emptyCanvas();
+    const result = await executeClientTool('createSheet', { title: 'Scratch' }, emptySelectionResolver);
+
+    expect(result.ok).toBe(true);
+    const sheetId = result.sheetId as string;
+    const sheet = useStore.getState().sheets[sheetId];
+    expect(sheet.title).toBe('Scratch');
+    expect(sheet.size).toEqual({ width: 6, height: 8 });
+    expect(sheet.cells).toEqual({});
+    expect(useStore.getState().sheetIds).toContain(sheetId);
+    expect(result).toEqual(expect.objectContaining({ rowCount: 0, columnCount: 0 }));
+  });
+
+  it('creates a pre-filled sheet, computes formulas, and keeps empty cells sparse', async () => {
+    emptyCanvas();
+    const result = await executeClientTool(
+      'createSheet',
+      {
+        title: 'Regional summary',
+        data: [
+          ['Region', 'Revenue'],
+          ['West', '100'],
+          ['East', '=B2*2'],
+        ],
+      },
+      emptySelectionResolver,
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result).toEqual(expect.objectContaining({ rowCount: 3, columnCount: 2 }));
+    const sheet = useStore.getState().sheets[result.sheetId as string];
+    // Numeric literal is coerced by the calc engine, not left as the string "100".
+    expect(sheet.cells.B2.value).toBe(100);
+    // Formula referencing B2 resolves to 200.
+    expect(sheet.cells.B3.value).toBe(200);
+    expect(sheet.cells.A1.value).toBe('Region');
+    // Data smaller than the default grid still gets breathing room.
+    expect(sheet.size).toEqual({ width: 6, height: 8 });
+  });
+
+  it('places a new sheet to the right of existing canvas objects', async () => {
+    const existing: SheetData = {
+      id: 's1',
+      title: 'S1',
+      position: { x: 0, y: 0 },
+      size: { width: 4, height: 3 },
+      cells: {},
+    };
+    useStore.setState({ sheets: { s1: existing }, sheetIds: ['s1'], charts: {}, chartIds: [], notes: {}, noteIds: [] });
+
+    const result = await executeClientTool('createSheet', {}, emptySelectionResolver);
+    const sheet = useStore.getState().sheets[result.sheetId as string];
+    expect(sheet.position.x).toBeGreaterThan(0);
+  });
+
+  it('rejects a data grid that exceeds the cell cap', async () => {
+    emptyCanvas();
+    const data = Array.from({ length: 2000 }, () => Array.from({ length: 20 }, () => 'x'));
+    const result = await executeClientTool('createSheet', { data }, emptySelectionResolver);
+
+    expect(result.ok).toBe(false);
+    expect(result.error as string).toContain('cell limit');
+    expect(useStore.getState().sheetIds).toEqual([]);
+  });
+});
+
+describe('createNote tool execution', () => {
+  const emptyCanvas = () =>
+    useStore.setState({ sheets: {}, sheetIds: [], charts: {}, chartIds: [], notes: {}, noteIds: [] });
+
+  it('creates a live markdown note and returns its id', async () => {
+    emptyCanvas();
+
+    const result = await executeClientTool(
+      'createNote',
+      { content: 'Revenue is **up**.\n\n<CellValue sheet="s1" cell="B2"/>' },
+      emptySelectionResolver,
+    );
+
+    expect(result.ok).toBe(true);
+    const noteId = (result as { noteId: string }).noteId;
+    expect(noteId).toBeTruthy();
+
+    const note = useStore.getState().notes[noteId];
+    expect(note).toBeTruthy();
+    expect(note.format).toBe('markdown');
+    expect(note.content).toContain('<CellValue');
+    expect(useStore.getState().noteIds).toContain(noteId);
+  });
+
+  it('adds the title as an H1 heading when the content has no heading', async () => {
+    emptyCanvas();
+    const result = await executeClientTool(
+      'createNote',
+      { content: 'Body text', title: 'Quarterly Report' },
+      emptySelectionResolver,
+    );
+    const note = useStore.getState().notes[(result as { noteId: string }).noteId];
+    expect(note.content.startsWith('# Quarterly Report')).toBe(true);
+  });
+
+  it('does not add a title when the content already starts with a heading', async () => {
+    emptyCanvas();
+    const result = await executeClientTool(
+      'createNote',
+      { content: '# Existing Title\n\nBody', title: 'Ignored' },
+      emptySelectionResolver,
+    );
+    const note = useStore.getState().notes[(result as { noteId: string }).noteId];
+    expect(note.content.startsWith('# Existing Title')).toBe(true);
+    expect(note.content).not.toContain('Ignored');
+  });
+
+  it('places the note to the right of existing canvas objects', async () => {
+    const sheet: SheetData = {
+      id: 's1',
+      title: 'S1',
+      position: { x: 0, y: 0 },
+      size: { width: 4, height: 3 },
+      cells: {},
+    };
+    useStore.setState({ sheets: { s1: sheet }, sheetIds: ['s1'], charts: {}, chartIds: [], notes: {}, noteIds: [] });
+
+    const result = await executeClientTool('createNote', { content: 'x' }, emptySelectionResolver);
+    const note = useStore.getState().notes[(result as { noteId: string }).noteId];
+    expect(note.position.x).toBeGreaterThan(0);
+  });
+
+  it('rejects empty content', async () => {
+    const result = await executeClientTool('createNote', { content: '   ' }, emptySelectionResolver);
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe('note read/list/update/delete tool execution', () => {
+  const emptyCanvas = () =>
+    useStore.setState({ sheets: {}, sheetIds: [], charts: {}, chartIds: [], notes: {}, noteIds: [] });
+
+  const seedNote = async (content: string) => {
+    emptyCanvas();
+    const result = await executeClientTool('createNote', { content }, emptySelectionResolver);
+    return (result as { noteId: string }).noteId;
+  };
+
+  it('listNotes returns id, derived title and preview for each note', async () => {
+    const noteId = await seedNote('# Q2 Summary\n\nRevenue is up across all regions this quarter.');
+    const result = await executeClientTool('listNotes', {}, emptySelectionResolver);
+    expect(result.ok).toBe(true);
+    const notes = (result as { notes: Array<{ noteId: string; title: string; preview: string }> }).notes;
+    expect(notes).toHaveLength(1);
+    expect(notes[0].noteId).toBe(noteId);
+    expect(notes[0].title).toBe('Q2 Summary');
+    expect(notes[0].preview).toContain('Revenue is up');
+  });
+
+  it('readNote returns the raw markdown content, or errors on a bad id', async () => {
+    const noteId = await seedNote('Body with <CellValue sheet="s1" cell="B2"/> inline.');
+    const ok = await executeClientTool('readNote', { noteId }, emptySelectionResolver);
+    expect(ok.ok).toBe(true);
+    expect((ok as { content: string }).content).toContain('<CellValue');
+
+    const bad = await executeClientTool('readNote', { noteId: 'nope' }, emptySelectionResolver);
+    expect(bad.ok).toBe(false);
+  });
+
+  it('updateNote replaces content and color in place', async () => {
+    const noteId = await seedNote('Original body');
+    const result = await executeClientTool(
+      'updateNote',
+      { noteId, content: 'Revised body', color: 'green' },
+      emptySelectionResolver,
+    );
+    expect(result.ok).toBe(true);
+    const note = useStore.getState().notes[noteId];
+    expect(note.content).toBe('Revised body');
+    expect(note.color).toBe('green');
+  });
+
+  it('updateNote rejects a bad id, empty content, and no-op input', async () => {
+    const noteId = await seedNote('Body');
+    expect((await executeClientTool('updateNote', { noteId: 'nope', content: 'x' }, emptySelectionResolver)).ok).toBe(false);
+    expect((await executeClientTool('updateNote', { noteId, content: '   ' }, emptySelectionResolver)).ok).toBe(false);
+    expect((await executeClientTool('updateNote', { noteId }, emptySelectionResolver)).ok).toBe(false);
+  });
+
+  it('deleteNote removes the note, or errors on a bad id', async () => {
+    const noteId = await seedNote('Disposable');
+    const result = await executeClientTool('deleteNote', { noteId }, emptySelectionResolver);
+    expect(result.ok).toBe(true);
+    expect(useStore.getState().notes[noteId]).toBeUndefined();
+    expect(useStore.getState().noteIds).not.toContain(noteId);
+
+    const bad = await executeClientTool('deleteNote', { noteId: 'nope' }, emptySelectionResolver);
+    expect(bad.ok).toBe(false);
+  });
+});
