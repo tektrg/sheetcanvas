@@ -1,6 +1,8 @@
 import { useStore } from '../../store';
 import { computeDateAnchors } from '../../utils/dates';
 import type { SelectionContext } from '../../types';
+import { resolveAnalyticsKnowledge, toAgentAnalyticsKnowledgeContext } from './analyticsKnowledgeResolver';
+import { getCachedUserKnowledgeOverlays } from './analyticsKnowledgeStore';
 import { getColumnIdForIndex, getColumnIdSpan, getSheetDataBounds } from './sheetBounds';
 
 const MAX_PRIVATE_RESULTS_IN_CONTEXT = 10;
@@ -63,9 +65,17 @@ export function buildAgentContextLine(
       updatedAt: result.updatedAt,
     };
   });
+  const analyticsKnowledge = toAgentAnalyticsKnowledgeContext(
+    resolveAnalyticsKnowledge({
+      connectors: state.connections.map((connection) => connection.type),
+      overlays: getCachedUserKnowledgeOverlays(),
+      nowIso: nowStr,
+    }),
+  );
   return JSON.stringify({
     sheets,
     privateQueryResults,
+    analyticsKnowledge,
     selection: attachSelection ? selection : null,
     now: nowStr,
     dateAnchors,

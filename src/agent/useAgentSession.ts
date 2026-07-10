@@ -5,6 +5,7 @@ import type { SelectionContext } from '../../types';
 import { executeClientTool } from './clientToolExecutor';
 import { flushAgentFocus } from './agentFocusAccumulator';
 import { buildAgentContextLine } from './contextBuilder';
+import { hydrateAnalyticsKnowledgeOverlays } from './analyticsKnowledgeStore';
 import { getBackendBaseUrl } from '../../utils/backendApi';
 
 // Stored in localStorage so all conversations share a single quota bucket.
@@ -93,6 +94,10 @@ export function useAgentSession({ getSelection, getAttachSelection }: UseAgentSe
   useEffect(() => {
     chatRef.current = chat;
   }, [chat]);
+
+  useEffect(() => {
+    void hydrateAnalyticsKnowledgeOverlays();
+  }, []);
 
   return { ...chat, sessionId };
 }
