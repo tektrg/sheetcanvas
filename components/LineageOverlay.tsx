@@ -36,14 +36,14 @@ const getNodeRect = (
   sheets: Record<string, SheetData>,
   charts: Record<string, ChartData>
 ): NodeRect | null => {
-  const node = kind === 'sheet' ? sheets[id] : charts[id];
+  const sheet = kind === 'sheet' ? sheets[id] : undefined;
+  const chart = kind === 'chart' ? charts[id] : undefined;
+  const node = sheet ?? chart;
   if (!node) return null;
 
-  const width = kind === 'sheet'
-    ? getSheetWidth(node)
-    : node.size.width;
-  const height = kind === 'sheet'
-    ? node.size.height * CELL_HEIGHT + HEADER_ROW_HEIGHT
+  const width = sheet ? getSheetWidth(sheet) : node.size.width;
+  const height = sheet
+    ? sheet.size.height * CELL_HEIGHT + HEADER_ROW_HEIGHT
     : node.size.height;
 
   return {
@@ -98,7 +98,7 @@ const getAnchorPath = (sourceRect: NodeRect, targetRect: NodeRect) => {
   };
 };
 
-export const LineageOverlay: React.FC<LineageOverlayProps> = ({ links, sheets, charts, darkMode }) => {
+const LineageOverlayComponent: React.FC<LineageOverlayProps> = ({ links, sheets, charts, darkMode }) => {
   const renderedLinks = useMemo(() => {
     return links.flatMap((link) => {
       const targetRect = getNodeRect(link.targetId, link.targetKind, sheets, charts);
@@ -172,3 +172,5 @@ export const LineageOverlay: React.FC<LineageOverlayProps> = ({ links, sheets, c
     </svg>
   );
 };
+
+export const LineageOverlay = React.memo(LineageOverlayComponent);

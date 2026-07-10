@@ -11,6 +11,12 @@ export interface LineageLink {
   missingSourceId?: string;
 }
 
+interface LineageIndexes {
+  parentByNodeId: Map<string, string>;
+  kindByNodeId: Map<string, LineageNodeKind>;
+  childrenBySourceId: Map<string, LineageLink[]>;
+}
+
 const getSheetSourceId = (sheet?: SheetData) =>
   sheet?.pivotConfig?.sourceSheetId || sheet?.sparklineConfig?.sourceSheetId || null;
 
@@ -67,6 +73,68 @@ const getChildLinks = (
   return childLinks;
 };
 
+export const buildLineageIndexes = (
+  sheets: Record<string, SheetData>,
+  charts: Record<string, ChartData>
+): LineageIndexes => {
+  const parentByNodeId = new Map<string, string>();
+  const kindByNodeId = new Map<string, LineageNodeKind>();
+  const childrenBySourceId = new Map<string, LineageLink[]>();
+
+  const addChildLink = (sourceId: string, link: LineageLink) => {
+    const links = childrenBySourceId.get(sourceId);
+    if (links) {
+      links.push(link);
+    } else {
+      childrenBySourceId.set(sourceId, [link]);
+    }
+  };
+
+  Object.values(sheets).forEach((sheet) => {
+    kindByNodeId.set(sheet.id, 'sheet');
+    const sourceId = getSheetSourceId(sheet);
+    if (!sourceId) return;
+
+    parentByNodeId.set(sheet.id, sourceId);
+    addChildLink(sourceId, {
+      id: `${sourceId}->${sheet.id}`,
+      sourceId,
+      targetId: sheet.id,
+      sourceKind: 'sheet',
+      targetKind: 'sheet',
+    });
+  });
+
+  Object.values(charts).forEach((chart) => {
+    kindByNodeId.set(chart.id, 'chart');
+    parentByNodeId.set(chart.id, chart.sourceSheetId);
+    addChildLink(chart.sourceSheetId, {
+      id: `${chart.sourceSheetId}->${chart.id}`,
+      sourceId: chart.sourceSheetId,
+      targetId: chart.id,
+      sourceKind: 'sheet',
+      targetKind: 'chart',
+    });
+  });
+
+  return { parentByNodeId, kindByNodeId, childrenBySourceId };
+};
+
+export const getLineageAvailableNodeIds = (
+  nodeIds: string[],
+  indexes: LineageIndexes
+) => {
+  const availableIds = new Set<string>();
+
+  nodeIds.forEach((id) => {
+    if (indexes.parentByNodeId.has(id) || indexes.childrenBySourceId.has(id)) {
+      availableIds.add(id);
+    }
+  });
+
+  return availableIds;
+};
+
 export const hasLineageForNode = (
   nodeId: string,
   sheets: Record<string, SheetData>,
@@ -78,7 +146,8 @@ export const hasLineageForNode = (
 export const buildLineageLinks = (
   activeNodeIds: string[],
   sheets: Record<string, SheetData>,
-  charts: Record<string, ChartData>
+  charts: Record<string, ChartData>,
+  indexes = buildLineageIndexes(sheets, charts)
 ) => {
   const links = new Map<string, LineageLink>();
 
@@ -92,10 +161,10 @@ export const buildLineageLinks = (
 
     while (currentId && !visited.has(currentId)) {
       visited.add(currentId);
-      const parentId = getNodeSourceSheetId(currentId, sheets, charts);
+      const parentId = indexes.parentByNodeId.get(currentId) ?? null;
       if (!parentId) return;
 
-      const targetKind = getNodeKind(currentId, sheets, charts);
+      const targetKind = indexes.kindByNodeId.get(currentId) ?? getNodeKind(currentId, sheets, charts);
       if (!targetKind) return;
 
       if (!sheets[parentId]) {
@@ -130,7 +199,7 @@ export const buildLineageLinks = (
       if (visited.has(currentId)) continue;
       visited.add(currentId);
 
-      getChildLinks(currentId, sheets, charts).forEach((link) => {
+      (indexes.childrenBySourceId.get(currentId) ?? []).forEach((link) => {
         addLink(link);
         if (link.targetKind === 'sheet') queue.push(link.targetId);
       });

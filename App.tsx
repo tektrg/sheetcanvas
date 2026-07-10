@@ -19,6 +19,7 @@ import { inferColumnType, getFilteredRows, getValidDataCount, suggestGranularity
 import { Upload, Moon, Sun, Table, StickyNote, Undo2, Redo2, Grid3X3, BarChart3, TrendingUp, Palette, AlignLeft, Trash2, ArrowDownAZ, ArrowUpAZ, Filter, MousePointer2, Hand, Hash, Percent, Image as ImageIcon, Database, FileSpreadsheet, BarChart2, Globe, Calendar, Minimize2, Maximize2, DollarSign, ArrowLeft, ArrowRight, Eraser, Type } from 'lucide-react';
 import { useStore, AppState } from './store';
 import { useChartPalette } from './hooks/useChartPalette';
+import { useFrameRateLogger } from './hooks/useFrameRateLogger';
 import { getChartPalette } from './utils/chartColorSchemes';
 import { buildChartSeriesDisplayNames } from './utils/chartDisplay';
 import AgentChatPanel from './src/components/AgentChatPanel';
@@ -29,13 +30,15 @@ import { loadGoogleSheetsAuth } from './utils/googleAnalyticsAuth';
 import { Plug, Sparkles } from 'lucide-react';
 import { getVisibleCanvasIds } from './utils/canvasVirtualization';
 import { LineageOverlay } from './components/LineageOverlay';
-import { buildLineageLinks, hasLineageForNode } from './utils/lineage';
+import { buildLineageIndexes, buildLineageLinks, getLineageAvailableNodeIds } from './utils/lineage';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 const ONBOARDING_DISMISSED_KEY = 'sheetcanvas:onboarding-dismissed:v4';
 
 const App: React.FC = () => {
-  const [darkMode, setDarkMode] = useState(() => 
+  useFrameRateLogger();
+
+  const [darkMode, setDarkMode] = useState(() =>
     typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches
   );
   
@@ -204,9 +207,9 @@ const App: React.FC = () => {
     viewportSize,
   ]);
 
-  const showToast = (message: string) => {
+  const showToast = useCallback((message: string) => {
       setToast({ message, visible: true });
-  };
+  }, []);
 
   const closeOnboarding = () => {
       window.localStorage.setItem(ONBOARDING_DISMISSED_KEY, 'true');
@@ -731,7 +734,7 @@ const App: React.FC = () => {
     }
   }, [selectionBox, transform, select, saveSnapshot, updateSheet, updateChart, updateNote, handleGlobalMouseMoveOptimized]);
 
-  const handleItemMouseDown = (e: React.MouseEvent, id: string, type: 'sheet' | 'chart' | 'note') => {
+  const handleItemMouseDown = useCallback((e: React.MouseEvent, id: string, type: 'sheet' | 'chart' | 'note') => {
     e.stopPropagation();
     dragStartSnapshot.current = true;
 
@@ -747,7 +750,8 @@ const App: React.FC = () => {
     if (isShift) {
         select([id], true);
     } else {
-        if (!selectedIds.has(id)) {
+        const currentSelectedIds = useStore.getState().selectedIds;
+        if (!currentSelectedIds.has(id)) {
             select([id]);
         }
     }
@@ -792,7 +796,23 @@ const App: React.FC = () => {
       window.addEventListener('mouseup', handleGlobalMouseUp);
       dragListenersAttached.current = true;
     }
-  };
+  }, [handleGlobalMouseMoveOptimized, handleGlobalMouseUp, select]);
+
+  const handleItemMouseDownRef = useRef(handleItemMouseDown);
+  handleItemMouseDownRef.current = handleItemMouseDown;
+  const itemMouseDownHandlersRef = useRef(new Map<string, (e: React.MouseEvent) => void>());
+
+  const getItemMouseDownHandler = useCallback((id: string, type: 'sheet' | 'chart' | 'note') => {
+    const key = `${type}:${id}`;
+    const existingHandler = itemMouseDownHandlersRef.current.get(key);
+    if (existingHandler) return existingHandler;
+
+    const handler = (event: React.MouseEvent) => {
+      handleItemMouseDownRef.current(event, id, type);
+    };
+    itemMouseDownHandlersRef.current.set(key, handler);
+    return handler;
+  }, []);
 
   useEffect(() => {
     if (selectionBox) {
@@ -808,13 +828,15 @@ const App: React.FC = () => {
     };
   }, [selectionBox, handleGlobalMouseMoveOptimized, handleGlobalMouseUp]);
 
-  const lineageAvailableNodeIds = useMemo(() => {
-    const availableIds = new Set<string>();
-    [...sheetIds, ...chartIds].forEach((id) => {
-      if (hasLineageForNode(id, sheets, charts)) availableIds.add(id);
-    });
-    return availableIds;
-  }, [chartIds, charts, sheetIds, sheets]);
+  const lineageIndexes = useMemo(
+    () => buildLineageIndexes(sheets, charts),
+    [charts, sheets]
+  );
+
+  const lineageAvailableNodeIds = useMemo(
+    () => getLineageAvailableNodeIds([...sheetIds, ...chartIds], lineageIndexes),
+    [chartIds, lineageIndexes, sheetIds]
+  );
 
   useEffect(() => {
     setLineageNodeIds((currentIds) => {
@@ -832,8 +854,8 @@ const App: React.FC = () => {
   }, [lineageAvailableNodeIds]);
 
   const lineageLinks = useMemo(
-    () => buildLineageLinks(Array.from(lineageNodeIds), sheets, charts),
-    [charts, lineageNodeIds, sheets]
+    () => buildLineageLinks(Array.from(lineageNodeIds), sheets, charts, lineageIndexes),
+    [charts, lineageIndexes, lineageNodeIds, sheets]
   );
 
   const toggleLineageNode = useCallback((id: string) => {
@@ -1251,7 +1273,9 @@ const App: React.FC = () => {
             onMouseDown={handleCanvasMouseDown}
             onViewportTransformChange={setViewportTransform}
         >
-          <LineageOverlay links={lineageLinks} sheets={sheets} charts={charts} darkMode={darkMode} />
+          {lineageLinks.length > 0 && (
+            <LineageOverlay links={lineageLinks} sheets={sheets} charts={charts} darkMode={darkMode} />
+          )}
           {visibleCanvasIds.sheetIds.map(id => (
               <SheetNode
                 key={id}
@@ -1265,7 +1289,7 @@ const App: React.FC = () => {
                 lineageVisible={lineageNodeIds.has(id)}
                 onToggleLineage={toggleLineageNode}
                 onSelectionContextChange={setActiveSelection}
-                onMouseDown={(e) => handleItemMouseDown(e, id, 'sheet')}
+                onMouseDown={getItemMouseDownHandler(id, 'sheet')}
               />
           ))}
           {visibleCanvasIds.chartIds.map(id => (
@@ -1281,7 +1305,7 @@ const App: React.FC = () => {
                   colorSettings={chartColorSettings}
                   onColorSettingsChange={updateChartColorSettings}
                   onAddCustomColor={handleAddColor}
-                  onMouseDown={(e) => handleItemMouseDown(e, id, 'chart')}
+                  onMouseDown={getItemMouseDownHandler(id, 'chart')}
               />
           ))}
           {visibleCanvasIds.noteIds.map(id => (
@@ -1291,7 +1315,7 @@ const App: React.FC = () => {
                   darkMode={darkMode}
                   initialEditing={id === editingNoteId}
                   isPendingDelete={selectedIds.has(id) && deleteConfirmPending}
-                  onMouseDown={(e) => handleItemMouseDown(e, id, 'note')}
+                  onMouseDown={getItemMouseDownHandler(id, 'note')}
               />
           ))}
         </Canvas>
