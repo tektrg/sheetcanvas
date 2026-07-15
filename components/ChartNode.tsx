@@ -5,14 +5,17 @@ import {
 } from 'recharts';
 import { ChartData, SheetData, ChartType, ChartConfig, CellFormat } from '../types';
 import { extractChartData, getSheetHeaders } from '../utils/chartHelpers';
+import { computeChartAdvisories } from '../utils/chartDefaults';
 import { formatValue } from '../utils/formatting';
 import { getCellId } from '../utils/formulas';
 import { ChartColorSettings } from '../types';
 import { buildMonoRamp, buildSeriesPalette, getChartPrimaryColor, getEffectiveChartPalette, getEffectiveChartScheme } from '../utils/chartColorSchemes';
-import { GitBranch, GripHorizontal, Trash2, Settings2, X, Download, Video, Play, Copy, Image as ImageIcon, Loader2, MoreHorizontal } from 'lucide-react';
-import html2canvas from 'html2canvas';
+import { GitBranch, GripHorizontal, Trash2, Settings2, X, Download, Video, Play, Copy, Image as ImageIcon, Loader2, MoreHorizontal, BarChart3 } from 'lucide-react';
+import html2canvas from 'html2canvas'; // video export only; image copy/download use snapDOM below
+import { copyElementAsImage, downloadElementAsImage } from '../utils/elementCapture';
 import { ChartConfigPanel } from './ChartConfigPanel';
 import { HeaderDropdownMenu } from './HeaderDropdownMenu';
+import { SettingsPopover } from './SettingsPopover';
 import { useStore } from '../store';
 import {
   buildChartSeriesDisplayNames,
@@ -40,11 +43,32 @@ interface ChartNodeProps {
   lineageVisible?: boolean;
   onToggleLineage?: (id: string) => void;
   onMouseDown: (e: React.MouseEvent) => void;
+  onToast?: (message: string) => void;
   // When true, the chart renders inline inside a document (a markdown note):
   // it fills its parent, drops all canvas chrome (drag grip, toolbar, resize,
   // selection ring) and is non-interactive. Used by the MDX-lite <CanvasChart>.
   embedded?: boolean;
 }
+
+// Placeholder used only for the one render where the backing chart was just
+// deleted from the store — lets every hook below keep running with a valid
+// shape instead of branching, so hook order/count never changes. The actual
+// null check (and null render) happens after all hooks have run.
+const EMPTY_CHART_DATA: ChartData = {
+  id: '',
+  sourceSheetId: '',
+  position: { x: 0, y: 0 },
+  size: { width: 0, height: 0 },
+  title: '',
+  config: {
+    labelColumn: '',
+    dataColumns: [],
+    color: '#000000',
+    highlightIndex: -1,
+    animation: false,
+    type: 'bar',
+  },
+};
 
 const readBlobAsDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -222,6 +246,7 @@ const areChartNodePropsEqual = (prev: ChartNodeProps, next: ChartNodeProps) => (
   prev.lineageVisible === next.lineageVisible &&
   prev.onToggleLineage === next.onToggleLineage &&
   prev.onMouseDown === next.onMouseDown &&
+  prev.onToast === next.onToast &&
   prev.embedded === next.embedded
 );
 
@@ -237,14 +262,29 @@ const ChartNodeComponent: React.FC<ChartNodeProps> = ({
   lineageVisible,
   onToggleLineage,
   onMouseDown,
+  onToast,
   embedded = false,
 }) => {
-  const data = useStore(state => state.charts[id]);
+  // Kept separate from `data` below: reading this directly from the store
+  // means the value can flip to undefined (e.g. the chart was just deleted)
+  // on a render where every hook after the old early-return still has to
+  // run — bailing out here would call fewer hooks than the previous render
+  // and crash the whole app ("Rendered fewer hooks than expected").
+  const rawData = useStore(state => state.charts[id]);
+  const data = rawData ?? EMPTY_CHART_DATA;
   const selected = useStore(state => state.selectedIds.has(id));
-  const scale = useStore(state => state.transform.scale);
   const updateChart = useStore(state => state.updateChart);
   const deleteChart = useStore(state => state.deleteChart);
   const saveSnapshot = useStore(state => state.saveSnapshot);
+  
+  const scaleRef = useRef(useStore.getState().transform.scale);
+  useEffect(() => {
+    return useStore.subscribe((state) => {
+      scaleRef.current = state.transform.scale;
+    });
+  }, []);
+  
+  const isLowZoom = useStore(state => state.transform.scale < 0.35);
   
   const sourceSheet = useStore(state => data ? state.sheets[data.sourceSheetId] : undefined);
 
@@ -263,35 +303,12 @@ const ChartNodeComponent: React.FC<ChartNodeProps> = ({
   const [tempConfig, setTempConfig] = useState<ChartConfig>(data?.config || {} as any);
 
   const chartAreaRef = useRef<HTMLDivElement>(null);
-  const settingsPanelRef = useRef<HTMLDivElement>(null);
-  const setupPanelRef = useRef<HTMLDivElement>(null);
+  const nodeRef = useRef<HTMLDivElement>(null);
 
   const [playbackKey, setPlaybackKey] = useState(0); 
   const [resizing, setResizing] = useState<{ startX: number; startY: number; startW: number; startH: number } | null>(null);
 
-  if (!data) return null;
   const isSetup = data.setupRequired;
-
-  useEffect(() => {
-    const handleWheel = (e: WheelEvent) => {
-        e.stopPropagation();
-    };
-
-    const setupPanel = setupPanelRef.current;
-    if (setupPanel) {
-        setupPanel.addEventListener('wheel', handleWheel, { passive: false });
-    }
-
-    const settingsPanel = settingsPanelRef.current;
-    if (settingsPanel) {
-        settingsPanel.addEventListener('wheel', handleWheel, { passive: false });
-    }
-
-    return () => {
-        if (setupPanel) setupPanel.removeEventListener('wheel', handleWheel);
-        if (settingsPanel) settingsPanel.removeEventListener('wheel', handleWheel);
-    };
-  }, [showConfig, isSetup]);
 
   const processedData = useMemo(() => {
     if (!sourceSheet) return [];
@@ -312,6 +329,17 @@ const ChartNodeComponent: React.FC<ChartNodeProps> = ({
   }, [processedData, data.config]);
 
   const headers = useMemo(() => sourceSheet ? getSheetHeaders(sourceSheet) : [], [sourceSheet]);
+
+  // F4/F7/A6 advisories for the settings panel (non-blocking). Computed here
+  // because this component holds the source sheet.
+  const editAdvisories = useMemo(
+    () => (sourceSheet ? computeChartAdvisories(sourceSheet, data.config) : []),
+    [sourceSheet, data.config]
+  );
+  const setupAdvisories = useMemo(
+    () => (sourceSheet && tempConfig?.labelColumn ? computeChartAdvisories(sourceSheet, tempConfig) : []),
+    [sourceSheet, tempConfig]
+  );
 
   const getSeriesRawLabel = (colId: string) => {
     if (data.config.mode === 'group') {
@@ -579,8 +607,8 @@ const ChartNodeComponent: React.FC<ChartNodeProps> = ({
 
     const commitResize = () => {
       if (!lastPos) return;
-      const dx = (lastPos.x - resizing.startX) / scale;
-      const dy = (lastPos.y - resizing.startY) / scale;
+      const dx = (lastPos.x - resizing.startX) / scaleRef.current;
+      const dy = (lastPos.y - resizing.startY) / scaleRef.current;
       updateChart(data.id, {
         size: {
           width: Math.max(200, resizing.startW + dx),
@@ -617,25 +645,27 @@ const ChartNodeComponent: React.FC<ChartNodeProps> = ({
       window.removeEventListener('mouseup', handleMouseUp);
       if (rafId !== null) cancelAnimationFrame(rafId);
     };
-  }, [resizing, scale, data.id, updateChart]);
+  }, [resizing, data.id, updateChart]);
+
+  const handleCopyChartId = async () => {
+    try {
+        await navigator.clipboard.writeText(data.id);
+        onToast?.('Chart ID copied to clipboard');
+    } catch (err) {
+        console.error('Copy chart ID failed', err);
+        onToast?.('Failed to copy chart ID');
+    }
+    setShowMoreMenu(false);
+  };
+
+  const chartCaptureBackground = darkMode ? '#262626' : '#ffffff';
 
   const handleCopyImage = async () => {
     if (!chartAreaRef.current) return;
     setExporting(true);
     try {
         await ensureFaviconDataUrls();
-        const canvas = await html2canvas(chartAreaRef.current, {
-            backgroundColor: darkMode ? '#262626' : '#ffffff',
-            scale: 2,
-            useCORS: true,
-        });
-        canvas.toBlob(async (blob) => {
-            if (blob) {
-                await navigator.clipboard.write([
-                    new ClipboardItem({ 'image/png': blob })
-                ]);
-            }
-        });
+        await copyElementAsImage(chartAreaRef.current, { backgroundColor: chartCaptureBackground });
     } catch (err) {
         console.error("Copy failed", err);
     }
@@ -648,15 +678,7 @@ const ChartNodeComponent: React.FC<ChartNodeProps> = ({
     setExporting(true);
     try {
       await ensureFaviconDataUrls();
-      const canvas = await html2canvas(chartAreaRef.current, {
-        backgroundColor: darkMode ? '#262626' : '#ffffff',
-        scale: 2,
-        useCORS: true,
-      });
-      const link = document.createElement('a');
-      link.download = `${data.title}.png`;
-      link.href = canvas.toDataURL();
-      link.click();
+      await downloadElementAsImage(chartAreaRef.current, data.title, { backgroundColor: chartCaptureBackground });
     } catch (err) {
       console.error("Export failed", err);
     }
@@ -873,8 +895,7 @@ const ChartNodeComponent: React.FC<ChartNodeProps> = ({
         chartHeight: data.size.height,
     }) === 'visible';
     const compactLegendContent = makeCompactLegendContent(textColor, showLegend, legendRawLabelsByDataKey, faviconDataUrls);
-    const effectiveSeriesCount = chartLegendLabels.length;
-    const showValueLabels = !!data.config.showLabels && effectiveSeriesCount <= 1;
+    const showValueLabels = !!data.config.showLabels;
 
     if (data.config.type === 'treemap') {
         const dataKey = isGroupMode && dynamicSeriesKeys ? dynamicSeriesKeys[0] : "value_0";
@@ -1123,11 +1144,12 @@ const ChartNodeComponent: React.FC<ChartNodeProps> = ({
                             dot={{ ...chartTheme.dotStyle, stroke: color }}
                             activeDot={chartTheme.activeDotStyle}
                             {...animProps}
+                            isAnimationActive={showValueLabels ? false : animProps.isAnimationActive}
                         >
                             {showValueLabels && (
-                                <LabelList 
+                                <LabelList
                                     dataKey={key}
-                                    position="top" 
+                                    position="top"
                                     offset={10}
                                     fill={textColor}
                                     fontSize={10}
@@ -1239,11 +1261,12 @@ const ChartNodeComponent: React.FC<ChartNodeProps> = ({
                         dot={{ ...chartTheme.dotStyle, stroke: color }}
                         activeDot={chartTheme.activeDotStyle}
                         {...animProps}
+                        isAnimationActive={showValueLabels ? false : animProps.isAnimationActive}
                     >
                         {showValueLabels && (
-                                <LabelList 
+                                <LabelList
                                     dataKey={key}
-                                    position="top" 
+                                    position="top"
                                     offset={10}
                                     fill={textColor}
                                     fontSize={10}
@@ -1378,11 +1401,12 @@ const ChartNodeComponent: React.FC<ChartNodeProps> = ({
                         }}
                         activeDot={chartTheme.activeDotStyle}
                         {...animProps}
+                        isAnimationActive={showValueLabels ? false : animProps.isAnimationActive}
                     >
                             {showValueLabels && (
-                            <LabelList 
+                            <LabelList
                                 dataKey={key}
-                                position="top" 
+                                position="top"
                                 offset={10}
                                 fill={textColor}
                                 fontSize={10}
@@ -1404,8 +1428,60 @@ const ChartNodeComponent: React.FC<ChartNodeProps> = ({
     );
   };
 
+  // Safe to bail now: every hook above has already run this render, so
+  // returning null here (e.g. right after the chart was deleted) can't
+  // desync the hook count on the next render.
+  if (!rawData) return null;
+
+  if (isLowZoom && !embedded) {
+    return (
+      <div
+        id={`chart-${data.id}`}
+        className={`absolute flex flex-col rounded-xl transition-shadow duration-200 overflow-hidden group border select-none pointer-events-auto ${chartTheme.chartFrameClassName}
+          ${selected ? 'border-teal-400 shadow-md ring-1 ring-teal-400 z-50' : 'border-neutral-200 dark:border-neutral-700 shadow-sm hover:shadow-lg z-40'}
+          ${isPendingDelete ? 'animate-delete-pulse' : ''}
+        `}
+        style={{
+          left: data.position.x,
+          top: data.position.y,
+          width: data.size.width,
+          height: data.size.height,
+          ...(selected ? chartTheme.selectedFrameStyle : chartTheme.frameStyle),
+        }}
+        onMouseDown={(e) => {
+          e.stopPropagation();
+          onMouseDown(e);
+        }}
+      >
+        <div className={`relative h-10 flex items-center px-3 select-none ${chartTheme.headerClassName}`}>
+          <GripHorizontal size={14} className="text-neutral-300 dark:text-neutral-600 mr-2 flex-shrink-0" />
+          <span className="text-sm font-semibold text-neutral-600 dark:text-neutral-350 truncate">{data.title}</span>
+        </div>
+        <div className="flex-1 p-4 flex flex-col justify-center items-center bg-white dark:bg-neutral-850 gap-1 opacity-50">
+          <BarChart3 className="text-neutral-400 dark:text-neutral-500" size={36} />
+          <span className="text-xs text-neutral-400 dark:text-neutral-500 font-medium uppercase tracking-wider">
+            {data.config.type} Chart
+          </span>
+        </div>
+        {!embedded && (
+          <div
+            className="absolute bottom-0 right-0 w-5 h-5 cursor-nwse-resize z-20 flex items-center justify-center"
+            onMouseDown={(e) => {
+                e.stopPropagation();
+                saveSnapshot();
+                setResizing({ startX: e.clientX, startY: e.clientY, startW: data.size.width, startH: data.size.height });
+            }}
+          >
+              <div className="w-1.5 h-1.5 bg-neutral-300 dark:bg-neutral-600 rounded-full" />
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div
+      ref={nodeRef}
       id={`chart-${data.id}`}
       className={embedded
         ? `relative flex flex-col rounded-lg overflow-hidden border border-neutral-200 dark:border-neutral-700 w-full h-full ${chartTheme.chartFrameClassName}`
@@ -1424,7 +1500,7 @@ const ChartNodeComponent: React.FC<ChartNodeProps> = ({
       onDoubleClick={(e) => e.stopPropagation()}
     >
        <div
-        className={`relative h-10 flex items-center px-3 select-none ${embedded ? '' : 'cursor-grab active:cursor-grabbing'} ${chartTheme.headerClassName}`}
+        className={`relative flex items-center select-none ${embedded ? 'px-4 pt-3 pb-1' : 'h-10 px-3 cursor-grab active:cursor-grabbing'} ${chartTheme.headerClassName}`}
         onMouseDown={embedded ? undefined : onMouseDown}
       >
         <div className="flex items-center gap-2 min-w-0 flex-1 text-sm font-medium text-neutral-700 dark:text-neutral-200">
@@ -1470,6 +1546,16 @@ const ChartNodeComponent: React.FC<ChartNodeProps> = ({
                     </HeaderDropdownMenu>
                 </div>
 
+                <button
+                    onClick={() => setShowConfig(!showConfig)}
+                    className={`group/btn relative p-1.5 rounded-md transition-colors ${showConfig ? 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 dark:text-neutral-500'}`}
+                >
+                    <Settings2 size={14} />
+                    <span className="absolute top-full mt-2 left-1/2 -translate-x-1/2 px-2 py-1 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 text-[10px] font-medium rounded-md opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-sm z-50">
+                        Settings
+                    </span>
+                </button>
+
                 <div className="relative">
                     <button
                         ref={moreBtnRef}
@@ -1502,20 +1588,21 @@ const ChartNodeComponent: React.FC<ChartNodeProps> = ({
                             <Play size={14} /> Replay
                         </button>
                         <button
-                            onClick={() => { setShowMoreMenu(false); setShowConfig(!showConfig); }}
-                            className={`px-3 py-2 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 flex items-center gap-2 w-full ${showConfig ? 'text-teal-600 dark:text-teal-400' : 'text-neutral-700 dark:text-neutral-200'}`}
+                            onClick={() => { setShowMoreMenu(false); deleteChart(data.id); }}
+                            className="px-3 py-2 text-xs text-left hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 flex items-center gap-2 w-full"
                         >
-                            <Settings2 size={14} /> Settings
+                            <Trash2 size={14} /> Delete
+                        </button>
+                        <button
+                            onClick={handleCopyChartId}
+                            title={`Copy chart ID: ${data.id}`}
+                            className="px-3 py-2 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 flex items-center gap-2 w-full border-t border-neutral-100 dark:border-neutral-700"
+                        >
+                            <Copy size={14} className="shrink-0" />
+                            <span className="truncate">ID: {data.id}</span>
                         </button>
                     </HeaderDropdownMenu>
                 </div>
-
-                <button onClick={() => deleteChart(data.id)} className="group/btn relative p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 text-neutral-400 hover:text-red-500 rounded-md">
-                    <Trash2 size={14} />
-                    <span className="absolute top-full mt-2 left-1/2 -translate-x-1/2 px-2 py-1 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 text-[10px] font-medium rounded-md opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-sm z-50">
-                        Delete
-                    </span>
-                </button>
             </div>
         )}
         {isSetup && (
@@ -1529,24 +1616,6 @@ const ChartNodeComponent: React.FC<ChartNodeProps> = ({
       </div>
 
       <div className={`flex-1 relative ${chartTheme.bodyClassName}`}>
-         
-         {isSetup && (
-             <div ref={setupPanelRef} className="absolute inset-0 z-50 overflow-hidden">
-                <ChartConfigPanel 
-                    config={tempConfig}
-                    headers={headers}
-                    onChange={handleConfigChange}
-                    isSetupMode={true}
-	                    onConfirm={handleSetupConfirm}
-	                    onCancel={() => deleteChart(data.id)}
-	                    recentColors={recentColors}
-	                    colorSettings={colorSettings}
-	                    darkMode={!!darkMode}
-	                    onColorSettingsChange={onColorSettingsChange}
-	                    onAddCustomColor={onAddCustomColor}
-	                />
-             </div>
-         )}
 
          {exporting && (
             <div className="absolute inset-0 z-50 bg-white/90 dark:bg-neutral-900/90 backdrop-blur-sm flex flex-col items-center justify-center text-teal-600 dark:text-teal-400">
@@ -1571,27 +1640,47 @@ const ChartNodeComponent: React.FC<ChartNodeProps> = ({
             )}
          </div>
 
-         {showConfig && !isSetup && (
-             <div 
-                ref={settingsPanelRef}
-                className="absolute top-0 right-0 bottom-0 w-72 z-20 shadow-2xl border-l border-neutral-200 dark:border-neutral-700"
-             >
-                 <ChartConfigPanel 
-                    config={data.config}
-                    headers={headers}
-	                    onChange={handleConfigChange}
-	                    onClose={() => setShowConfig(false)}
-	                    isSetupMode={false}
-	                    recentColors={recentColors}
-	                    colorSettings={colorSettings}
-	                    darkMode={!!darkMode}
-	                    onColorSettingsChange={onColorSettingsChange}
-	                    onAddCustomColor={onAddCustomColor}
-	                 />
-             </div>
-         )}
       </div>
-      
+
+      {/* Setup config: popover beside node, guarded from accidental outside-click dismissal. */}
+      {isSetup && !embedded && (
+          <SettingsPopover anchorRef={nodeRef} isOpen={true} onClose={() => {}} dismissOnOutsideClick={false} width={300} darkMode={!!darkMode}>
+              <ChartConfigPanel
+                  config={tempConfig}
+                  headers={headers}
+                  advisories={setupAdvisories}
+                  onChange={handleConfigChange}
+                  isSetupMode={true}
+                  onConfirm={handleSetupConfirm}
+                  onCancel={() => deleteChart(data.id)}
+                  recentColors={recentColors}
+                  colorSettings={colorSettings}
+                  darkMode={!!darkMode}
+                  onColorSettingsChange={onColorSettingsChange}
+                  onAddCustomColor={onAddCustomColor}
+              />
+          </SettingsPopover>
+      )}
+
+      {/* Edit config: popover beside node, live-apply, closes on outside-click / Esc. */}
+      {showConfig && !isSetup && !embedded && (
+          <SettingsPopover anchorRef={nodeRef} isOpen={true} onClose={() => setShowConfig(false)} width={300} darkMode={!!darkMode}>
+              <ChartConfigPanel
+                  config={data.config}
+                  headers={headers}
+                  advisories={editAdvisories}
+                  onChange={handleConfigChange}
+                  onClose={() => setShowConfig(false)}
+                  isSetupMode={false}
+                  recentColors={recentColors}
+                  colorSettings={colorSettings}
+                  darkMode={!!darkMode}
+                  onColorSettingsChange={onColorSettingsChange}
+                  onAddCustomColor={onAddCustomColor}
+              />
+          </SettingsPopover>
+      )}
+
       {!embedded && (
         <div
           className="absolute bottom-0 right-0 w-5 h-5 cursor-nwse-resize z-20 flex items-center justify-center"
