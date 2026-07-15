@@ -21,6 +21,7 @@ interface Header {
 interface ChartConfigPanelProps {
   config: ChartConfig;
   headers: Header[];
+  advisories?: string[];
   onChange: (newConfig: ChartConfig) => void;
   onClose?: () => void;
   isSetupMode?: boolean;
@@ -36,6 +37,7 @@ interface ChartConfigPanelProps {
 export const ChartConfigPanel: React.FC<ChartConfigPanelProps> = ({
   config,
   headers,
+  advisories,
   onChange,
   onClose,
   isSetupMode = false,
@@ -233,8 +235,22 @@ export const ChartConfigPanel: React.FC<ChartConfigPanelProps> = ({
         )}
       </div>
 
-      <div className="space-y-6 flex-1 overflow-y-auto min-h-0 pr-1 -mr-1">
-        
+      <div className="space-y-6 flex-1 overflow-y-auto min-h-0 px-1 -mx-1">
+
+        {/* Smart-defaults advisories (F4/F7/A6): non-blocking form guidance */}
+        {advisories && advisories.length > 0 && (
+          <div className="rounded-lg border border-amber-300 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-900/20 px-3 py-2.5">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400 mb-1">
+              Chart advice
+            </div>
+            <ul className="list-disc list-inside space-y-1 text-xs text-amber-800 dark:text-amber-200">
+              {advisories.map((a, i) => (
+                <li key={i}>{a}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {/* Chart Type */}
         <div>
           <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-2 uppercase tracking-wide">Chart Type</label>

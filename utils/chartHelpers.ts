@@ -6,6 +6,51 @@ import { SheetData, CellData, ChartConfig, PivotOperation, TimeGranularity } fro
 import { parseCellId, getCellId } from './formulas';
 import { getFilteredRows } from './dataAnalysis';
 import { formatValue } from './formatting';
+import { detectOrdinalCategories, CHART_DEFAULTS } from './chartDefaults';
+
+const OTHER_SERIES_KEY = 'Other';
+
+// F5: when a group-mode chart has too many series, keep the top-N by grand total
+// (coverage-based) and fold the rest into a single muted "Other" series so the
+// chart stays readable instead of becoming an unreadable wall.
+function consolidateTopNSeries(chartData: any[], seriesKeys: string[]): any[] {
+    if (seriesKeys.length < CHART_DEFAULTS.TOO_MANY_SERIES) return chartData;
+
+    const totals = new Map<string, number>();
+    seriesKeys.forEach(k => {
+        let sum = 0;
+        for (const row of chartData) sum += Math.abs(Number(row[k]) || 0);
+        totals.set(k, sum);
+    });
+    const grandTotal = Array.from(totals.values()).reduce((a, b) => a + b, 0);
+    const ranked = [...seriesKeys].sort((a, b) => (totals.get(b) || 0) - (totals.get(a) || 0));
+
+    // Choose N so the kept series cover ≥ TOPN_COVERAGE of the total.
+    let n: number = CHART_DEFAULTS.TOPN_DEFAULT;
+    if (grandTotal > 0) {
+        let cum = 0;
+        for (let i = 0; i < ranked.length; i++) {
+            cum += totals.get(ranked[i]) || 0;
+            if (cum / grandTotal >= CHART_DEFAULTS.TOPN_COVERAGE) { n = i + 1; break; }
+        }
+    }
+    n = Math.max(1, Math.min(n, ranked.length));
+    if (n >= ranked.length) return chartData;
+
+    const keep = new Set(ranked.slice(0, n));
+    return chartData.map(row => {
+        const next: any = { name: row.name };
+        if ('x_raw' in row) next.x_raw = row.x_raw;
+        let other = 0;
+        for (const k of seriesKeys) {
+            const v = Number(row[k]) || 0;
+            if (keep.has(k)) next[k] = row[k];
+            else other += v;
+        }
+        next[OTHER_SERIES_KEY] = other;
+        return next;
+    });
+}
 
 export const getSheetHeaders = (sheet: SheetData): { id: string; label: string; index: number }[] => {
   const headers = [];
@@ -196,7 +241,20 @@ export const extractChartData = (sheet: SheetData, config: ChartConfig) => {
               return tsA - tsB;
           });
       } else {
-          sortedGroupKeys = Array.from(dataMap.keys()).sort();
+          const keys = Array.from(dataMap.keys());
+          // F7: categorical bars are value-sorted (descending) so the ranking is
+          // the story — EXCEPT ordinal categories (months, size tiers, ranges),
+          // which keep their natural source order (insertion order of the Map).
+          if (detectOrdinalCategories(keys)) {
+              sortedGroupKeys = keys;
+          } else {
+              const groupTotal = (key: string): number => {
+                  let sum = 0;
+                  dataMap.get(key)!.forEach(values => { sum += aggregate(values, op); });
+                  return sum;
+              };
+              sortedGroupKeys = keys.sort((a, b) => groupTotal(b) - groupTotal(a));
+          }
       }
 
       sortedGroupKeys.forEach(key => {
@@ -215,9 +273,19 @@ export const extractChartData = (sheet: SheetData, config: ChartConfig) => {
           seriesMap.forEach((values, sKey) => {
               dataPoint[sKey] = aggregate(values, op);
           });
-          
+
           chartData.push(dataPoint);
       });
+
+      // F5: consolidate to top-N + "Other" when a series split produces too many
+      // series to distinguish. Only applies when seriesGroupCol is set.
+      if (seriesColIdx !== undefined) {
+          const seriesKeys = new Set<string>();
+          chartData.forEach(row => Object.keys(row).forEach(k => {
+              if (k !== 'name' && k !== 'x_raw') seriesKeys.add(k);
+          }));
+          return consolidateTopNSeries(chartData, Array.from(seriesKeys));
+      }
 
       return chartData;
   }
