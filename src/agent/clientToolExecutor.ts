@@ -19,6 +19,7 @@ import { DEFAULT_GOOGLE_SHEETS_RANGE } from '../../utils/googleSheetsBackend';
 import { getChartPalette, readStoredChartColorSettings } from '../../utils/chartColorSchemes';
 import { buildChartSeriesDisplayNames } from '../../utils/chartDisplay';
 import { getColumnIdForIndex, getColumnIdSpan, getSheetDataBounds } from './sheetBounds';
+import { computeChartDefaults } from '../../utils/chartDefaults';
 import { buildSelectedCanvasSummary } from './selectedCanvasSummary';
 import { applyFormatToSheet, type ApplyFormatInput } from './applyFormatTool';
 import {
@@ -273,6 +274,8 @@ type CreateChartInput = {
   seriesGroupCol?: string;
   valueCol?: string;
   operation?: PivotConfig['values'][number]['operation'];
+  seriesTypes?: Record<string, ChartType>;
+  rightAxisColumns?: string[];
   title?: string;
   timeRange?: string;
   timeGranularity?: ChartConfig['timeGranularity'];
@@ -699,8 +702,33 @@ export async function executeClientTool(
                 label: getCellDisplayValue(sheet.cells[`${columnId}1`]) ?? columnId,
               }));
         const seriesDisplayNames = buildChartSeriesDisplayNames(seriesNameInputs);
+
+        // Smart visualization defaults (F-rules). Run the single-source-of-truth
+        // engine to pick the chart form from the actual data shape. If the model
+        // explicitly set seriesTypes/rightAxisColumns, respect its choice and
+        // skip the auto-form; otherwise fill those fields (and correct an
+        // ill-fitting bar/line base type) so the chart comes out well-formed.
+        const modelSetForm =
+          (chartInput.seriesTypes && Object.keys(chartInput.seriesTypes).length > 0) ||
+          (chartInput.rightAxisColumns && chartInput.rightAxisColumns.length > 0);
+        const formDecision = computeChartDefaults(sheet, {
+          mode: chartMode,
+          labelColumn: chartMode === 'group' ? groupCol : chartInput.labelColumn,
+          dataColumns: chartInput.dataColumns,
+          seriesGroupCol: chartMode === 'group' ? chartInput.seriesGroupCol : undefined,
+          valueCol: chartMode === 'group' ? valueCol : undefined,
+          requestedType: chartInput.type as ChartType,
+        });
+        const resolvedType = modelSetForm ? (chartInput.type as ChartType) : formDecision.type;
+        const resolvedSeriesTypes = modelSetForm
+          ? chartInput.seriesTypes
+          : (Object.keys(formDecision.seriesTypes).length > 0 ? formDecision.seriesTypes : undefined);
+        const resolvedRightAxis = modelSetForm
+          ? chartInput.rightAxisColumns
+          : (formDecision.rightAxisColumns.length > 0 ? formDecision.rightAxisColumns : undefined);
+
         const config: ChartConfig = {
-          type: chartInput.type as ChartType,
+          type: resolvedType,
           mode: chartMode,
           labelColumn: chartInput.labelColumn,
           dataColumns: chartInput.dataColumns,
@@ -715,6 +743,8 @@ export async function executeClientTool(
           highlightIndex: -1,
           animation: true,
           showLabels: chartInput.dataColumns.length === 1,
+          seriesTypes: resolvedSeriesTypes,
+          rightAxisColumns: resolvedRightAxis,
           seriesDisplayNames,
         };
         const chart: ChartData = {
@@ -770,6 +800,16 @@ export async function executeClientTool(
             aggregation: chartMode === 'group' ? operation : chartInput.aggregation ?? null,
             sourceGrain: chartInput.sourceGrain ?? null,
             analysisNotes: chartInput.analysisNotes ?? null,
+          },
+          formDecisions: {
+            appliedType: resolvedType,
+            usedSmartDefaults: !modelSetForm,
+            firedRules: formDecision.firedRules,
+            warnings: formDecision.warnings,
+            rightAxisColumns: resolvedRightAxis ?? [],
+            seriesTypes: resolvedSeriesTypes ?? {},
+            topNSuggestion: formDecision.topN,
+            horizontalRecommended: formDecision.horizontal,
           },
           labelSummary,
         };
@@ -926,6 +966,10 @@ export async function executeClientTool(
             return { ok: false, error: `valueCol ${input.valueCol} not in sheet` };
           }
         }
+        const sparkInput = input as typeof input & {
+          summaryColumns?: SparklineConfig['summaryColumns'];
+          goodDirections?: SparklineConfig['goodDirections'];
+        };
         const config: SparklineConfig = {
           sourceSheetId: source.id,
           dateCol: input.dateCol,
@@ -935,6 +979,8 @@ export async function executeClientTool(
           groupCol: input.mode === 'group' ? input.groupCol : undefined,
           valueCol: input.mode === 'group' ? input.valueCol : undefined,
           operation: input.mode === 'group' ? input.operation : undefined,
+          summaryColumns: sparkInput.summaryColumns,
+          goodDirections: sparkInput.goodDirections,
         };
         const newSheet: SheetData = {
           id: generateId(),

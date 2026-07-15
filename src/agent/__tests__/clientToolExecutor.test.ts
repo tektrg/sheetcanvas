@@ -155,7 +155,7 @@ describe('executeClientTool describeSheet', () => {
     const result = await executeClientTool(
       'describeSheet',
       { sheetId: sheet.id, columnIds: ['BB', 'AU'] },
-      { getSelection: () => ({}) },
+      emptySelectionResolver,
     );
 
     expect(result.ok).toBe(true);
@@ -214,7 +214,7 @@ describe('executeClientTool describeSheet', () => {
     const result = await executeClientTool(
       'describeSheet',
       { sheetId: sheet.id, columnIds: ['BC'] },
-      { getSelection: () => ({}) },
+      emptySelectionResolver,
     );
 
     expect(result.ok).toBe(true);
@@ -257,7 +257,7 @@ describe('executeClientTool describeSheet', () => {
     const result = await executeClientTool(
       'describeSheet',
       { sheetId: sheet.id },
-      { getSelection: () => ({}) },
+      emptySelectionResolver,
     );
 
     expect(result.ok).toBe(true);
@@ -292,7 +292,7 @@ describe('executeClientTool describeSheet', () => {
     const result = await executeClientTool(
       'querySheet',
       { sheetId: sheet.id, sql: 'DELETE FROM t' },
-      { getSelection: () => ({}) },
+      emptySelectionResolver,
     );
 
     expect(result.ok).toBe(false);
@@ -323,7 +323,7 @@ describe('executeClientTool describeSheet', () => {
         dataColumns: ['AU', 'BB'],
         title: 'Applicant status',
       },
-      { getSelection: () => ({}) },
+      emptySelectionResolver,
     );
 
     expect(result.ok).toBe(true);
@@ -354,7 +354,7 @@ describe('executeClientTool describeSheet', () => {
         dataColumns: ['B'],
         title: 'Revenue trend',
       },
-      { getSelection: () => ({}) },
+      emptySelectionResolver,
     );
 
     expect(result.ok).toBe(false);
@@ -385,7 +385,7 @@ describe('executeClientTool describeSheet', () => {
         timeGranularity: 'day',
         title: 'Revenue trend',
       },
-      { getSelection: () => ({}) },
+      emptySelectionResolver,
     );
 
     expect(blocked.ok).toBe(false);
@@ -410,7 +410,7 @@ describe('executeClientTool describeSheet', () => {
         analysisNotes: 'User explicitly wants row-level daily points.',
         title: 'Revenue row-level trend',
       },
-      { getSelection: () => ({}) },
+      emptySelectionResolver,
     );
 
     expect(confirmed.ok).toBe(true);
@@ -447,7 +447,7 @@ describe('executeClientTool describeSheet', () => {
         sourceGrain: 'raw_rows',
         title: 'Daily sessions by source',
       },
-      { getSelection: () => ({}) },
+      emptySelectionResolver,
     );
 
     expect(result.ok).toBe(true);
@@ -473,7 +473,7 @@ describe('executeClientTool describeSheet', () => {
         sourceGrain: 'raw_rows',
       }),
     );
-    expect(result.labelSummary.duplicateLabels).toEqual([
+    expect((result as any).labelSummary.duplicateLabels).toEqual([
       expect.objectContaining({ label: '2026-06-01', count: 3 }),
     ]);
   });
@@ -506,7 +506,7 @@ describe('executeClientTool describeSheet', () => {
         ],
         title: 'Applicant status counts',
       },
-      { getSelection: () => ({}) },
+      emptySelectionResolver,
     );
 
     expect(result.ok).toBe(true);
@@ -659,7 +659,7 @@ describe('executeClientTool describeSheet', () => {
         dataCols: ['AU', 'BB'],
         title: 'Applicant status trends',
       },
-      { getSelection: () => ({}) },
+      emptySelectionResolver,
     );
 
     expect(result.ok).toBe(true);
@@ -978,7 +978,7 @@ describe('executeClientTool selected canvas context', () => {
         },
         title: 'TheIndie daily source trend',
       },
-      { getSelection: () => ({}) },
+      emptySelectionResolver,
     );
 
     expect(result.ok).toBe(true);
@@ -1061,7 +1061,7 @@ describe('executeClientTool selected canvas context', () => {
           judgmentNotes: ['No sheet should be created if GA returns no rows.'],
         },
       },
-      { getSelection: () => ({}) },
+      emptySelectionResolver,
     );
 
     expect(result.ok).toBe(false);
@@ -1171,7 +1171,7 @@ describe('createNote tool execution', () => {
     );
 
     expect(result.ok).toBe(true);
-    const noteId = (result as { noteId: string }).noteId;
+    const noteId = (result as any).noteId;
     expect(noteId).toBeTruthy();
 
     const note = useStore.getState().notes[noteId];
@@ -1188,7 +1188,7 @@ describe('createNote tool execution', () => {
       { content: 'Body text', title: 'Quarterly Report' },
       emptySelectionResolver,
     );
-    const note = useStore.getState().notes[(result as { noteId: string }).noteId];
+    const note = useStore.getState().notes[(result as any).noteId];
     expect(note.content.startsWith('# Quarterly Report')).toBe(true);
   });
 
@@ -1199,7 +1199,7 @@ describe('createNote tool execution', () => {
       { content: '# Existing Title\n\nBody', title: 'Ignored' },
       emptySelectionResolver,
     );
-    const note = useStore.getState().notes[(result as { noteId: string }).noteId];
+    const note = useStore.getState().notes[(result as any).noteId];
     expect(note.content.startsWith('# Existing Title')).toBe(true);
     expect(note.content).not.toContain('Ignored');
   });
@@ -1215,7 +1215,7 @@ describe('createNote tool execution', () => {
     useStore.setState({ sheets: { s1: sheet }, sheetIds: ['s1'], charts: {}, chartIds: [], notes: {}, noteIds: [] });
 
     const result = await executeClientTool('createNote', { content: 'x' }, emptySelectionResolver);
-    const note = useStore.getState().notes[(result as { noteId: string }).noteId];
+    const note = useStore.getState().notes[(result as any).noteId];
     expect(note.position.x).toBeGreaterThan(0);
   });
 
@@ -1232,14 +1232,14 @@ describe('note read/list/update/delete tool execution', () => {
   const seedNote = async (content: string) => {
     emptyCanvas();
     const result = await executeClientTool('createNote', { content }, emptySelectionResolver);
-    return (result as { noteId: string }).noteId;
+    return (result as any).noteId;
   };
 
   it('listNotes returns id, derived title and preview for each note', async () => {
     const noteId = await seedNote('# Q2 Summary\n\nRevenue is up across all regions this quarter.');
     const result = await executeClientTool('listNotes', {}, emptySelectionResolver);
     expect(result.ok).toBe(true);
-    const notes = (result as { notes: Array<{ noteId: string; title: string; preview: string }> }).notes;
+    const notes = (result as any).notes;
     expect(notes).toHaveLength(1);
     expect(notes[0].noteId).toBe(noteId);
     expect(notes[0].title).toBe('Q2 Summary');
@@ -1250,7 +1250,7 @@ describe('note read/list/update/delete tool execution', () => {
     const noteId = await seedNote('Body with <CellValue sheet="s1" cell="B2"/> inline.');
     const ok = await executeClientTool('readNote', { noteId }, emptySelectionResolver);
     expect(ok.ok).toBe(true);
-    expect((ok as { content: string }).content).toContain('<CellValue');
+    expect((ok as any).content).toContain('<CellValue');
 
     const bad = await executeClientTool('readNote', { noteId: 'nope' }, emptySelectionResolver);
     expect(bad.ok).toBe(false);

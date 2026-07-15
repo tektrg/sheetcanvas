@@ -1,5 +1,5 @@
 import type { AppState } from '../../store';
-import type { ChartData, NoteData, SheetData } from '../../types';
+import type { ChartData, NoteData, SheetData, ConnectorQueryBrief } from '../../types';
 import { getColumnIdForIndex, getColumnIdSpan, getSheetDataBounds } from './sheetBounds';
 
 const MAX_SELECTED_HEADERS = 60;
@@ -22,6 +22,7 @@ type SelectedCanvasSheet = {
     name: string;
     connectionId: string | null;
     derivation: string | null;
+    brief: ConnectorQueryBrief | null;
     truncated: boolean | null;
     lastError: string | null;
     lastRefreshedAt: number | null;

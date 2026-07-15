@@ -205,7 +205,7 @@ export const toolDefs = {
 
   querySheet: {
     description:
-      'Use this to explore, validate, filter, or preview aggregates on an existing sheet before writing anything — it runs a read-only SQL SELECT against the sheet. Results are temporary and cannot be charted directly; when the user wants an aggregated chart from an existing sheet, prefer creating a persistent summary with createPivot and then call createChart on that pivot. The sheet is exposed as table "t" with columns named exactly as returned in schema.sqlName; always inspect the returned schema because names are sanitized from headers and may be compact like hostname or sessionsource. Only SELECT is allowed.',
+      'Use this to explore, validate, filter, or preview aggregates on an existing sheet before writing anything — it runs a read-only SQL SELECT against the sheet. Results are temporary and cannot be charted directly; when the user wants an aggregated chart from an existing sheet, prefer creating a persistent summary with createPivot and then call createChart on that pivot. The sheet is exposed as table "t" with columns named exactly as returned in schema.sqlName; always inspect the returned schema because names are sanitized from headers and may be compact like hostname or sessionsource. For a trend question, pull at least ~8 comparable periods; for a change/comparison question, also pull the seasonality-correct baseline period (same weekday / same period last year) rather than just the prior point. Only SELECT is allowed.',
     inputSchema: z.object({
       sheetId: z.string(),
       sql: z.string().min(6, 'SQL too short'),
@@ -277,7 +277,7 @@ export const toolDefs = {
 
   createChart: {
     description:
-      'Use this when the user wants a chart — it creates one from a persistent source sheet. Choosing a mode: for the cleanest visual answer to a simple grouped question, use mode:"group" with groupCol, valueCol, optional seriesGroupCol, and operation so the chart aggregates directly like the chart button; for complex multi-step logic, reusable summaries, conditional metrics, or cases where the user needs an inspectable analytical trail, createPivot first and chart the pivot. In metrics mode, labelColumn is the X-axis column and dataColumns are Y series columns. Guardrails: for time-series charts, provide the intended timeRange and timeGranularity when needed — if the user did not specify them and no safe default was requested, ask before charting. Duplicate labels on line/area/scatter metrics charts usually mean the source grain is too detailed; use group mode, create a pivot/summary, or explicitly allow duplicate labels. Prefer chart inputs whose series headers are human-readable; the renderer will compact noisy source names, but the first view should optimize for immediate insight over raw implementation labels.',
+      'Use this when the user wants a chart — it creates one from a persistent source sheet. Choosing a mode: for the cleanest visual answer to a simple grouped question, use mode:"group" with groupCol, valueCol, optional seriesGroupCol, and operation so the chart aggregates directly like the chart button; for complex multi-step logic, reusable summaries, conditional metrics, or cases where the user needs an inspectable analytical trail, createPivot first and chart the pivot. In metrics mode, labelColumn is the X-axis column and dataColumns are Y series columns. Guardrails: for time-series charts, provide the intended timeRange and timeGranularity when needed — if the user did not specify them and no safe default was requested, ask before charting. Duplicate labels on line/area/scatter metrics charts usually mean the source grain is too detailed; use group mode, create a pivot/summary, or explicitly allow duplicate labels. Prefer chart inputs whose series headers are human-readable; the renderer will compact noisy source names, but the first view should optimize for immediate insight over raw implementation labels. Form is auto-selected from series count, scales, and X-axis type (single series → bar, or line over time; a rate paired with volumes or a ≥10× scale gap → bar + line dual axis; 4+ series over time → lines) unless you override with seriesTypes/rightAxisColumns; the response returns formDecisions naming the rule that fired, so state it briefly. For a relationship question ("does X drive Y?"), use type:"scatter" with one dot per entity — never a dual-axis line chart.',
     inputSchema: z.object({
       sheetId: z.string(),
       type: ChartTypeEnum,
@@ -303,6 +303,14 @@ export const toolDefs = {
         .optional()
         .describe('For mode:"group", the numeric value column to aggregate. Usually the first dataColumns entry for compatibility.'),
       operation: PivotOpEnum.optional().describe('For mode:"group", how to aggregate valueCol values in the chart.'),
+      seriesTypes: z
+        .record(z.string().regex(/^[A-Z]+$/), ChartTypeEnum)
+        .optional()
+        .describe('Metrics-mode only. Per-series chart type override keyed by dataColumns letter, e.g. {"B":"bar","C":"line"} for a bar+line combo. Omit to let the smart-defaults engine choose the form from series count, scales, and X-axis type.'),
+      rightAxisColumns: z
+        .array(z.string().regex(/^[A-Z]+$/))
+        .optional()
+        .describe('Metrics-mode only. dataColumns letters that plot against a second (right) Y-axis. Use for a rate/percentage paired with absolute volumes, or a much smaller-scale series. Omit to let smart defaults gate the dual axis (it only fires for a rate+volume pair or a ≥10× scale gap).'),
       title: z.string().optional(),
       timeRange: z
         .string()
@@ -347,7 +355,7 @@ export const toolDefs = {
 
   createSparkline: {
     description:
-      'Use this when the user wants a compact trend overview as its own table — it creates a sparkline-table sheet derived from a source sheet, where each row is one metric/group and shows a mini trend line over `dateCol`. (For an in-cell sparkline decoration on an existing column instead, use `applyFormat` with `visual:"sparkline"`.) `mode:"metrics"` charts each of `dataCols` as its own row; `mode:"group"` pivots `groupCol` into rows and aggregates `valueCol` with `operation`. `compareMode` controls the delta column (default `vs_avg`).',
+      'Use this as the default answer to an overview / "how is everything doing?" request — a compact KPI table where each row is one metric/group with a mini trend line over `dateCol`, a current value, and a Change cell colored as a direction-of-good heatmap (green = better, red = worse — not green = up). (For an in-cell sparkline decoration on an existing column instead, use `applyFormat` with `visual:"sparkline"`.) `mode:"metrics"` charts each of `dataCols` as its own row; `mode:"group"` pivots `groupCol` into rows and aggregates `valueCol` with `operation`. `compareMode` controls the delta column (default `vs_avg`). Add `summaryColumns` for Avg / Min-Max / Share-of-total. Set `goodDirections` per metric when a name is ambiguous (cost, churn, bounce, latency → "down"); otherwise direction is inferred and unknown metrics color neutrally.',
     inputSchema: z
       .object({
         sheetId: z.string(),
@@ -358,6 +366,14 @@ export const toolDefs = {
         groupCol: z.string().regex(/^[A-Z]+$/).optional(),
         valueCol: z.string().regex(/^[A-Z]+$/).optional(),
         operation: PivotOpEnum.optional(),
+        summaryColumns: z
+          .array(z.enum(['avg', 'minmax', 'share']))
+          .optional()
+          .describe('Optional extra columns appended after the Change column: "avg" (mean), "minmax" (min and max), "share" (share-of-total as an in-cell bar). The Change column is always colored as a direction-of-good heatmap.'),
+        goodDirections: z
+          .record(z.string(), z.enum(['up', 'down', 'unknown']))
+          .optional()
+          .describe('Per-metric direction of good keyed by the metric label (the header text of a dataCol, or the group value). "up" = higher is better (revenue, signups), "down" = lower is better (cost, churn, bounce, latency), "unknown" = neutral coloring. When omitted for a metric, direction is inferred from its name; pass it explicitly when the name is ambiguous.'),
         title: z.string().optional(),
       })
       .refine(
@@ -486,7 +502,7 @@ export const toolDefs = {
 
   queryConnection: {
     description:
-      'Use this for exploration, validation, follow-up calculations, and answer-only analytics — it runs a connector query privately for agent analysis without creating a visible sheet, chart, or derived table. Pass schemaToken from describeConnection and a queryPayload that matches queryShape. Always provide derivation and a structured brief. Returns resultId, headers, sampleRows, inferredTypes, and rowCount. Hidden results are not valid chart/table lineage; if the result should become user-visible or feed a visible chart/table, call createQuerySheetFromResult.',
+      'Use this for exploration, validation, follow-up calculations, and answer-only analytics — it runs a connector query privately for agent analysis without creating a visible sheet, chart, or derived table. Pass schemaToken from describeConnection and a queryPayload that matches queryShape. Always provide derivation and a structured brief. For a trend, request at least ~8 comparable periods and exclude or mark the partial current period; for a change/comparison, also fetch the seasonality-correct comparison period (same weekday or same period last year), not just the prior point. Returns resultId, headers, sampleRows, inferredTypes, and rowCount. Hidden results are not valid chart/table lineage; if the result should become user-visible or feed a visible chart/table, call createQuerySheetFromResult.',
     inputSchema: z.object({
       connectionId: z.string().min(1),
       schemaToken: z.string().min(8),

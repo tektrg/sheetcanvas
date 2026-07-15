@@ -20,7 +20,7 @@ describe('getToolErrorMessages', () => {
           },
         },
       ],
-    } as UIMessage;
+    } as any;
 
     expect(getToolErrorMessages(message)).toEqual([
       'ClickHouse error: Code: 497. DB::Exception: trungluong lacks SELECT(payload, created_at) ON hq_report.sale_bill. (ACCESS_DENIED)',
@@ -39,7 +39,7 @@ describe('getToolErrorMessages', () => {
           output: { ok: true, sheetId: 'sheet-1' },
         },
       ],
-    } as UIMessage;
+    } as any;
 
     expect(getToolErrorMessages(message)).toEqual([]);
   });
