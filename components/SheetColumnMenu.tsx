@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { CellFormat } from '../types';
 import { HeatmapMenuRow } from './HeatmapMenuRow';
+import { PortalThemeScope } from './PortalThemeScope';
 
 interface SheetColumnMenuProps {
   colIndex: number;
@@ -242,7 +243,10 @@ export const SheetColumnMenu: React.FC<SheetColumnMenuProps> = ({
   return (
     <>
       <span ref={anchorRef} className="hidden" />
-      {createPortal(menu, document.body)}
+      {createPortal(
+        <PortalThemeScope anchor={anchorRef.current?.parentElement}>{menu}</PortalThemeScope>,
+        document.body
+      )}
     </>
   );
 };

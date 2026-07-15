@@ -1,5 +1,6 @@
 import React, { useLayoutEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { PortalThemeScope } from './PortalThemeScope';
 
 export const HeaderDropdownMenu: React.FC<{
   anchorRef: React.RefObject<HTMLElement>;
@@ -36,16 +37,16 @@ export const HeaderDropdownMenu: React.FC<{
   if (!isOpen) return null;
 
   return createPortal(
-    <>
+    <PortalThemeScope anchor={anchorRef.current}>
       <div className="fixed inset-0 z-[999]" onMouseDown={onClose} />
       <div
-        className="bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-xl flex flex-col py-1"
+        className="bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-xl flex flex-col py-1"
         style={position ?? { position: 'fixed', top: 0, left: 0, width, zIndex: 1000 }}
         onMouseDown={(e) => e.stopPropagation()}
       >
         {children}
       </div>
-    </>,
+    </PortalThemeScope>,
     document.body
   );
 };
