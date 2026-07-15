@@ -206,6 +206,13 @@
       .dark .group:hover .sheet-scroll::-webkit-scrollbar-thumb:hover,
       .dark .sheet-scroll-active::-webkit-scrollbar-thumb:hover { background: #737373; }
 
+      /* Copy/download-as-image capture: hide all scrollbar chrome so it is never baked
+         into the exported image (content and scroll position are preserved). */
+      .exporting-hide-scrollbars,
+      .exporting-hide-scrollbars * { scrollbar-width: none !important; }
+      .exporting-hide-scrollbars::-webkit-scrollbar,
+      .exporting-hide-scrollbars *::-webkit-scrollbar { width: 0 !important; height: 0 !important; display: none !important; }
+
       /* Rich Text Content Styles */
       .rich-text-content ul { list-style-type: disc; margin-left: 1.5rem; }
       .rich-text-content ol { list-style-type: decimal; margin-left: 1.5rem; }

@@ -30,6 +30,7 @@
     "@ai-sdk/google": "^3.0.79",
     "@ai-sdk/react": "^3.0.193",
     "@tanstack/react-virtual": "3.5.0",
+    "@zumer/snapdom": "^2.16.0",
     "ai": "^6.0.191",
     "alasql": "^4.17.3",
     "d3-format": "3.1.0",
