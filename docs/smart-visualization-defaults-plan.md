@@ -27,7 +27,7 @@ Today the app draws *technically correct but badly formed* charts, and the AI ag
 The renderer already supports most of what we need — the gap is **defaults and agent access**, not rendering capability.
 
 | Capability | Today | Where |
-|---|---|---|
+| --- | --- | --- |
 | Mixed series types in one chart (bar + line combo) | ✅ Yes — metrics mode only | `components/ChartNode.tsx:1259` reads `seriesTypes[colId]`, all series render inside one Recharts `<ComposedChart>` |
 | Secondary / right Y-axis (dual axis) | ✅ Yes — metrics mode only | `rightAxisColumns[]` → second `<YAxis>` (`ChartNode.tsx:864, 1004-1018`), independent scaling per axis |
 | Per-series config in the data model | ✅ Yes | `ChartConfig.seriesTypes`, `rightAxisColumns`, `seriesDisplayNames` (`types.ts:235-260`) |
@@ -38,6 +38,7 @@ The renderer already supports most of what we need — the gap is **defaults and
 | Scatter plot (relationship / correlation charts) | ❓ Unverified | Recharts supports `<Scatter>` natively, but whether `ChartNode.tsx` exposes a scatter type is unconfirmed — **verify at Phase 1 start**. Without it, "does X drive Y" questions have no valid form and the agent will fake it with a dual-axis line chart — the exact spurious-correlation trap F11 exists to prevent |
 
 **Glossary for non-code readers:**
+
 - *metrics mode* — the chart plots columns you name directly (already-aggregated data).
 - *group mode* — the chart aggregates raw rows itself (like a chart-side pivot).
 - *Recharts* — the standard React charting library the renderer is built on.
@@ -51,7 +52,7 @@ The renderer already supports most of what we need — the gap is **defaults and
 **F0 — evaluation order & inputs (governs all rules below).** The X-axis type (**time/ordered** vs **categorical** vs **ordinal** — see F7) is a first-class input alongside series count and per-series scale/unit stats; rules that conflict resolve in this order: X-type constraints (F6/F3-categorical) → series-count caps (F4/F5) → dual-axis gate (F2) → cosmetics (F7/F8). Lines are only ever valid when X is ordered — connected points over unordered categories imply a trend that doesn't exist. `chartDefaults.ts` implements this as an explicit ordered pipeline so the test matrix is unambiguous.
 
 | # | Rule | Rationale |
-|---|---|---|
+| --- | --- | --- |
 | F1 | **1 series → bar** (line if X is time; **horizontal bar** if labels are long or categories ≥ ~10) | Bars compare discrete values best; time reads as a line; long labels read sideways |
 | F2 | **Dual axis is gated, never a count default.** Two (or more) series share **one axis** — grouped bars over categories, lines over time — *unless* the F2 gate fires: one series is a **rate/percentage paired with absolutes**, or magnitudes differ by **≥ ~10×**. Only then: volume series = bar on **left** axis, rate/small series = line on **right** axis. When neither series is a rate but scales still differ, prefer **rebasing both to index = 100** on one axis over a dual axis | Dual axes invite spurious-correlation reads and their relative scaling is arbitrary; same-unit pairs (this year vs last year) must share an axis. The volume-vs-rate combo is the one classic legitimate case |
 | F3 | **3 same-unit series:** X is time → lines; X is categorical → grouped bars (3 is the ceiling). Mixed volume + rates → apply the F2 gate per series | Grouped bars get dense fast; lines over categories are invalid (F0) |
@@ -69,7 +70,7 @@ The renderer already supports most of what we need — the gap is **defaults and
 ### 3.2 Analysis method rules (A-rules) — what the agent does before charting
 
 | # | Rule | Rationale |
-|---|---|---|
+| --- | --- | --- |
 | A0 | **Profile before analyzing**: check row coverage (date gaps), nulls, and obvious duplicates before drawing any conclusion; state material data-quality caveats | A trend over a table missing three weeks isn't a trend |
 | A1 | **Trend first**: never report a number without its level, direction, and rate of change | A snapshot without trajectory isn't insight |
 | A2 | **Always compare to a baseline — and pick the one that removes known seasonality**, stating which and why: daily data → same weekday or trailing 4-week average, never just "yesterday"; monthly/seasonal business → same period last year, not the prior month | A number without comparison is decoration; a comparison polluted by seasonality is misinformation |
@@ -85,7 +86,7 @@ The renderer already supports most of what we need — the gap is **defaults and
 ### 3.3 Dense-overview rule (S-rule)
 
 | # | Rule |
-|---|---|
+| --- | --- |
 | S1 | When the user wants "one view of everything" / a KPI overview, the default answer is a **sparkline table**: per row → metric name, current value, mini trend, Δ vs baseline as a **heatmap** cell colored by *direction of good* (see S2), optional share-of-total as an in-cell **bar** |
 | S2 | **Direction of good:** green = improvement, red = deterioration — *not* green = up. For cost, churn, bounce rate, refund rate, load time, **down is good**. The agent infers direction per metric from its name/context; when direction is unknown or ambiguous, use **neutral coloring** (single-hue intensity), never guess green-up |
 
@@ -94,7 +95,7 @@ The renderer already supports most of what we need — the gap is **defaults and
 The agent's first move on any analytical question is to match it to one of these 8 archetypes. Each recipe fixes: what to query (history depth, comparison period, breakdown), which baseline (per A2), which chart family, and the narration shape. The F-rules then pick the exact form within the family from the actual data shape — **intent picks the family, data shape picks the form**. Kept small and curated on purpose: 8 archetypes in the system prompt beat a growing lookup database (retrieval machinery, contradicting entries, missed lookups). Unmatched questions fall through to A-rules + F-rules directly.
 
 | # | Archetype | Trigger examples | Recipe |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Q1 | **Trend** | "How is X doing?" | Fetch enough history for the granularity (≥ 8 comparable periods); seasonality-aware baseline (A2); exclude/mark partial period (A6) → **line** family; narrate level + direction + rate of change (A1, A10) |
 | Q2 | **Change / driver** | "Why did X drop?" | Confirm the change is real (A5, A6 first); decompose by segment/source/channel (A3); rank contributions → **sorted bar of contributions**; narrate the top drivers by name |
 | Q3 | **Ranking** | "Which X matters most?" | Sort by value; 80/20 concentration check (A4) → **horizontal bar** (F13), top-N + Other if long (F5) |
@@ -114,21 +115,17 @@ The agent's first move on any analytical question is to match it to one of these
 
 **Build:**
 
-0. **Verify scatter support in `ChartNode.tsx`** (see current-state table). If absent, add basic `<Scatter>` rendering in this phase or explicitly log F12/Q7 as deferred — do not leave relationship questions with no valid form.
-
-1. **New shared module `utils/chartDefaults.ts`** — pure function, single source of truth:
-   - Input: per-column stats (inferred type, magnitude range, rate signal per F11 — percent format = strong, bounds = weak), series count, X-column type (time/ordered vs categorical vs ordinal).
-   - Output: `{ type, seriesTypes, rightAxisColumns, sort, warnings[] }` implementing F1–F13 as an **explicit ordered pipeline per F0** (X-type constraints → count caps → dual-axis gate → cosmetics), so conflicting rules resolve deterministically.
-   - Reuses existing helpers `inferColumnType`, `getValidDataCount` from `utils/dataAnalysis.ts`.
-   - Pure + unit-testable: table-driven tests mapping data shapes → expected form, including the trap cases: two same-unit series (must NOT dual-axis), 3 series over categories (must NOT be lines), ordinal categories (must NOT value-sort), small counts under 100 (must NOT be detected as rates).
-
+0. **Verify scatter support in **`**ChartNode.tsx**` (see current-state table). If absent, add basic `<Scatter>` rendering in this phase or explicitly log F12/Q7 as deferred — do not leave relationship questions with no valid form.
+1. **New shared module **`**utils/chartDefaults.ts**` — pure function, single source of truth:
+  - Input: per-column stats (inferred type, magnitude range, rate signal per F11 — percent format = strong, bounds = weak), series count, X-column type (time/ordered vs categorical vs ordinal).
+  - Output: `{ type, seriesTypes, rightAxisColumns, sort, warnings[] }` implementing F1–F13 as an **explicit ordered pipeline per F0** (X-type constraints → count caps → dual-axis gate → cosmetics), so conflicting rules resolve deterministically.
+  - Reuses existing helpers `inferColumnType`, `getValidDataCount` from `utils/dataAnalysis.ts`.
+  - Pure + unit-testable: table-driven tests mapping data shapes → expected form, including the trap cases: two same-unit series (must NOT dual-axis), 3 series over categories (must NOT be lines), ordinal categories (must NOT value-sort), small counts under 100 (must NOT be detected as rates).
 2. **Agent path** — `src/agent/clientToolExecutor.ts` `case 'createChart'` (line ~657-719):
-   - When the model omits form details, run `chartDefaults` and populate `seriesTypes` / `rightAxisColumns` before `store.addChart`.
-   - Extend the `createChart` tool schema (`agent/tools.ts:268-320`) with optional `seriesTypes` and `rightAxisColumns` so the agent can also set them explicitly.
-   - Response includes `formDecisions` (which rule fired, in plain English) so the agent can narrate it.
-
+  - When the model omits form details, run `chartDefaults` and populate `seriesTypes` / `rightAxisColumns` before `store.addChart`.
+  - Extend the `createChart` tool schema (`agent/tools.ts:268-320`) with optional `seriesTypes` and `rightAxisColumns` so the agent can also set them explicitly.
+  - Response includes `formDecisions` (which rule fired, in plain English) so the agent can narrate it.
 3. **UI path** — `App.tsx handleInitChart` (line ~416-479) calls the same module instead of falling back to `'bar'`.
-
 4. **Group mode**: add per-series-type support to group mode in `ChartNode.tsx` (line 1025-1137) *or* — cheaper first step — have the defaults engine only auto-switch the global type (bars→lines at 4+ series) in group mode, and log combo as metrics-mode-only. **Recommend the cheap path first.**
 
 **Out of scope for Phase 1:** top-N+Other consolidation (F5) — warning only; consolidation lands in Phase 4.
@@ -139,7 +136,7 @@ The agent's first move on any analytical question is to match it to one of these
 
 **What the user sees:** "give me an overview" → one compact table: metric, current value, trend line, red/green delta cell, share-of-total bar.
 
-**Build (in `utils/sparklineHelpers.ts` + `agent/tools.ts:338-357` + handler `clientToolExecutor.ts:907`):**
+**Build (in **`**utils/sparklineHelpers.ts**`** + **`**agent/tools.ts:338-357**`** + handler **`**clientToolExecutor.ts:907**`**):**
 
 1. Emit **heatmap coloring on the Change column** by default (`visual:'heatmap'`) — colored by **direction of good (S2), not green-up/red-down**. Blocking requirement, not polish: the agent passes a per-metric `goodDirection: 'up' | 'down' | 'unknown'` (inferred from metric name/context — cost, churn, bounce, refund, latency → down is good); `unknown` renders neutral single-hue intensity. Unconditional green-positive would actively mislead on half of all business metrics.
 2. Optional columns behind new config flags: **Avg**, **Min/Max**, **Share of total** (group mode) with `visual:'bar'`.
@@ -156,9 +153,9 @@ The agent's first move on any analytical question is to match it to one of these
 
 1. **Server-level golden path** — replace the connection-failure-only `instructions` string in `backend/src/mcp/route.ts:182` with: workflow (discover → explore privately → summarize → chart → note) + the **8-archetype playbook (Q1–Q8)** as the primary structure, with A0–A10 as cross-cutting rules and "surface the brief's judgment caveats in your final answer." Match question → archetype → recipe before touching data; the recipe dictates history depth, baseline, and chart family; `chartDefaults` picks the final form.
 2. **Tool description updates** (`agent/tools.ts`):
-   - `createChart`: restructure so sentence 1 = when to use; add one-line form guidance referencing auto-defaults ("form is auto-selected from series count/scales/X-type unless you override"); note the F12 scatter rule for relationship questions.
-   - `createSparkline`: S1/Q8 positioning + the `goodDirection` contract (S2).
-   - `queryConnection` / `querySheet`: nudge Q-recipes' data requirements (fetch ≥ 8 comparable periods for trends; fetch the seasonality-correct comparison period per A2).
+  - `createChart`: restructure so sentence 1 = when to use; add one-line form guidance referencing auto-defaults ("form is auto-selected from series count/scales/X-type unless you override"); note the F12 scatter rule for relationship questions.
+  - `createSparkline`: S1/Q8 positioning + the `goodDirection` contract (S2).
+  - `queryConnection` / `querySheet`: nudge Q-recipes' data requirements (fetch ≥ 8 comparable periods for trends; fetch the seasonality-correct comparison period per A2).
 3. Mirror the same playbook in the in-app copilot system prompt (wherever the embedded agent's prompt lives — confirm during implementation).
 4. **Keep the playbook in-prompt, not a lookup database**: 8 archetypes fit in the instruction budget and fire reliably; a retrievable database (with its retrieval misses and entry governance) is only worth building if the playbook demonstrably outgrows the prompt — revisit then, not now.
 
@@ -204,3 +201,4 @@ The agent's first move on any analytical question is to match it to one of these
 4. **Scatter scope (F12/Q7):** if `ChartNode.tsx` lacks scatter support, add it in Phase 1 (recommended — otherwise relationship questions have no valid form) or defer to Phase 4 with the agent explicitly declining dual-axis substitutes?
 5. **Direction-of-good source (S2):** agent-inferred from metric names only, or also a user-editable per-column setting for when inference is wrong? (Recommend: inference + neutral fallback first; the setting only if mislabels show up in practice.)
 6. **Ordinal detection (F7):** known-sequence detection (month/day names, numeric ranges) with warn-don't-sort fallback — good enough, or do we want an explicit "ordinal" column type in the data model?
+

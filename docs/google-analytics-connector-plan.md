@@ -23,23 +23,20 @@ This plan mirrors the ClickHouse connector pattern: the frontend stores a “con
 
 Entry point: “Connect Data” → “Google Analytics”.
 
-1) Connect account
-   - Show “Sign in with Google” / “Connect Google Analytics”.
-   - After successful auth, show connected status and available GA4 properties.
-
-2) Configure report
-   - Property selector (dropdown of properties user can access).
-   - Date range: preset (7/14/28/90 days) + custom range.
-   - Dimensions (multi-select) and Metrics (multi-select).
-   - Optional: filters, order by, limit.
-   - “Preview” to fetch and render sample table.
-
-3) Create connected sheet
-   - “Run & Create Sheet” creates a sheet with `connectorConfig` and populated cells.
-
-4) Connected sheet maintenance
-   - Sheet header: “Refresh” and “Edit config”.
-   - Refresh re-runs the report with stored connector + report config.
+1. Connect account
+  - Show “Sign in with Google” / “Connect Google Analytics”.
+  - After successful auth, show connected status and available GA4 properties.
+2. Configure report
+  - Property selector (dropdown of properties user can access).
+  - Date range: preset (7/14/28/90 days) + custom range.
+  - Dimensions (multi-select) and Metrics (multi-select).
+  - Optional: filters, order by, limit.
+  - “Preview” to fetch and render sample table.
+3. Create connected sheet
+  - “Run & Create Sheet” creates a sheet with `connectorConfig` and populated cells.
+4. Connected sheet maintenance
+  - Sheet header: “Refresh” and “Edit config”.
+  - Refresh re-runs the report with stored connector + report config.
 
 ## Data model
 
@@ -100,14 +97,14 @@ Why:
 
 Flow:
 
-1) Frontend initiates OAuth with PKCE:
-   - Generate `code_verifier` + `code_challenge`.
-   - Redirect to Google OAuth consent screen.
-2) Google redirects back to the app with `code`.
-3) Frontend posts `{ code, code_verifier, redirect_uri }` to backend.
-4) Backend calls Google token endpoint to exchange code for `{ access_token, refresh_token, expires_in }`.
-5) Backend encrypts and stores `refresh_token` in D1 and returns a `connectorId` to the frontend.
-6) Frontend uses `connectorId` for subsequent report queries.
+1. Frontend initiates OAuth with PKCE:
+  - Generate `code_verifier` + `code_challenge`.
+  - Redirect to Google OAuth consent screen.
+2. Google redirects back to the app with `code`.
+3. Frontend posts `{ code, code_verifier, redirect_uri }` to backend.
+4. Backend calls Google token endpoint to exchange code for `{ access_token, refresh_token, expires_in }`.
+5. Backend encrypts and stores `refresh_token` in D1 and returns a `connectorId` to the frontend.
+6. Frontend uses `connectorId` for subsequent report queries.
 
 Scopes (minimum viable):
 
@@ -132,16 +129,13 @@ Follow the ClickHouse pattern: `GET /api/connectors`, plus GA-specific endpoints
 
 - `GET /api/connectors`
   - returns public connector metadata for all types (or filter by `type`).
-
 - `POST /api/connectors/google-analytics/auth/start` (optional)
   - backend returns `authorizationUrl` (if you want backend to construct OAuth URL).
   - alternatively, frontend constructs the URL and only uses `/auth/exchange`.
-
 - `POST /api/connectors/google-analytics/auth/exchange`
   - request: `{ code, codeVerifier, redirectUri }`
   - response: `{ connector: { id, type, name, ... } }`
   - backend stores refresh token encrypted.
-
 - `POST /api/connectors/google-analytics/test` (optional but useful)
   - validates the connector by listing accessible properties or running a trivial report.
 
@@ -220,30 +214,26 @@ Common error codes to plan for:
 
 ## Milestones (incremental delivery)
 
-1) Backend: connector type + encrypted refresh token storage
-   - D1 schema updates
-   - `/auth/exchange` endpoint
-   - `/api/connectors` includes GA connectors
-
-2) Backend: report execution
-   - Use refresh token to mint access token
-   - Call GA4 Analytics Data API `runReport`
-   - Return `{ columns, rows, rowCount, truncated }`
-
-3) Frontend: UI + connected sheet
-   - Add GA section to `DataConnectorDialog`
-   - Auth button + callback handling (PKCE)
-   - Report builder + preview
-   - Create connected sheet with `connectorConfig`
-
-4) Refresh/edit support in `SheetNode`
-   - Refresh button re-runs report
-   - Edit config updates stored report params on the sheet
-
-5) Hardening
-   - Better validation + limits
-   - Clear errors + re-auth flow
-   - Docs + troubleshooting
+1. Backend: connector type + encrypted refresh token storage
+  - D1 schema updates
+  - `/auth/exchange` endpoint
+  - `/api/connectors` includes GA connectors
+2. Backend: report execution
+  - Use refresh token to mint access token
+  - Call GA4 Analytics Data API `runReport`
+  - Return `{ columns, rows, rowCount, truncated }`
+3. Frontend: UI + connected sheet
+  - Add GA section to `DataConnectorDialog`
+  - Auth button + callback handling (PKCE)
+  - Report builder + preview
+  - Create connected sheet with `connectorConfig`
+4. Refresh/edit support in `SheetNode`
+  - Refresh button re-runs report
+  - Edit config updates stored report params on the sheet
+5. Hardening
+  - Better validation + limits
+  - Clear errors + re-auth flow
+  - Docs + troubleshooting
 
 ## Manual QA checklist
 
@@ -257,3 +247,4 @@ Common error codes to plan for:
 - Security:
   - no tokens stored in localStorage/IndexedDB
   - backend rejects unauthenticated `/api/*` if `API_BEARER_TOKEN` set
+

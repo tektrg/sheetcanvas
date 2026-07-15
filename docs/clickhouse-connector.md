@@ -12,13 +12,13 @@ Flexsheet uses a Cloudflare Worker (`backend/`) as a proxy layer for ClickHouse:
 
 ## High-level flow
 
-1) User configures a ClickHouse connector in the UI (URL + username + password).
-2) Frontend calls the backend to (optionally) test the credentials, then saves the connector.
-3) Backend encrypts the password at rest in D1, and returns a “public connector” (no password).
-4) User writes a SQL query in the UI and runs it.
-5) Frontend calls the backend query endpoint with `connectorId` + `sql`.
-6) Backend decrypts the stored password, executes the SQL against ClickHouse over HTTP, and returns rows/columns to the browser.
-7) Frontend converts the result into a `string[][]` matrix and populates the sheet; the sheet stores a `connectorConfig` so it can be refreshed later.
+1. User configures a ClickHouse connector in the UI (URL + username + password).
+2. Frontend calls the backend to (optionally) test the credentials, then saves the connector.
+3. Backend encrypts the password at rest in D1, and returns a “public connector” (no password).
+4. User writes a SQL query in the UI and runs it.
+5. Frontend calls the backend query endpoint with `connectorId` + `sql`.
+6. Backend decrypts the stored password, executes the SQL against ClickHouse over HTTP, and returns rows/columns to the browser.
+7. Frontend converts the result into a `string[][]` matrix and populates the sheet; the sheet stores a `connectorConfig` so it can be refreshed later.
 
 ## Frontend pieces
 
@@ -230,3 +230,4 @@ See `backend/README.md` for the full local setup. In practice:
 - `Only SELECT/WITH queries are allowed`: backend blocks non-read-only SQL and multi-statement queries.
 - `Query timed out`: increase `DEFAULT_TIMEOUT_MS` (or pass `timeoutMs` in the request if you add that to the frontend).
 - Unexpected truncation: the backend enforces `MAX_ROWS` and the frontend enforces max imported rows/cols for sheet rendering.
+
