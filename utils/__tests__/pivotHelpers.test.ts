@@ -192,3 +192,105 @@ describe('refreshPivotTable conditional metrics', () => {
     expect(pivot.cells.D5.value).toBe(300);
   });
 });
+
+describe('refreshPivotTable format rule growth', () => {
+  it('extends a data-bar format rule to cover rows added by a growing pivot', () => {
+    const source1 = sourceSheet();
+    const pivot1 = refreshPivotTable(pivotShell(source1, {
+      values: [{ column: 'C', operation: 'SUM' }],
+    }), source1);
+
+    // Simulate the user applying a bar format over the full data column (B2:B4),
+    // as applyFormatTool would when asked to format a pivot's metric column.
+    const pivotWithRule: SheetData = {
+      ...pivot1,
+      formatRules: [{ range: 'B2:B4', format: { type: 'number', visual: 'bar' } }],
+    };
+
+    const source2: SheetData = {
+      ...source1,
+      size: { width: 4, height: 7 },
+      cells: {
+        ...source1.cells,
+        A7: { raw: 'ZZZ', value: 'ZZZ' },
+        B7: { raw: 'paid', value: 'paid' },
+        C7: { raw: '400', value: 400 },
+        D7: { raw: 'ads', value: 'ads' },
+      },
+    };
+
+    const refreshed = refreshPivotTable(pivotWithRule, source2);
+
+    // New group row (sorts last, so it lands where the old total row used to be)
+    // must now carry the bar format, not just the original 3 rows.
+    expect(refreshed.cells.A5.value).toBe('ZZZ');
+    expect(refreshed.cells.B5.format?.visual).toBe('bar');
+    expect(refreshed.formatRules?.[0].range).toBe('B2:B5');
+  });
+
+  it('leaves an unrelated format rule untouched when the pivot grows', () => {
+    const source1 = sourceSheet();
+    const pivot1 = refreshPivotTable(pivotShell(source1, {
+      values: [{ column: 'C', operation: 'SUM' }],
+    }), source1);
+
+    const pivotWithRule: SheetData = {
+      ...pivot1,
+      formatRules: [{ range: 'A2:A2', format: { type: 'text' } }],
+    };
+
+    const source2: SheetData = {
+      ...source1,
+      size: { width: 4, height: 7 },
+      cells: {
+        ...source1.cells,
+        A7: { raw: 'LATAM', value: 'LATAM' },
+        B7: { raw: 'paid', value: 'paid' },
+        C7: { raw: '400', value: 400 },
+        D7: { raw: 'ads', value: 'ads' },
+      },
+    };
+
+    const refreshed = refreshPivotTable(pivotWithRule, source2);
+
+    expect(refreshed.formatRules?.[0].range).toBe('A2:A2');
+  });
+
+  it('keeps a per-cell format on its own row when a new group sorts ahead of it', () => {
+    const source1 = sourceSheet();
+    const pivot1 = refreshPivotTable(pivotShell(source1, {
+      values: [{ column: 'C', operation: 'SUM' }],
+    }), source1);
+
+    // Rows are sorted alphabetically: APAC(2) EU(3) NA(4). Manually highlight APAC's cell.
+    expect(pivot1.cells.A2.value).toBe('APAC');
+    const pivotWithDirectFormat: SheetData = {
+      ...pivot1,
+      cells: {
+        ...pivot1.cells,
+        B2: { ...pivot1.cells.B2, format: { type: 'currency', symbol: '$' } },
+      },
+    };
+
+    // Adding a group "AAA" sorts before APAC, pushing it from row 2 to row 3.
+    const source2: SheetData = {
+      ...source1,
+      size: { width: 4, height: 7 },
+      cells: {
+        ...source1.cells,
+        A7: { raw: 'AAA', value: 'AAA' },
+        B7: { raw: 'paid', value: 'paid' },
+        C7: { raw: '400', value: 400 },
+        D7: { raw: 'ads', value: 'ads' },
+      },
+    };
+
+    const refreshed = refreshPivotTable(pivotWithDirectFormat, source2);
+
+    expect(refreshed.cells.A2.value).toBe('AAA');
+    expect(refreshed.cells.A3.value).toBe('APAC');
+    // The currency format must follow APAC to its new row, not stay stuck on row 2.
+    expect(refreshed.cells.B2.format).toBeUndefined();
+    expect(refreshed.cells.B3.format?.type).toBe('currency');
+  });
+});

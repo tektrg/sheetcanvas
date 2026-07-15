@@ -53,6 +53,34 @@ export const upsertFormatRule = (
   return [...retainedRules, nextRule];
 };
 
+// A rule applied to the pivot's full data column previously reached down to the
+// last data row (excluding a trailing grand-total row, which bar/heatmap formats
+// commonly skip). On refresh the pivot may have grown; stretch that rule's endRow
+// to match so new rows keep the same formatting instead of being skipped.
+export const extendFormatRulesToNewHeight = (
+  rules: SheetFormatRule[] | undefined,
+  oldHeight: number,
+  newHeight: number,
+  hasTrailingTotalRow: boolean,
+): SheetFormatRule[] | undefined => {
+  if (!rules?.length || newHeight <= oldHeight) return rules;
+
+  // Pivot sizing reserves one trailing blank row beyond the last used row
+  // (see desiredHeight = maxRowIndex + 2 in computePivotCells), so the last
+  // used row index is height - 2, not height - 1.
+  const totalRowOffset = hasTrailingTotalRow ? 1 : 0;
+  const oldLastDataRow = oldHeight - 2 - totalRowOffset;
+
+  return rules.map(rule => {
+    const range = parseA1Range(rule.range);
+    if (!range || range.endRow < oldLastDataRow) return rule;
+
+    const newLastDataRow = newHeight - 2 - totalRowOffset;
+    const grownRange = getCellId(range.startCol, range.startRow) + ':' + getCellId(range.endCol, newLastDataRow);
+    return { ...rule, range: grownRange };
+  });
+};
+
 export const applyFormatRulesToCells = (
   cells: Record<string, CellData>,
   rules: SheetFormatRule[] | undefined,

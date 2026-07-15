@@ -11,7 +11,7 @@ import { getCellId, parseCellId } from './formulas';
 import { getSheetHeaders } from './chartHelpers';
 import { CELL_WIDTH, CELL_HEIGHT } from '../constants';
 import { getFilteredRows, matchesFilterCondition } from './dataAnalysis';
-import { applyFormatRulesToCells } from './formatRules';
+import { applyFormatRulesToCells, extendFormatRulesToNewHeight } from './formatRules';
 
 type SourceRow = Record<string, any>;
 
@@ -487,10 +487,31 @@ export const refreshPivotTable = (pivotSheet: SheetData, sourceSheet: SheetData)
 
   const { cells: newCells, width, height, warnings } = computePivotCells(sourceSheet, pivotSheet.pivotConfig);
 
+  // Pivot rows are re-sorted alphabetically by group label on every refresh, so a
+  // newly-appearing group can insert in the middle and push existing rows down a
+  // slot. Carrying a saved per-cell format forward by its raw cellId would leave
+  // that format stuck on the old row position, now showing a different group's
+  // data. Instead, find where each row's label ended up before refresh and carry
+  // its per-column formats forward from there.
+  const oldRowLabelToRow = new Map<string | number, number>();
+  Object.keys(pivotSheet.cells).forEach(cellId => {
+    const position = parseCellId(cellId);
+    if (!position || position.col !== 0 || position.row === 0) return;
+    const label = pivotSheet.cells[cellId].value;
+    if (label !== null && label !== undefined) oldRowLabelToRow.set(label, position.row);
+  });
+
   const mergedCells: Record<string, CellData> = {};
   Object.keys(newCells).forEach(cellId => {
     const newCell = newCells[cellId];
-    const oldCell = pivotSheet.cells[cellId];
+    const position = parseCellId(cellId);
+
+    let oldCell = pivotSheet.cells[cellId];
+    if (position && position.row > 0 && position.col > 0) {
+      const rowLabel = newCells[getCellId(0, position.row)]?.value;
+      const oldRow = rowLabel !== null && rowLabel !== undefined ? oldRowLabelToRow.get(rowLabel) : undefined;
+      oldCell = oldRow !== undefined ? pivotSheet.cells[getCellId(position.col, oldRow)] : undefined;
+    }
 
     if (oldCell && oldCell.format) {
       mergedCells[cellId] = { ...newCell, format: oldCell.format };
@@ -499,12 +520,19 @@ export const refreshPivotTable = (pivotSheet: SheetData, sourceSheet: SheetData)
     }
   });
 
-  const formattedCells = applyFormatRulesToCells(mergedCells, pivotSheet.formatRules);
+  const extendedFormatRules = extendFormatRulesToNewHeight(
+    pivotSheet.formatRules,
+    pivotSheet.size.height,
+    height,
+    pivotSheet.pivotConfig.showColTotals !== false
+  );
+  const formattedCells = applyFormatRulesToCells(mergedCells, extendedFormatRules);
 
   return {
     ...pivotSheet,
     size: { width, height },
     cells: formattedCells,
+    formatRules: extendedFormatRules,
     pivotWarnings: warnings
   };
 };
