@@ -15,7 +15,8 @@ import { SheetColumnMenu } from './SheetColumnMenu';
 import { SheetRowMenu } from './SheetRowMenu';
 import { SheetCell } from './SheetCell';
 import { HeaderDropdownMenu } from './HeaderDropdownMenu';
-import html2canvas from 'html2canvas';
+import { SettingsPopover } from './SettingsPopover';
+import { copyElementAsImage } from '../utils/elementCapture';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useStore } from '../store';
 import { ConnectedSheetBriefPanel } from './ConnectedSheetBriefPanel';
@@ -45,6 +46,18 @@ interface SheetNodeProps {
 
 const SUPPORTED_FORMULAS = ['SUM', 'AVG', 'AVERAGE', 'MIN', 'MAX', 'COUNT'];
 
+// Placeholder used only for the one render where the backing sheet was just
+// deleted from the store — lets every hook below keep running with a valid
+// shape instead of branching, so hook order/count never changes. The actual
+// null check (and null render) happens after all hooks have run.
+const EMPTY_SHEET_DATA: SheetData = {
+  id: '',
+  position: { x: 0, y: 0 },
+  size: { width: 0, height: 0 },
+  title: '',
+  cells: {},
+};
+
 const ConnectedSheetError = ({ message }: { message: string }) => (
   <div className="border-b border-red-200/70 bg-red-50/90 px-3 py-2 dark:border-red-900/60 dark:bg-red-950/25">
     <div className="flex items-start gap-2 text-xs text-red-700 dark:text-red-300">
@@ -69,13 +82,15 @@ const areSheetNodePropsEqual = (prev: SheetNodeProps, next: SheetNodeProps) => (
 );
 
 const SheetNodeComponent: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPivot, onAddSparkline, onToast, isPendingDelete, hasLineage, lineageVisible, onToggleLineage, onSelectionContextChange, onMouseDown }) => {
-  const data = useStore(state => state.sheets[id]);
+  const rawData = useStore(state => state.sheets[id]);
+  const data = rawData ?? EMPTY_SHEET_DATA;
   const selected = useStore(state => state.selectedIds.has(id));
-  const scale = useStore(state => state.transform.scale);
   const updateSheet = useStore(state => state.updateSheet);
   const deleteSheet = useStore(state => state.deleteSheet);
   const saveSnapshot = useStore(state => state.saveSnapshot);
   const select = useStore(state => state.select);
+  
+  const isLowZoom = useStore(state => state.transform.scale < 0.35);
   
   // Select Source Sheet if needed
   const sourceSheetId = data?.pivotConfig?.sourceSheetId || data?.sparklineConfig?.sourceSheetId;
@@ -127,7 +142,7 @@ const SheetNodeComponent: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPiv
   const containerRef = useRef<HTMLDivElement>(null);
   const dataRef = useRef(data);
   const updateSheetRef = useRef(updateSheet);
-  const scaleRef = useRef(scale);
+  const scaleRef = useRef(useStore.getState().transform.scale);
   const isEditingRef = useRef(isEditing);
   const isEditingTitleRef = useRef(isEditingTitle);
   const colResizingRef = useRef<{ index: number; startX: number; startWidth: number } | null>(null);
@@ -158,8 +173,10 @@ const SheetNodeComponent: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPiv
       updateSheetRef.current = updateSheet;
   }, [updateSheet]);
   useEffect(() => {
-      scaleRef.current = scale;
-  }, [scale]);
+    return useStore.subscribe((state) => {
+      scaleRef.current = state.transform.scale;
+    });
+  }, []);
   useEffect(() => {
       isEditingRef.current = isEditing;
   }, [isEditing]);
@@ -172,8 +189,6 @@ const SheetNodeComponent: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPiv
   useEffect(() => {
       resizingRef.current = resizing;
   }, [resizing]);
-
-  if (!data) return null;
 
   const isPivot = !!data.pivotConfig;
   const isSparkline = !!data.sparklineConfig;
@@ -365,7 +380,7 @@ const SheetNodeComponent: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPiv
     }
     return w;
   }, [data.size.width, data.colWidths]);
-  
+
   const colStats = useMemo(() => {
     const stats: Record<number, { min: number; max: number }> = {};
     Object.entries(data.cells).forEach(([key, cell]) => {
@@ -839,7 +854,7 @@ const SheetNodeComponent: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPiv
     } else if (['number', 'currency', 'percent', 'text'].includes(action)) {
         applyColumnFormat(targetCols, { 
             type: action as any, 
-            d3Format: action === 'percent' ? '.2%' : '' 
+            d3Format: action === 'percent' ? '.1%' : '' 
         });
     } else if (action === 'insert-left' || action === 'insert-right') {
         saveSnapshot();
@@ -891,7 +906,7 @@ const SheetNodeComponent: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPiv
     else if (action === 'd3-custom') applyRowFormat(rowIndex, { type: 'number', d3Format: param });
     else if (['number', 'currency', 'percent', 'text'].includes(action)) applyRowFormat(rowIndex, { 
         type: action as any, 
-        d3Format: action === 'percent' ? '.2%' : '' 
+        d3Format: action === 'percent' ? '.1%' : '' 
     });
     else if (action === 'insert-above' || action === 'insert-below') {
         saveSnapshot();
@@ -948,7 +963,7 @@ const SheetNodeComponent: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPiv
         const trimmed = editingRaw.trim();
         if (!trimmed.startsWith('=') && trimmed.endsWith('%')) {
              const valStr = trimmed.slice(0, -1);
-             if (!isNaN(parseFloat(valStr))) newFormat = { ...newFormat, type: 'percent', d3Format: '.2%' };
+             if (!isNaN(parseFloat(valStr))) newFormat = { ...newFormat, type: 'percent', d3Format: '.1%' };
         }
         const newCell = { ...currentCell, raw: editingRaw, value: null, format: newFormat };
         updateSheet(data.id, { cells: { ...data.cells, [activeCell]: newCell } });
@@ -1190,20 +1205,20 @@ const SheetNodeComponent: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPiv
     };
   }, []);
 
+  // Copy the sheet exactly as it appears on screen (the current scrolled window). The shared
+  // capture helper strips the teal selection ring and scrollbar chrome from the image.
   const handleCopyImage = async () => {
-    if (!containerRef.current) return;
+    if (!containerRef.current || isExporting) return;
     setIsExporting(true);
     try {
-        await document.fonts.ready;
-        const canvas = await html2canvas(containerRef.current, { backgroundColor: null, scale: 2, useCORS: true, logging: false });
-        canvas.toBlob(async (blob) => {
-            if (blob) {
-                await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-                if (onToast) onToast("Sheet copied to clipboard as image");
-            }
-        });
-    } catch (err) { console.error(err); if (onToast) onToast("Failed to copy"); } 
-    finally { setIsExporting(false); }
+      await copyElementAsImage(containerRef.current);
+      if (onToast) onToast("Sheet copied to clipboard as image");
+    } catch (err) {
+      console.error(err);
+      if (onToast) onToast("Failed to copy");
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const windowHeight = (data.size.height * CELL_HEIGHT) + HEADER_ROW_HEIGHT;
@@ -1238,6 +1253,47 @@ const SheetNodeComponent: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPiv
           maxRow: Math.max(selectionRange.start.row, selectionRange.end.row)
       };
   }, [selectionRange, visibleRowIndices, displayRowByActualRow]);
+
+  // Safe to bail now: every hook above has already run this render, so
+  // returning null here (e.g. right after the sheet was deleted) can't
+  // desync the hook count on the next render.
+  if (!rawData) return null;
+
+  if (isLowZoom) {
+    return (
+      <div 
+        id={`sheet-${data.id}`}
+        ref={containerRef}
+        className={`absolute flex flex-col bg-white dark:bg-neutral-850 rounded-xl transition-shadow transition-colors duration-200 outline-none group border select-none pointer-events-auto
+          ${selected ? 'border-teal-400 shadow-md ring-1 ring-teal-400 z-50' : 'border-neutral-200 dark:border-neutral-700 shadow-sm hover:shadow-md z-30'}
+          ${isPendingDelete ? 'animate-delete-pulse' : ''}
+        `}
+        style={{ left: data.position.x, top: data.position.y, width: visibleTableWidth + HEADER_COL_WIDTH + 2, height: (data.size.height * CELL_HEIGHT) + HEADER_ROW_HEIGHT + 2, overflow: 'hidden' }}
+        onMouseDown={(e) => { 
+            e.stopPropagation(); 
+            onMouseDown(e);
+        }}
+      >
+        <div className="h-9 flex items-center px-3 bg-neutral-50 dark:bg-neutral-800 border-b border-neutral-100 dark:border-neutral-800">
+          <GripHorizontal size={14} className="text-neutral-300 dark:text-neutral-600 mr-2 flex-shrink-0" />
+          {isPivot && <Table size={12} className="text-teal-600 mr-1.5" />}
+          {isSparkline && <TrendingUp size={12} className="text-teal-600 mr-1.5" />}
+          <span className="text-sm font-semibold text-neutral-600 dark:text-neutral-300 truncate">{data.title}</span>
+        </div>
+        <div className="flex-1 p-4 flex flex-col justify-center items-center bg-white dark:bg-neutral-855 gap-1 opacity-50">
+          <Table className="text-neutral-400 dark:text-neutral-500" size={32} />
+          <span className="text-xs text-neutral-400 dark:text-neutral-500 font-medium">
+            {data.size.width} × {data.size.height} Grid
+          </span>
+        </div>
+        <div className="absolute top-0 -right-1 w-3 h-full cursor-col-resize z-20" onMouseDown={(e) => handleResizeStart(e, 'right')} />
+        <div className="absolute -bottom-1 left-0 w-full h-3 cursor-row-resize z-20" onMouseDown={(e) => handleResizeStart(e, 'bottom')} />
+        <div className="absolute -bottom-1 -right-1 w-5 h-5 cursor-nwse-resize z-30 flex items-center justify-center rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors" onMouseDown={(e) => handleResizeStart(e, 'corner')}>
+            <div className="w-1.5 h-1.5 bg-neutral-300 dark:bg-neutral-600 rounded-full" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div 
@@ -1303,7 +1359,7 @@ const SheetNodeComponent: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPiv
                     </span>
                 )}
             </div>
-            <div className={`absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 p-1 rounded-lg bg-white/95 dark:bg-neutral-900/95 backdrop-blur-sm transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto ${showMoreMenu ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+            <div data-export-exclude className={`absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 p-1 rounded-lg bg-white/95 dark:bg-neutral-900/95 backdrop-blur-sm transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto ${showMoreMenu ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
                 {(lastRefreshedAt && ((isGoogleAnalyticsConnected && !isGoogleAnalyticsSimulated) || (isGoogleSheetsConnected && !isGoogleSheetsSimulated) || isClickhouseConnected)) && (() => {
                   const diffMs = Date.now() - lastRefreshedAt;
                   const m = Math.floor(diffMs / 60000);
@@ -1319,6 +1375,25 @@ const SheetNodeComponent: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPiv
                 <button onClick={() => { const colIndex = activeCell ? parseCellId(activeCell)?.col : undefined; const selectedCols = getSelectedColumns(); if (onAddChart) onAddChart(data.id, colIndex, selectedCols); }} className="group/btn relative text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-1.5 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors" title="Create Chart">
                     <BarChart3 size={14} />
                 </button>
+
+                {isPivot && (
+                    <button
+                        onClick={() => setShowPivotConfig(!showPivotConfig)}
+                        className={`group/btn relative p-1.5 rounded-md transition-colors ${showPivotConfig ? 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 dark:text-neutral-500'}`}
+                        title="Pivot Settings"
+                    >
+                        <Settings2 size={14} />
+                    </button>
+                )}
+                {isSparkline && (
+                    <button
+                        onClick={() => setShowSparklineConfig(!showSparklineConfig)}
+                        className={`group/btn relative p-1.5 rounded-md transition-colors ${showSparklineConfig ? 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 dark:text-neutral-500'}`}
+                        title="Sparkline Settings"
+                    >
+                        <Settings2 size={14} />
+                    </button>
+                )}
 
                 <div className="relative">
                     <button
@@ -1357,22 +1432,6 @@ const SheetNodeComponent: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPiv
                                 </button>
                             </>
                         )}
-                        {isPivot && (
-                            <button
-                                onClick={() => { setShowMoreMenu(false); setShowPivotConfig(!showPivotConfig); }}
-                                className={`px-3 py-2 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 flex items-center gap-2 w-full ${showPivotConfig ? 'text-teal-600 dark:text-teal-400' : 'text-neutral-700 dark:text-neutral-200'}`}
-                            >
-                                <Settings2 size={14} /> Pivot Settings
-                            </button>
-                        )}
-                        {isSparkline && (
-                            <button
-                                onClick={() => { setShowMoreMenu(false); setShowSparklineConfig(!showSparklineConfig); }}
-                                className={`px-3 py-2 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-700 flex items-center gap-2 w-full ${showSparklineConfig ? 'text-teal-600 dark:text-teal-400' : 'text-neutral-700 dark:text-neutral-200'}`}
-                            >
-                                <Settings2 size={14} /> Sparkline Settings
-                            </button>
-                        )}
                         {!isPivot && !isSparkline && (
                             <>
                                 <button
@@ -1389,10 +1448,14 @@ const SheetNodeComponent: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPiv
                                 </button>
                             </>
                         )}
+                        <button
+                            onClick={() => { setShowMoreMenu(false); deleteSheet(data.id); }}
+                            className="px-3 py-2 text-xs text-left hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 flex items-center gap-2 w-full"
+                        >
+                            <Trash2 size={14} /> Delete
+                        </button>
                     </HeaderDropdownMenu>
                 </div>
-
-                <button onClick={() => deleteSheet(data.id)} className="group/btn relative text-neutral-400 hover:text-red-500 p-1.5 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="Delete"><Trash2 size={14} /></button>
             </div>
         </div>
 
@@ -1449,48 +1512,11 @@ const SheetNodeComponent: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPiv
 	        )}
 	      </div>
 
-      <div 
+      <div
         ref={gridRef}
         className={`bg-white dark:bg-neutral-850 cursor-text select-none overflow-auto relative rounded-b-xl sheet-scroll ${selected ? 'sheet-scroll-active' : ''}`}
         style={{ height: windowHeight }}
       >
-        {(isSetup || showPivotConfig) && isPivot && (
-            <div
-                className={`absolute z-50 bg-white dark:bg-neutral-850 flex flex-col ${
-                    isSetup
-                        ? 'inset-0'
-                        : 'top-0 right-0 bottom-0 w-72 max-w-full shadow-2xl border-l border-neutral-200 dark:border-neutral-700'
-                }`}
-            >
-                <PivotConfigPanel
-                    sourceSheet={sourceSheet}
-                    initialConfig={data.pivotConfig}
-                    isSetupMode={isSetup}
-                    onConfirm={(newConfig) => {
-                         saveSnapshot();
-                         updateSheet(data.id, { pivotConfig: newConfig, setupRequired: false });
-                         setShowPivotConfig(false);
-                    }}
-                    onCancel={() => { if (isSetup) deleteSheet(data.id); else setShowPivotConfig(false); }}
-                />
-            </div>
-        )}
-        {(isSetup || showSparklineConfig) && isSparkline && (
-            <div className="absolute inset-0 z-50 bg-white dark:bg-neutral-850 flex flex-col">
-                <SparklineConfigPanel
-                    sourceSheet={sourceSheet}
-                    initialConfig={data.sparklineConfig}
-                    isSetupMode={isSetup}
-                    onConfirm={(newConfig) => {
-                         saveSnapshot();
-                         updateSheet(data.id, { sparklineConfig: newConfig, setupRequired: false });
-                         setShowSparklineConfig(false);
-                    }}
-                    onCancel={() => { if (isSetup) deleteSheet(data.id); else setShowSparklineConfig(false); }}
-                />
-            </div>
-        )}
-
         {(!isSetup) && (
             <div
                 style={{
@@ -1726,6 +1752,52 @@ const SheetNodeComponent: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPiv
            </div>
         )}
       </div>
+
+      {/* Pivot config: popover beside node. Setup is guarded from outside-click dismissal
+          because Cancel deletes the sheet; edit mode applies live and closes on outside-click/Esc. */}
+      {(isSetup || showPivotConfig) && isPivot && (
+          <SettingsPopover
+              anchorRef={containerRef}
+              isOpen={true}
+              onClose={() => setShowPivotConfig(false)}
+              dismissOnOutsideClick={!isSetup}
+              width={300}
+          >
+              <PivotConfigPanel
+                  sourceSheet={sourceSheet}
+                  initialConfig={data.pivotConfig}
+                  isSetupMode={isSetup}
+                  onConfirm={(newConfig) => {
+                       saveSnapshot();
+                       updateSheet(data.id, { pivotConfig: newConfig, setupRequired: false });
+                       setShowPivotConfig(false);
+                  }}
+                  onCancel={() => { if (isSetup) deleteSheet(data.id); else setShowPivotConfig(false); }}
+              />
+          </SettingsPopover>
+      )}
+
+      {(isSetup || showSparklineConfig) && isSparkline && (
+          <SettingsPopover
+              anchorRef={containerRef}
+              isOpen={true}
+              onClose={() => setShowSparklineConfig(false)}
+              dismissOnOutsideClick={!isSetup}
+              width={300}
+          >
+              <SparklineConfigPanel
+                  sourceSheet={sourceSheet}
+                  initialConfig={data.sparklineConfig}
+                  isSetupMode={isSetup}
+                  onConfirm={(newConfig) => {
+                       saveSnapshot();
+                       updateSheet(data.id, { sparklineConfig: newConfig, setupRequired: false });
+                       setShowSparklineConfig(false);
+                  }}
+                  onCancel={() => { if (isSetup) deleteSheet(data.id); else setShowSparklineConfig(false); }}
+              />
+          </SettingsPopover>
+      )}
 
     </div>
   );

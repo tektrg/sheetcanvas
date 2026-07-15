@@ -96,7 +96,7 @@ export const PivotConfigPanel: React.FC<PivotConfigPanelProps> = ({
         )}
       </div>
 
-      <div className="space-y-6 flex-1 overflow-y-auto min-h-0 pr-1">
+      <div className="space-y-6 flex-1 overflow-y-auto min-h-0 px-1 -mx-1">
         
         {/* Row Label */}
         <div>
