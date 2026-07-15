@@ -86,7 +86,7 @@ export const OnboardingGuide: React.FC<OnboardingGuideProps> = ({ isOpen, onClos
     });
 
     frameDocument.addEventListener('click', (event) => {
-      const clickedElement = event.target instanceof frameWindow.Element ? event.target : null;
+      const clickedElement = event.target instanceof (frameWindow as any).Element ? event.target as Element : null;
       const clickedLink = clickedElement?.closest('a');
       const linkText = clickedLink?.textContent?.replace(/\s+/g, ' ').trim().toLowerCase() ?? '';
 

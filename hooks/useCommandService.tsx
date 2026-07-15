@@ -573,7 +573,7 @@ export const useCommandService = ({
             label: 'Format: Percent',
             category: 'Cell',
             icon: <Percent size={18} />,
-            action: () => applyFormat({ type: 'percent', d3Format: '.2%' })
+            action: () => applyFormat({ type: 'percent', d3Format: '.1%' })
           },
           {
             id: 'fmt-date-iso',
