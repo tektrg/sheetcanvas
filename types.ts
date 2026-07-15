@@ -76,20 +76,32 @@ export interface PivotConfig {
 
 export type SparklineMode = 'metrics' | 'group';
 export type SparklineCompareMode = 'vs_prev' | 'vs_avg' | 'vs_first';
+// S2 "direction of good": which way is an improvement for a given metric. Used
+// to color the Change cell green=better / red=worse (not green=up). 'unknown'
+// renders neutral single-hue intensity rather than guessing a polarity.
+export type GoodDirection = 'up' | 'down' | 'unknown';
+// Optional summary columns appended to the sparkline table (S1 KPI overview).
+export type SparklineSummaryColumn = 'avg' | 'minmax' | 'share';
 
 export interface SparklineConfig {
   sourceSheetId: string;
   dateCol: string;
   mode: SparklineMode;
   compareMode?: SparklineCompareMode; // Default is 'vs_avg'
-  
+
   // For 'metrics' mode
   dataCols?: string[]; // Array of column IDs
-  
+
   // For 'group' mode
   groupCol?: string;
   valueCol?: string;
   operation?: PivotOperation;
+
+  // Optional extra summary columns (Avg, Min/Max, Share-of-total).
+  summaryColumns?: SparklineSummaryColumn[];
+  // Per-metric direction-of-good, keyed by the row's metric label. When absent
+  // for a row, direction is inferred from the metric name; unknown → neutral.
+  goodDirections?: Record<string, GoodDirection>;
 }
 
 export type FilterType = 'text' | 'number' | 'date';
@@ -307,7 +319,7 @@ export interface Command {
   subLabel?: string;
   icon?: React.ReactNode;
   shortcut?: string[]; 
-  category: 'Suggested' | 'Navigation' | 'Sheet' | 'Cell' | 'Canvas' | 'Chart' | 'Calculator' | 'Data' | 'Go to';
+  category: 'Suggested' | 'Navigation' | 'Sheet' | 'Cell' | 'Canvas' | 'Chart' | 'Calculator' | 'Data' | 'Go to' | 'Agent';
   action: () => void;
   keywords?: string[]; // For better search matching
 }

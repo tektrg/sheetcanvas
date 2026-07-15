@@ -1,11 +1,40 @@
 
 
-import { SheetData, CellData, SparklineConfig, PivotOperation } from '../types';
+import { SheetData, CellData, CellFormat, SparklineConfig, PivotOperation, GoodDirection } from '../types';
 import { getCellId, parseCellId } from './formulas';
 import { getSheetHeaders } from './chartHelpers';
 import { CELL_WIDTH, CELL_HEIGHT } from '../constants';
 import { getFilteredRows } from './dataAnalysis';
 import { applyFormatRulesToCells } from './formatRules';
+
+// S2 direction-of-good inference from a metric's name. Metrics where a decrease
+// is the improvement (cost, churn, latency, …) get 'down'; clearly-positive
+// metrics get 'up'; everything ambiguous stays 'unknown' → neutral coloring.
+const DOWN_IS_GOOD = /\b(cost|spend|cpc|cpa|cpm|churn|bounce|refund|return|latency|load\s*time|response\s*time|error|errors|failure|defect|complaint|cancel|cancellation|abandon|abandonment|wait|downtime|attrition|unsubscribe|drop\s*off|dropoff)\b/i;
+const UP_IS_GOOD = /\b(revenue|sales|profit|margin|signups?|sign\s*ups?|registrations?|users?|sessions?|conversions?|retention|orders?|engagement|clicks?|views?|impressions?|growth|active|activation|subscribers?|nps|satisfaction|uptime|throughput)\b/i;
+
+export const inferGoodDirection = (metricName: string): GoodDirection => {
+    const name = String(metricName ?? '');
+    if (DOWN_IS_GOOD.test(name)) return 'down';
+    if (UP_IS_GOOD.test(name)) return 'up';
+    return 'unknown';
+};
+
+// Build the Change-cell format for a metric per its direction-of-good (S2).
+// diverging = negatives red / positives green; heatmapFlip swaps that polarity
+// for down-is-good metrics; unknown uses a single neutral hue by rank.
+const changeCellFormat = (direction: GoodDirection): CellFormat => {
+    if (direction === 'unknown') {
+        return { type: 'percent', decimals: 1, visual: 'heatmap', heatmapColor: 'yellow' };
+    }
+    return {
+        type: 'percent',
+        decimals: 1,
+        visual: 'heatmap',
+        heatmapColor: 'diverging',
+        heatmapFlip: direction === 'down',
+    };
+};
 
 // Helper to aggregate values
 const aggregate = (values: number[], op: PivotOperation): number => {
@@ -180,32 +209,66 @@ export const computeSparklineCells = (sourceSheet: SheetData, config: SparklineC
 
     // Build Cells
     const newCells: Record<string, CellData> = {};
-    
-    // Headers
-    newCells['A1'] = { raw: 'Metric', value: 'Metric' };
-    newCells['B1'] = { raw: 'Current', value: 'Current' };
-    newCells['C1'] = { raw: 'Trend', value: 'Trend' };
-    
+
+    // Fixed columns: Metric, Current, Trend, Change. Then optional summary columns.
     let changeLabel = 'Change';
     switch (compareMode) {
         case 'vs_avg': changeLabel = 'Change vs Avg'; break;
         case 'vs_prev': changeLabel = 'Change vs Last'; break;
         case 'vs_first': changeLabel = 'Change vs Start'; break;
     }
-    newCells['D1'] = { raw: changeLabel, value: changeLabel };
+
+    const summaryColumns = config.summaryColumns ?? [];
+    // Header labels in column order; extra summary headers appended after Change.
+    const headerLabels = ['Metric', 'Current', 'Trend', changeLabel];
+    for (const col of summaryColumns) {
+        if (col === 'avg') headerLabels.push('Avg');
+        else if (col === 'minmax') { headerLabels.push('Min'); headerLabels.push('Max'); }
+        else if (col === 'share') headerLabels.push('Share');
+    }
+    headerLabels.forEach((label, c) => {
+        newCells[getCellId(c, 0)] = { raw: label, value: label };
+    });
+
+    // Share-of-total uses the sum of current values across rows (S1 in-cell bar).
+    const currentTotal = results.reduce((acc, res) => acc + (Number.isFinite(res.current) ? res.current : 0), 0);
 
     results.forEach((res, idx) => {
         const r = idx + 1;
+        const direction: GoodDirection =
+            config.goodDirections?.[res.label] ?? inferGoodDirection(res.label);
+        const values = res.history.map(h => h.value);
+        const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+        const min = values.length ? Math.min(...values) : 0;
+        const max = values.length ? Math.max(...values) : 0;
+
         newCells[getCellId(0, r)] = { raw: res.label, value: res.label };
         newCells[getCellId(1, r)] = { raw: String(res.current), value: res.current, format: { type: 'number', decimals: 2 } };
         // Trend: Store history array as JSON string
         newCells[getCellId(2, r)] = { raw: JSON.stringify(res.history), value: JSON.stringify(res.history), format: { type: 'text', visual: 'sparkline' } };
-        newCells[getCellId(3, r)] = { raw: String(res.change), value: res.change, format: { type: 'percent', decimals: 1 } };
+        // Change: heatmap colored by direction of good (S2).
+        newCells[getCellId(3, r)] = { raw: String(res.change), value: res.change, format: changeCellFormat(direction) };
+
+        let c = 4;
+        for (const col of summaryColumns) {
+            if (col === 'avg') {
+                newCells[getCellId(c, r)] = { raw: String(avg), value: avg, format: { type: 'number', decimals: 2 } };
+                c += 1;
+            } else if (col === 'minmax') {
+                newCells[getCellId(c, r)] = { raw: String(min), value: min, format: { type: 'number', decimals: 2 } };
+                newCells[getCellId(c + 1, r)] = { raw: String(max), value: max, format: { type: 'number', decimals: 2 } };
+                c += 2;
+            } else if (col === 'share') {
+                const share = currentTotal !== 0 ? res.current / currentTotal : 0;
+                newCells[getCellId(c, r)] = { raw: String(share), value: share, format: { type: 'percent', decimals: 1, visual: 'bar' } };
+                c += 1;
+            }
+        }
     });
 
     return {
         cells: newCells,
-        width: 4,
+        width: headerLabels.length,
         height: results.length + 1
     };
 };
