@@ -12,9 +12,11 @@ import { OnboardingGuide } from './components/OnboardingGuide';
 import { SheetData, ChartData, NoteData, CanvasTransform, Position, CellData, ChartConfig, PivotConfig, ToolMode, SparklineConfig, Command, SelectionContext, CellFormat, ConnectorConfig, ConnectorType, TimeGranularity, ChartType } from './types';
 import { INITIAL_COLS, INITIAL_ROWS, CELL_WIDTH, CELL_HEIGHT, HEADER_COL_WIDTH, HEADER_ROW_HEIGHT, DEFAULT_CHART_SIZE, MAX_IMPORT_ROWS, MAX_IMPORT_COLS, MAX_CONNECTED_IMPORT_COLS, MAX_INITIAL_VIEWPORT_COVERAGE } from './constants';
 import { parseClipboardData } from './utils/clipboard';
+import { captureElementCanvas } from './utils/elementCapture';
 import { parseFile } from './utils/fileParser';
 import { getCellId, parseCellId, computeSheet } from './utils/formulas';
 import { getSheetHeaders } from './utils/chartHelpers';
+import { computeChartDefaults } from './utils/chartDefaults';
 import { inferColumnType, getFilteredRows, getValidDataCount, suggestGranularityByCount } from './utils/dataAnalysis';
 import { Upload, Moon, Sun, Table, StickyNote, Undo2, Redo2, Grid3X3, BarChart3, TrendingUp, Palette, AlignLeft, Trash2, ArrowDownAZ, ArrowUpAZ, Filter, MousePointer2, Hand, Hash, Percent, Image as ImageIcon, Database, FileSpreadsheet, BarChart2, Globe, Calendar, Minimize2, Maximize2, DollarSign, ArrowLeft, ArrowRight, Eraser, Type } from 'lucide-react';
 import { useStore, AppState } from './store';
@@ -28,7 +30,7 @@ import { useMcpBridge } from './src/agent/useMcpBridge';
 import { ConnectAgentDialog } from './src/components/ConnectAgentDialog';
 import { loadGoogleSheetsAuth } from './utils/googleAnalyticsAuth';
 import { Plug, Sparkles } from 'lucide-react';
-import { getVisibleCanvasIds } from './utils/canvasVirtualization';
+import { getVisibleCanvasIds, VisibleCanvasIds } from './utils/canvasVirtualization';
 import { LineageOverlay } from './components/LineageOverlay';
 import { buildLineageIndexes, buildLineageLinks, getLineageAvailableNodeIds } from './utils/lineage';
 
@@ -95,6 +97,27 @@ const App: React.FC = () => {
     height: typeof window === 'undefined' ? 720 : window.innerHeight,
   }));
   const [viewportTransform, setViewportTransform] = useState<CanvasTransform>(transform);
+  
+  // Track visible items in state to trigger re-renders only when visibility changes
+  const [visibleCanvasIds, setVisibleCanvasIds] = useState<VisibleCanvasIds>(() => {
+    return getVisibleCanvasIds({
+      sheetIds: useStore.getState().sheetIds,
+      chartIds: useStore.getState().chartIds,
+      noteIds: useStore.getState().noteIds,
+      sheets: useStore.getState().sheets,
+      charts: useStore.getState().charts,
+      notes: useStore.getState().notes,
+      transform: useStore.getState().transform,
+      viewportSize: {
+        width: typeof window === 'undefined' ? 1280 : window.innerWidth,
+        height: typeof window === 'undefined' ? 720 : window.innerHeight,
+      },
+      selectedIds: useStore.getState().selectedIds,
+      draggingId: null,
+      activeSelection: { sheetId: null, cellId: null, range: null },
+      editingNoteId: null,
+    });
+  });
   
   // Selection Context
   const [activeSelection, setActiveSelection] = useState<SelectionContext>({ sheetId: null, cellId: null, range: null });
@@ -177,8 +200,10 @@ const App: React.FC = () => {
     setViewportTransform(transform);
   }, [transform]);
 
-  const visibleCanvasIds = useMemo(() => {
-    return getVisibleCanvasIds({
+  const prevVisibleCanvasIdsRef = useRef<VisibleCanvasIds>(visibleCanvasIds);
+
+  useEffect(() => {
+    const next = getVisibleCanvasIds({
       sheetIds,
       chartIds,
       noteIds,
@@ -192,6 +217,26 @@ const App: React.FC = () => {
       activeSelection,
       editingNoteId,
     });
+
+    const prev = prevVisibleCanvasIdsRef.current;
+    
+    const idsAreEqual = (a: string[], b: string[]) => {
+      if (a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) return false;
+      }
+      return true;
+    };
+
+    const isSame = 
+      idsAreEqual(next.sheetIds, prev.sheetIds) &&
+      idsAreEqual(next.chartIds, prev.chartIds) &&
+      idsAreEqual(next.noteIds, prev.noteIds);
+
+    if (!isSame) {
+      prevVisibleCanvasIdsRef.current = next;
+      setVisibleCanvasIds(next);
+    }
   }, [
     activeSelection,
     chartIds,
@@ -463,7 +508,21 @@ const App: React.FC = () => {
         timeGranularity = suggestGranularityByCount(count);
     }
 
-    const initialChartType = initialType || 'bar';
+    // Smart visualization defaults (F-rules): when the user did not pick a
+    // specific chart type, let the shared engine choose the form from the data
+    // shape (single series → bar; time series → line; 4+ over time → lines).
+    // The chart button uses group mode, so this is the cheap path — global type
+    // only (combo/dual-axis is metrics-mode). An explicit initialType wins.
+    let initialChartType: ChartType = initialType || 'bar';
+    if (!initialType) {
+        const formDecision = computeChartDefaults(sheet, {
+            mode: 'group',
+            labelColumn: groupColId,
+            dataColumns: [valueColId],
+            valueCol: valueColId,
+        });
+        initialChartType = formDecision.type;
+    }
 
     const defaultPalette = getChartPalette(chartColorSettings, darkMode);
     const seriesDisplayNames = buildChartSeriesDisplayNames([
@@ -1071,6 +1130,10 @@ const App: React.FC = () => {
     return () => window.removeEventListener('paste', handleGlobalPaste);
   }, [getNextPosition, addSheet, centerViewOn]);
 
+  // Capture one selected node without its teal selection highlight. Temporarily
+  // strips the selection classes on the live element (snapDOM captures the live
+  // DOM), then restores them — mirrors the styling reset the old html2canvas
+  // onclone callback used to do.
   const handleCopySelectionAsImage = async () => {
     const selected = Array.from(selectedIds) as string[];
     if (selected.length === 0) return;
@@ -1079,8 +1142,6 @@ const App: React.FC = () => {
     const state = useStore.getState() as AppState;
 
     try {
-        const html2canvas = (await import('html2canvas')).default;
-        
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         const itemsToRender: { id: string, elementId: string, x: number, y: number, el: HTMLElement }[] = [];
 
@@ -1125,27 +1186,16 @@ const App: React.FC = () => {
         if (!ctx) return;
         
         for (const item of itemsToRender) {
-            const canvas = await html2canvas(item.el, {
-                backgroundColor: null,
-                scale: scale,
-                logging: false,
-                useCORS: true,
-                onclone: (clonedDoc) => {
-                    const clonedEl = clonedDoc.getElementById(item.elementId);
-                    if (clonedEl) {
-                        clonedEl.classList.remove('ring-1', 'ring-teal-400', 'shadow-md', 'z-50');
-                        if (clonedEl.classList.contains('border-teal-400')) {
-                            clonedEl.classList.remove('border-teal-400');
-                            clonedEl.classList.add('border-neutral-200');
-                            if (darkMode) clonedEl.classList.add('dark:border-neutral-700');
-                        }
-                    }
-                }
-            });
-            
+            // snapDOM renders the cloned node at its natural size, ignoring the
+            // canvas zoom (transform: scale) on the ancestor — so text stays crisp
+            // and tiles line up. dpr:1 keeps each capture at exactly naturalSize×scale
+            // so it drops onto the master canvas (also in scale-space) 1:1.
+            // The shared helper strips the teal selection ring and scrollbar chrome for us.
+            const canvas = await captureElementCanvas(item.el, { scale, dpr: 1 });
+
             const drawX = (item.x - minX + padding) * scale;
             const drawY = (item.y - minY + padding) * scale;
-            
+
             ctx.drawImage(canvas, drawX, drawY);
         }
 
@@ -1306,6 +1356,7 @@ const App: React.FC = () => {
                   onColorSettingsChange={updateChartColorSettings}
                   onAddCustomColor={handleAddColor}
                   onMouseDown={getItemMouseDownHandler(id, 'chart')}
+                  onToast={showToast}
               />
           ))}
           {visibleCanvasIds.noteIds.map(id => (

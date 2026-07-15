@@ -52,7 +52,10 @@ const getViewportBounds = (
   viewportSize: ViewportSize
 ): CanvasBounds => {
   const safeScale = Math.max(transform.scale, 0.001);
-  const overscan = CANVAS_OBJECT_OVERSCAN_PX / safeScale;
+  // Cap the screen-space overscan based on zoom level. 
+  // At high zoom (e.g. 1.0), use 400px overscan. At low zoom (e.g. < 0.4), scale it down to 150px.
+  const screenOverscan = safeScale < 0.4 ? 150 : Math.min(400, 400 * safeScale);
+  const overscan = screenOverscan / safeScale;
   const left = -transform.offset.x / safeScale;
   const top = -transform.offset.y / safeScale;
 
