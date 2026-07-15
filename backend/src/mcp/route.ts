@@ -4,6 +4,7 @@ import { toolDefs, TOOL_NAMES, type ToolName } from '../../../agent/tools';
 import type { Env } from '../env';
 import type { BridgeCallResult, BridgeStatus } from './bridge';
 import { requireBearerToken } from '../auth';
+import { ANALYSIS_PLAYBOOK } from '../agent/analysisPlaybook';
 
 /**
  * Remote MCP endpoint (streamable HTTP, JSON responses) backed by a live
@@ -180,7 +181,8 @@ function handleInitialize(request: JsonRpcRequest) {
     capabilities: { tools: {} },
     serverInfo: SERVER_INFO,
     instructions:
-      'Tools execute inside a live SheetCanvas browser tab. If a call fails with "Canvas not connected", ask the user to open their SheetCanvas tab and enable "Expose to agents" in the Copilot panel. If a write tool times out, verify with a read (e.g. getRange) before retrying — the write may already have been applied.',
+      'Tools execute inside a live SheetCanvas browser tab. If a call fails with "Canvas not connected", ask the user to open their SheetCanvas tab and enable "Expose to agents" in the Copilot panel. If a write tool times out, verify with a read (e.g. getRange) before retrying — the write may already have been applied.\n\n' +
+      ANALYSIS_PLAYBOOK,
   });
 }
 

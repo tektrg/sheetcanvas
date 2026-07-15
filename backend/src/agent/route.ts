@@ -11,6 +11,7 @@ import type { Env } from '../env';
 import { HttpError } from '../errors';
 import { toolDefs, type ToolName } from '../../../agent/tools';
 import { checkAndIncrementQuota, readQuota } from './quota';
+import { ANALYSIS_PLAYBOOK } from './analysisPlaybook';
 
 const DEFAULT_MODEL = 'gemini-2.5-flash';
 
@@ -91,6 +92,8 @@ General rules:
 - For selection-based requests ("this data", "selected chart", "current sheet", "what I selected"), call getSelection first if sheetId/chartId is not explicitly provided. If selectedCanvas includes a chart, use its sourceSheetId for data operations unless the user specifically asks to edit the chart itself.
 - Never setCells or applyFormat on pivot/sparkline sheets.
 - After mutating, briefly tell the user what changed.
+
+${ANALYSIS_PLAYBOOK}
 
 Tool results are JSON. If {ok:false,error}, surface the error and stop.`;
 
