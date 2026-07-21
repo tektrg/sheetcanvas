@@ -1131,11 +1131,11 @@ describe('createSheet tool execution', () => {
     expect(sheet.size).toEqual({ width: 6, height: 8 });
   });
 
-  it('places a new sheet to the right of existing canvas objects', async () => {
+  it('stacks a new original sheet below existing objects, left-aligned to the column', async () => {
     const existing: SheetData = {
       id: 's1',
       title: 'S1',
-      position: { x: 0, y: 0 },
+      position: { x: 120, y: 0 },
       size: { width: 4, height: 3 },
       cells: {},
     };
@@ -1143,7 +1143,10 @@ describe('createSheet tool execution', () => {
 
     const result = await executeClientTool('createSheet', {}, emptySelectionResolver);
     const sheet = useStore.getState().sheets[result.sheetId as string];
-    expect(sheet.position.x).toBeGreaterThan(0);
+    // New original lands in the left column (aligned to the leftmost original)...
+    expect(sheet.position.x).toBe(120);
+    // ...and below the existing object rather than to its right.
+    expect(sheet.position.y).toBeGreaterThan(existing.position.y);
   });
 
   it('rejects a data grid that exceeds the cell cap', async () => {

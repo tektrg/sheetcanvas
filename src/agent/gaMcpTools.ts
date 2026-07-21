@@ -1,5 +1,5 @@
 import type { ConnectionSchemaScope, ConnectorConfig, SheetData, SparklineConfig } from '../../types';
-import { CELL_WIDTH, MAX_CONNECTED_IMPORT_COLS } from '../../constants';
+import { MAX_CONNECTED_IMPORT_COLS } from '../../constants';
 import { applyMatrixToSheet } from '../../utils/connectorSheet';
 import {
   googleAnalyticsResultToMatrix,
@@ -11,11 +11,15 @@ import { buildConnectorConfigWithQuery } from '../../utils/connectedSheetQueries
 import { accumulateSheetFocus } from './agentFocusAccumulator';
 import { getColumnIdForIndex } from './sheetBounds';
 import { normalizeConnectorQueryBrief, type ConnectorQueryBriefInput } from './queryBrief';
+import type { ChartData, NoteData } from '../../types';
+import { placeOriginal, placeDerivative } from '../../utils/canvasLayout';
 
 export type BasicConnection = { connectionId: string; type: string; name: string };
 
 type GaTrendStore = {
   sheets: Record<string, SheetData>;
+  charts: Record<string, ChartData>;
+  notes: Record<string, NoteData>;
   setConnections: (connections: BasicConnection[]) => void;
   connectionSchemaTokens: Record<string, ConnectionSchemaScope>;
   getNextSheetPosition: () => { x: number; y: number };
@@ -262,7 +266,7 @@ export async function createGaTrendBySourceSheet(args: {
   const sourceSheet: SheetData = {
     id: args.generateId(),
     title: sheetTitle,
-    position: args.store.getNextSheetPosition(),
+    position: placeOriginal(args.store),
     size: applied.size,
     cells: applied.cells,
     connectorConfig: buildConnectorConfigWithQuery(
@@ -289,13 +293,17 @@ export async function createGaTrendBySourceSheet(args: {
     valueCol: 'E',
     operation: 'SUM',
   };
+  // Merge the just-added source into the snapshot: the captured store state is
+  // stale after addSheet, so placeDerivative would otherwise not find it.
+  const snapshotWithSource = {
+    sheets: { ...args.store.sheets, [sourceSheet.id]: sourceSheet },
+    charts: args.store.charts,
+    notes: args.store.notes,
+  };
   const sparklineSheet: SheetData = {
     id: args.generateId(),
     title: `Sparklines: ${sheetTitle}`,
-    position: {
-      x: sourceSheet.position.x + sourceSheet.size.width * CELL_WIDTH + 60,
-      y: sourceSheet.position.y + 100,
-    },
+    position: placeDerivative(snapshotWithSource, sourceSheet.id),
     size: { width: 4, height: 16 },
     cells: {},
     sparklineConfig,

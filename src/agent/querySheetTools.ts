@@ -14,6 +14,7 @@ import { accumulateSheetFocus } from './agentFocusAccumulator';
 import { useStore } from '../../store';
 import { normalizeConnectorQueryBrief, type ConnectorQueryBriefInput } from './queryBrief';
 import { isConnectorNeedsReconnectError } from '../../utils/backendApi';
+import { placeOriginal } from '../../utils/canvasLayout';
 
 type StoreState = ReturnType<typeof useStore.getState>;
 
@@ -170,7 +171,7 @@ function createVisibleQuerySheet(store: StoreState, args: {
   const newSheet: SheetData = {
     id: Math.random().toString(36).slice(2, 11),
     title: args.title,
-    position: store.getNextSheetPosition(),
+    position: placeOriginal(store),
     size: applied.size,
     cells: applied.cells,
     connectorConfig,

@@ -10,7 +10,7 @@ import { formatValue } from '../utils/formatting';
 import { getCellId } from '../utils/formulas';
 import { ChartColorSettings } from '../types';
 import { buildMonoRamp, buildSeriesPalette, getChartPrimaryColor, getEffectiveChartPalette, getEffectiveChartScheme } from '../utils/chartColorSchemes';
-import { GitBranch, GripHorizontal, Trash2, Settings2, X, Download, Video, Play, Copy, Image as ImageIcon, Loader2, MoreHorizontal, BarChart3 } from 'lucide-react';
+import { GitBranch, GripHorizontal, Trash2, Settings2, X, Download, Video, Play, Copy, Image as ImageIcon, Loader2, MoreHorizontal, BarChart3, AlertTriangle } from 'lucide-react';
 import html2canvas from 'html2canvas'; // video export only; image copy/download use snapDOM below
 import { copyElementAsImage, downloadElementAsImage } from '../utils/elementCapture';
 import { ChartConfigPanel } from './ChartConfigPanel';
@@ -287,6 +287,7 @@ const ChartNodeComponent: React.FC<ChartNodeProps> = ({
   const isLowZoom = useStore(state => state.transform.scale < 0.35);
   
   const sourceSheet = useStore(state => data ? state.sheets[data.sourceSheetId] : undefined);
+  const isSourceRefreshing = useStore(state => state.refreshingIds.has(id));
 
   const [showConfig, setShowConfig] = useState(false);
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
@@ -1506,6 +1507,17 @@ const ChartNodeComponent: React.FC<ChartNodeProps> = ({
         <div className="flex items-center gap-2 min-w-0 flex-1 text-sm font-medium text-neutral-700 dark:text-neutral-200">
           {!embedded && <GripHorizontal size={14} className="text-neutral-300 dark:text-neutral-600 shrink-0" />}
           <span className="truncate min-w-0" title={data.title}>{data.title}</span>
+          {data.refreshWarnings && data.refreshWarnings.length > 0 && (
+            <AlertTriangle
+              size={14}
+              className="shrink-0 text-rose-500 dark:text-rose-400"
+              aria-label="Source data changed on last refresh"
+              title={`Source data changed on last refresh:\n${data.refreshWarnings.join('\n')}`}
+            />
+          )}
+          {isSourceRefreshing && (
+            <Loader2 size={13} className="shrink-0 animate-spin text-teal-500 dark:text-teal-400" aria-label="Refreshing from source" />
+          )}
         </div>
         {!embedded && !isSetup && (
             <div className={`absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 p-1 rounded-lg bg-white/95 dark:bg-neutral-900/95 backdrop-blur-sm transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto ${(showDownloadMenu || showMoreMenu) ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>

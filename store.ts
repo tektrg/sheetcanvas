@@ -3,9 +3,11 @@ import { create } from 'zustand';
 import { SheetData, ChartData, NoteData, CanvasTransform, ToolMode, CellData, ConnectionSchemaScope, PrivateQueryResult } from './types';
 import { refreshPivotTable } from './utils/pivotHelpers';
 import { refreshSparklineTable } from './utils/sparklineHelpers';
+import { propagateDerivedRefresh, collectDependentSheetIdsTopo, collectDependentChartIds } from './utils/propagateRefresh';
 import { saveFullState, saveIncrementalState, loadAppState } from './utils/persistence';
 import { initSheetCalculation, updateSheetCalculation, deleteSheetCalculation } from './utils/calculationEngine';
 import { htmlToMarkdown } from './utils/htmlToMarkdown';
+import { placeOriginal } from './utils/canvasLayout';
 
 export interface AppState {
   sheets: Record<string, SheetData>;
@@ -35,6 +37,14 @@ export interface AppState {
   addSheet: (sheet: SheetData) => void;
   updateSheet: (id: string, updates: Partial<SheetData>) => void;
   deleteSheet: (id: string) => void;
+
+  // Transient (not persisted, not in undo history): object ids currently showing
+  // a "refreshing" state because their origin sheet is mid-refresh. Covers the
+  // origin plus every dependent sheet/chart, so derivatives can indicate that
+  // fresh data is on the way during the (async) connector fetch.
+  refreshingIds: Set<string>;
+  beginSourceRefresh: (sourceId: string) => void;
+  endSourceRefresh: (sourceId: string) => void;
   
   addChart: (chart: ChartData) => void;
   updateChart: (id: string, updates: Partial<ChartData>) => void;
@@ -188,6 +198,7 @@ export const useStore = create<AppState>((set, get) => ({
   
   transform: { scale: 1, offset: { x: 0, y: 0 } },
   selectedIds: new Set<string>(),
+  refreshingIds: new Set<string>(),
   toolMode: ToolMode.SELECT,
   
   history: [],
@@ -444,23 +455,52 @@ export const useStore = create<AppState>((set, get) => ({
               }
           }
 
-          const newSheets = { ...state.sheets, [id]: newSheet };
-          
-          Object.keys(newSheets).forEach(key => {
-              const s = newSheets[key];
-              if (key === id) return;
-
-              if (s.pivotConfig?.sourceSheetId === id && !s.setupRequired) {
-                  newSheets[key] = refreshPivotTable(s, newSheet);
-                  markDirty('sheet', key);
-              }
-              if (s.sparklineConfig?.sourceSheetId === id && !s.setupRequired) {
-                  newSheets[key] = refreshSparklineTable(s, newSheet);
-                  markDirty('sheet', key);
-              }
+          // Propagate the change through the full chain of dependents (charts,
+          // pivot & sparkline tables, and anything derived from those), rebinding
+          // column references if the source's shape changed. Computed atomically
+          // and committed in this single set() so the canvas never shows a
+          // half-updated chain.
+          const propagated = propagateDerivedRefresh({
+              sheets: state.sheets,
+              charts: state.charts,
+              rootId: id,
+              rootSheet: newSheet,
           });
 
-          return { sheets: newSheets };
+          propagated.changedSheetIds.forEach(key => markDirty('sheet', key));
+          propagated.changedChartIds.forEach(key => markDirty('chart', key));
+
+          return propagated.changedChartIds.length > 0
+              ? { sheets: propagated.sheets, charts: propagated.charts }
+              : { sheets: propagated.sheets };
+      });
+  },
+
+  beginSourceRefresh: (sourceId) => {
+      set(state => {
+          if (!state.sheets[sourceId]) return {};
+          const dependentSheetIds = collectDependentSheetIdsTopo(sourceId, state.sheets);
+          const affectedSheetIds = new Set<string>([sourceId, ...dependentSheetIds]);
+          const dependentChartIds = collectDependentChartIds(affectedSheetIds, state.charts);
+          const next = new Set(state.refreshingIds);
+          affectedSheetIds.forEach(id => next.add(id));
+          dependentChartIds.forEach(id => next.add(id));
+          return { refreshingIds: next };
+      });
+  },
+
+  endSourceRefresh: (sourceId) => {
+      set(state => {
+          if (state.refreshingIds.size === 0) return {};
+          // Recompute the affected set from current state (dependents may have
+          // changed during the refresh) and also drop the source itself.
+          const dependentSheetIds = collectDependentSheetIdsTopo(sourceId, state.sheets);
+          const affectedSheetIds = new Set<string>([sourceId, ...dependentSheetIds]);
+          const dependentChartIds = collectDependentChartIds(affectedSheetIds, state.charts);
+          const next = new Set(state.refreshingIds);
+          affectedSheetIds.forEach(id => next.delete(id));
+          dependentChartIds.forEach(id => next.delete(id));
+          return { refreshingIds: next };
       });
   },
 
@@ -666,13 +706,11 @@ export const useStore = create<AppState>((set, get) => ({
       };
   }),
 
+  // Delegates to the shared canvas layout: a new original sheet lands at the
+  // bottom of the left column (see utils/canvasLayout.ts).
   getNextSheetPosition: () => {
     const state = get();
-    if (state.sheetIds.length === 0) return { x: 100, y: 100 };
-    const lastId = state.sheetIds[state.sheetIds.length - 1];
-    const lastSheet = state.sheets[lastId];
-    if (!lastSheet) return { x: 100, y: 100 };
-    return { x: lastSheet.position.x + lastSheet.size.width * 120 + 60, y: lastSheet.position.y };
+    return placeOriginal({ sheets: state.sheets, charts: state.charts, notes: state.notes }, { x: 100, y: 100 });
   },
   setConnections: (connections) => set({ connections }),
   setGaMetadata: (cacheKey, metadata) =>

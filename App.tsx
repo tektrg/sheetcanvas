@@ -33,6 +33,7 @@ import { Plug, Sparkles } from 'lucide-react';
 import { getVisibleCanvasIds, VisibleCanvasIds } from './utils/canvasVirtualization';
 import { LineageOverlay } from './components/LineageOverlay';
 import { buildLineageIndexes, buildLineageLinks, getLineageAvailableNodeIds } from './utils/lineage';
+import { placeOriginal, placeDerivative, placeNote } from './utils/canvasLayout';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 const ONBOARDING_DISMISSED_KEY = 'sheetcanvas:onboarding-dismissed:v4';
@@ -320,45 +321,21 @@ const App: React.FC = () => {
   }, [undo, redo, selectedIds, deleteConfirmPending, deleteSelectedItems, setToolMode]);
 
   // Helper to calculate position for new content (Bottom Edge Strategy)
-  const getNextPosition = useCallback((width: number, height: number) => {
-    const state = useStore.getState();
-    const { sheets, charts, notes, transform } = state;
-    
-    // Viewport Center X in Canvas Space
-    const viewportCenterX = (-transform.offset.x + window.innerWidth / 2) / transform.scale;
-    
-    let maxY = -Infinity;
-    
-    // Helper to check item bounds
-    const checkItem = (y: number, h: number) => {
-        const bottom = y + h;
-        if (bottom > maxY) maxY = bottom;
-    };
-
-    const hasItems = Object.keys(sheets).length > 0 || Object.keys(charts).length > 0 || Object.keys(notes).length > 0;
-
-    if (!hasItems) {
-        const viewportCenterY = (-transform.offset.y + window.innerHeight / 2) / transform.scale;
-        return {
-            x: viewportCenterX - width / 2,
-            y: viewportCenterY - height / 2
-        };
-    }
-
-    // Scan all items
-    (Object.values(sheets) as SheetData[]).forEach(s => {
-        const h = (s.size.height * CELL_HEIGHT) + HEADER_ROW_HEIGHT;
-        checkItem(s.position.y, h);
-    });
-    (Object.values(charts) as ChartData[]).forEach(c => checkItem(c.position.y, c.size.height));
-    (Object.values(notes) as NoteData[]).forEach(n => checkItem(n.position.y, n.size.height));
-
-    const gap = 100; // Comfortable gap
+  // Viewport-center position used as the empty-canvas fallback so the first
+  // object a user creates lands where they're looking.
+  const viewportCenterPosition = useCallback((width: number, height: number) => {
+    const { transform } = useStore.getState();
     return {
-        x: viewportCenterX - width / 2,
-        y: maxY + gap
+      x: (-transform.offset.x + window.innerWidth / 2) / transform.scale - width / 2,
+      y: (-transform.offset.y + window.innerHeight / 2) / transform.scale - height / 2,
     };
   }, []);
+
+  // New original sheet -> bottom of the left column (shared canvas layout).
+  const getNextPosition = useCallback((width: number, height: number) => {
+    const { sheets, charts, notes } = useStore.getState();
+    return placeOriginal({ sheets, charts, notes }, viewportCenterPosition(width, height));
+  }, [viewportCenterPosition]);
 
   // Helper to animate view to center on a rectangle
   const centerViewOn = useCallback((x: number, y: number, w: number, h: number) => {
@@ -444,19 +421,21 @@ const App: React.FC = () => {
   const handleAddNote = useCallback(() => {
     const width = 400;
     const height = 300;
-    const pos = getNextPosition(width, height);
+    // Notes float free: default to the far right of the canvas, out of the grid.
+    const { sheets, charts, notes } = useStore.getState();
+    const pos = placeNote({ sheets, charts, notes }, viewportCenterPosition(width, height));
 
     const newNote: NoteData = {
       id: generateId(),
       position: pos,
       size: { width, height },
-      content: '', 
+      content: '',
       color: 'yellow'
     };
     addNote(newNote);
     setEditingNoteId(newNote.id);
     centerViewOn(pos.x, pos.y, width, height);
-  }, [addNote, getNextPosition, centerViewOn]);
+  }, [addNote, viewportCenterPosition, centerViewOn]);
 
   const handleInitChart = useCallback((sheetId: string, defaultColIndex?: number, selectedCols?: number[], initialType?: ChartType) => {
     const sheet = (useStore.getState() as AppState).sheets[sheetId];
@@ -532,10 +511,11 @@ const App: React.FC = () => {
         }
     ]);
 
+    const { sheets: chartSnapSheets, charts: chartSnapCharts, notes: chartSnapNotes } = useStore.getState();
     const newChart: ChartData = {
         id: generateId(),
         sourceSheetId: sheetId,
-        position: { x: sheet.position.x + (sheet.size.width * CELL_WIDTH) + 50, y: sheet.position.y },
+        position: placeDerivative({ sheets: chartSnapSheets, charts: chartSnapCharts, notes: chartSnapNotes }, sheetId),
         size: DEFAULT_CHART_SIZE,
         title: `${sheet.title} Chart`,
         config: {
@@ -591,13 +571,11 @@ const App: React.FC = () => {
       };
       
       const newSheetSize = { width: 4, height: 15 };
+      const pivotSnap = useStore.getState();
       const newSheet: SheetData = {
           id: generateId(),
           title: `Pivot: ${sourceSheet.title}`,
-          position: { 
-              x: sourceSheet.position.x + (sourceSheet.size.width * CELL_WIDTH) + 60, 
-              y: sourceSheet.position.y 
-          },
+          position: placeDerivative({ sheets: pivotSnap.sheets, charts: pivotSnap.charts, notes: pivotSnap.notes }, sheetId),
           size: newSheetSize,
           cells: {},
           pivotConfig: initialConfig,
@@ -618,13 +596,11 @@ const App: React.FC = () => {
       if (!sourceSheet) return;
 
       const newSheetSize = { width: 4, height: 16 };
+      const sparkSnap = useStore.getState();
       const newSheet: SheetData = {
           id: generateId(),
           title: `Sparklines: ${sourceSheet.title}`,
-          position: { 
-              x: sourceSheet.position.x + (sourceSheet.size.width * CELL_WIDTH) + 60, 
-              y: sourceSheet.position.y + 100
-          },
+          position: placeDerivative({ sheets: sparkSnap.sheets, charts: sparkSnap.charts, notes: sparkSnap.notes }, sheetId),
           size: newSheetSize,
           cells: {},
           sparklineConfig: {

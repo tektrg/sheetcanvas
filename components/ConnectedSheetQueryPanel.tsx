@@ -184,7 +184,7 @@ export const ConnectedSheetQueryPanel: React.FC<ConnectedSheetQueryPanelProps> =
   if (!normalizedQuery) return null;
 
   return (
-    <div className="border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50/60 dark:bg-neutral-900/40 p-3">
+    <div className="border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50/60 dark:bg-neutral-900/40 p-3 max-h-[360px] overflow-y-auto sheet-scroll sheet-scroll-active">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
           Query

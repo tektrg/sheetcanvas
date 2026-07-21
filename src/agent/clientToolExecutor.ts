@@ -22,6 +22,7 @@ import { getColumnIdForIndex, getColumnIdSpan, getSheetDataBounds } from './shee
 import { computeChartDefaults } from '../../utils/chartDefaults';
 import { buildSelectedCanvasSummary } from './selectedCanvasSummary';
 import { applyFormatToSheet, type ApplyFormatInput } from './applyFormatTool';
+import { placeOriginal, placeDerivative, placeNote } from '../../utils/canvasLayout';
 import {
   createGaTrendBySourceSheet,
   enrichConnectionsForMcp,
@@ -44,31 +45,9 @@ const DEFAULT_NOTE_SIZE = { width: 420, height: 320 };
 // against a runaway paste; large/real datasets belong in a connector sheet.
 const MAX_CREATE_SHEET_CELLS = 20000;
 
-// Place a new agent-created object (note or sheet) just to the right of
-// everything already on the canvas, so it never lands on top of existing
-// objects. Falls back to a fixed spot on an empty canvas.
-const getCanvasPlacement = (store: ReturnType<typeof useStore.getState>): { x: number; y: number } => {
-  let maxRight = -Infinity;
-  let topY = Infinity;
-  const consider = (x: number, y: number, width: number) => {
-    maxRight = Math.max(maxRight, x + width);
-    topY = Math.min(topY, y);
-  };
-  store.sheetIds.forEach((id) => {
-    const s = store.sheets[id];
-    if (s) consider(s.position.x, s.position.y, s.size.width * CELL_WIDTH + HEADER_COL_WIDTH);
-  });
-  store.chartIds.forEach((id) => {
-    const c = store.charts[id];
-    if (c) consider(c.position.x, c.position.y, c.size.width);
-  });
-  store.noteIds.forEach((id) => {
-    const n = store.notes[id];
-    if (n) consider(n.position.x, n.position.y, n.size.width);
-  });
-  if (maxRight === -Infinity) return { x: 200, y: 200 };
-  return { x: maxRight + 60, y: topY === Infinity ? 200 : topY };
-};
+// Placement for agent-created objects routes through the shared canvas layout
+// module (utils/canvasLayout.ts): originals stack down the left column,
+// derivatives flow right along their source's row, notes float to the far right.
 
 // Derive a short human-readable title from a note's raw content: the first
 // heading text, else the first non-empty line. Used by listNotes/readNote so
@@ -583,7 +562,7 @@ export async function executeClientTool(
           const newSheet: SheetData = {
             id: generateId(),
             title: createInput.title ?? 'New Sheet',
-            position: getCanvasPlacement(store),
+            position: placeOriginal(store),
             // Give the data room to breathe, like a normal spreadsheet: never
             // smaller than the default blank grid.
             size: {
@@ -601,7 +580,7 @@ export async function executeClientTool(
         const blankSheet: SheetData = {
           id: generateId(),
           title: createInput.title ?? 'New Sheet',
-          position: getCanvasPlacement(store),
+          position: placeOriginal(store),
           size: { width: INITIAL_COLS, height: INITIAL_ROWS },
           cells: {},
         };
@@ -750,10 +729,7 @@ export async function executeClientTool(
         const chart: ChartData = {
           id: generateId(),
           sourceSheetId: sheet.id,
-          position: {
-            x: sheet.position.x + sheet.size.width * CELL_WIDTH + 50,
-            y: sheet.position.y,
-          },
+          position: placeDerivative(store, sheet.id),
           size: DEFAULT_CHART_SIZE,
           title: chartInput.title ?? `${sheet.title} chart`,
           config,
@@ -827,7 +803,7 @@ export async function executeClientTool(
 
         const note: NoteData = {
           id: generateId(),
-          position: getCanvasPlacement(store),
+          position: placeNote(store),
           size: { ...DEFAULT_NOTE_SIZE },
           content,
           color: noteInput.color ?? 'yellow',
@@ -930,10 +906,7 @@ export async function executeClientTool(
         const newSheet: SheetData = {
           id: generateId(),
           title: input.title ?? `Pivot: ${source.title}`,
-          position: {
-            x: source.position.x + source.size.width * CELL_WIDTH + 60,
-            y: source.position.y,
-          },
+          position: placeDerivative(store, source.id),
           size: { width: 4, height: 15 },
           cells: {},
           pivotConfig: config,
@@ -985,10 +958,7 @@ export async function executeClientTool(
         const newSheet: SheetData = {
           id: generateId(),
           title: input.title ?? `Sparklines: ${source.title}`,
-          position: {
-            x: source.position.x + source.size.width * CELL_WIDTH + 60,
-            y: source.position.y + 100,
-          },
+          position: placeDerivative(store, source.id),
           size: { width: 4, height: 16 },
           cells: {},
           sparklineConfig: config,

@@ -219,6 +219,11 @@ export interface SheetData {
   colWidths?: Record<string, number>; // Key: stringified index "0", "1"
   pivotConfig?: PivotConfig; // If present, this sheet is a pivot table linked to sourceSheetId
   pivotWarnings?: string[]; // Scoped warnings from pivot materialization
+  // Warnings from the last propagated refresh: source columns this derived sheet
+  // referenced were dropped/renamed/reordered. Distinct from pivotWarnings (which
+  // describe materialization issues like blank SUMIF buckets). Surfaced on the card
+  // and in the agent canvas summary; cleared on a clean refresh.
+  refreshWarnings?: string[];
   sparklineConfig?: SparklineConfig; // If present, this sheet is a sparkline table
   connectorConfig?: ConnectorConfig; // If present, this sheet is connected to external data
   formatRules?: SheetFormatRule[]; // Presentation rules reapplied after derived-sheet refreshes
@@ -287,6 +292,9 @@ export interface ChartData {
   title: string;
   config: ChartConfig;
   setupRequired?: boolean; // If true, show setup UI in the card
+  // Warnings from the last propagated refresh (e.g. a series column was dropped
+  // because the source removed/renamed it). Cleared on a clean refresh.
+  refreshWarnings?: string[];
 }
 
 export type NoteColor = 'yellow' | 'blue' | 'green' | 'pink' | 'purple' | 'gray';

@@ -88,6 +88,8 @@ const SheetNodeComponent: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPiv
   const updateSheet = useStore(state => state.updateSheet);
   const deleteSheet = useStore(state => state.deleteSheet);
   const saveSnapshot = useStore(state => state.saveSnapshot);
+  const beginSourceRefresh = useStore(state => state.beginSourceRefresh);
+  const endSourceRefresh = useStore(state => state.endSourceRefresh);
   const select = useStore(state => state.select);
   
   const isLowZoom = useStore(state => state.transform.scale < 0.35);
@@ -192,6 +194,9 @@ const SheetNodeComponent: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPiv
 
   const isPivot = !!data.pivotConfig;
   const isSparkline = !!data.sparklineConfig;
+  // Derived tables show a "refreshing" hint while their origin is mid-refresh so
+  // it's clear new data is arriving (the connected origin has its own spinner).
+  const isDerivedRefreshing = useStore(state => (isPivot || isSparkline) && state.refreshingIds.has(data.id));
   const isSetup = !!data.setupRequired;
   const isConnected = !!data.connectorConfig;
   const isReadOnly = isPivot || isSparkline || isConnected;
@@ -224,6 +229,7 @@ const SheetNodeComponent: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPiv
     if (!query) return;
 
     setIsConnectorRefreshing(true);
+    beginSourceRefresh(data.id);
     saveSnapshot();
     try {
       const next = await refreshConnectedSheetFromQuery(data.connectorConfig, query);
@@ -245,13 +251,14 @@ const SheetNodeComponent: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPiv
       if (onToast) onToast(msg);
     } finally {
       setIsConnectorRefreshing(false);
+      endSourceRefresh(data.id);
     }
   };
 
   // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
-    const grid = gridRef.current;
-    if (!grid) return;
+    const node = containerRef.current;
+    if (!node) return;
     const handleWheel = (e: WheelEvent) => {
       if (e.ctrlKey || e.metaKey) return;
 
@@ -277,8 +284,8 @@ const SheetNodeComponent: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPiv
         e.stopPropagation();
       }
     };
-    grid.addEventListener('wheel', handleWheel, { passive: true });
-    return () => grid.removeEventListener('wheel', handleWheel);
+    node.addEventListener('wheel', handleWheel, { passive: true });
+    return () => node.removeEventListener('wheel', handleWheel);
   }, [headerMenuOpen, rowMenuOpen, showConnectorQueryPanel, showFilterPanel, showPivotConfig, showSparklineConfig, suggestions.length]);
 
   // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -1325,6 +1332,12 @@ const SheetNodeComponent: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPiv
                 <GripHorizontal size={14} className="text-neutral-300 dark:text-neutral-600 flex-shrink-0" />
                 {isPivot && <div className="p-0.5 rounded text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30 mr-1" title="Pivot Table"><Table size={12} /></div>}
                 {isSparkline && <div className="p-0.5 rounded text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30 mr-1" title="Sparkline Table"><TrendingUp size={12} /></div>}
+                {isDerivedRefreshing && (
+                  <div className="flex items-center gap-1 text-[11px] text-teal-600 dark:text-teal-400 mr-1" title="Refreshing from source">
+                    <Loader2 size={12} className="animate-spin" />
+                    <span>Refreshing…</span>
+                  </div>
+                )}
                 {isConnected && <div className={`p-0.5 rounded mr-1 ${connectorNeedsReconnect ? 'text-amber-700 bg-amber-50 dark:text-amber-300 dark:bg-amber-950/40' : 'text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30'}`} title={connectorNeedsReconnect ? 'Connection needs reconnect' : `Connected Source: ${data.connectorConfig?.type}`}><Link size={12} /></div>}
                 {isConnected && connectorQuerySummary && (
                   <div className="text-xs text-gray-400 dark:text-gray-500 truncate max-w-[220px]" title={connectorQuerySummary}>
@@ -1504,6 +1517,19 @@ const SheetNodeComponent: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPiv
 	                    <AlertTriangle size={13} className="mt-0.5 flex-shrink-0" />
 	                    <div className="space-y-1">
 	                        {data.pivotWarnings.map((warning, index) => (
+	                            <div key={`${warning}-${index}`}>{warning}</div>
+	                        ))}
+	                    </div>
+	                </div>
+	            </div>
+	        )}
+	        {data.refreshWarnings && data.refreshWarnings.length > 0 && (
+	            <div className="border-t border-rose-200/70 dark:border-rose-900/60 bg-rose-50/80 dark:bg-rose-950/20 px-3 py-2">
+	                <div className="flex items-start gap-2 text-[11px] text-rose-800 dark:text-rose-300">
+	                    <AlertTriangle size={13} className="mt-0.5 flex-shrink-0" />
+	                    <div className="space-y-1">
+	                        <div className="font-medium">Source data changed on last refresh:</div>
+	                        {data.refreshWarnings.map((warning, index) => (
 	                            <div key={`${warning}-${index}`}>{warning}</div>
 	                        ))}
 	                    </div>

@@ -17,6 +17,9 @@ type SelectedCanvasSheet = {
   headersTruncated: boolean;
   hasFilters: boolean;
   hasSort: boolean;
+  // Warnings from the last propagated refresh (e.g. a metric column was dropped
+  // because the source removed/renamed it). Null when the last refresh was clean.
+  refreshWarnings: string[] | null;
   connector: {
     type: string;
     name: string;
@@ -65,6 +68,7 @@ type SelectedCanvasChart = {
   stacked: boolean | null;
   rightAxisColumns: string[] | null;
   seriesTypes: Record<string, string> | null;
+  refreshWarnings: string[] | null;
 };
 
 type SelectedCanvasNote = {
@@ -110,6 +114,7 @@ function summarizeSelectedSheet(sheet: SheetData): SelectedCanvasSheet {
     headersTruncated: bounds.width > MAX_SELECTED_HEADERS,
     hasFilters: (sheet.filters?.length ?? 0) > 0,
     hasSort: !!sheet.sort,
+    refreshWarnings: sheet.refreshWarnings && sheet.refreshWarnings.length > 0 ? sheet.refreshWarnings : null,
     connector: sheet.connectorConfig
       ? {
           type: sheet.connectorConfig.type,
@@ -170,6 +175,7 @@ function summarizeSelectedChart(
     stacked: chart.config.stacked ?? null,
     rightAxisColumns: chart.config.rightAxisColumns ?? null,
     seriesTypes: chart.config.seriesTypes ?? null,
+    refreshWarnings: chart.refreshWarnings && chart.refreshWarnings.length > 0 ? chart.refreshWarnings : null,
   };
 }
 
