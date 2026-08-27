@@ -17,6 +17,22 @@ reports/seo/search-console/
 *.local
 
 # Local design-tool artifacts
+# Secrets — explicit, because `*.local` above does NOT match `.env.local.json`,
+# `foo.local.json`, or anything with a suffix after `.local`.
+.env
+.env.*
+!.env.example
+*.local.*
+.dev.vars
+.dev.vars.*
+**/.dev.vars
+*.pem
+*.key
+*.p12
+secrets.json
+.tmux-*.sock
+*.sock
+
 public/landing-page-design/.thumbnail
 public/landing-page-design/uploads/
 
