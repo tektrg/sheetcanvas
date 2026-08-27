@@ -26,6 +26,10 @@ export interface AppState {
   // Undo/Redo Stacks
   history: Array<{ sheets: Record<string, SheetData>, charts: Record<string, ChartData>, notes: Record<string, NoteData> }>;
   future: Array<{ sheets: Record<string, SheetData>, charts: Record<string, ChartData>, notes: Record<string, NoteData> }>;
+  // Absolute count of snapshots ever shifted out of `history` by the MAX_HISTORY cap below.
+  // historyBase + history.length is a depth that stays stable across that shift, unlike a raw
+  // index into `history` (see saveSnapshot). Read by src/agent/activityTrail.ts.
+  historyBase: number;
 
   // Actions
   init: () => Promise<void>;
@@ -203,6 +207,7 @@ export const useStore = create<AppState>((set, get) => ({
   
   history: [],
   future: [],
+  historyBase: 0,
 
   connections: [],
   gaMetadataCache: {},
@@ -404,7 +409,10 @@ export const useStore = create<AppState>((set, get) => ({
               notes: state.notes
           };
           const newHistory = [...state.history, snapshot];
-          if (newHistory.length > MAX_HISTORY) newHistory.shift();
+          if (newHistory.length > MAX_HISTORY) {
+              newHistory.shift();
+              return { history: newHistory, future: [], historyBase: state.historyBase + 1 };
+          }
           return { history: newHistory, future: [] };
       });
   },

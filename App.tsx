@@ -27,7 +27,11 @@ import { buildChartSeriesDisplayNames } from './utils/chartDisplay';
 import AgentChatPanel from './src/components/AgentChatPanel';
 import { AgentEvalBridge } from './src/agent/AgentEvalBridge';
 import { useMcpBridge } from './src/agent/useMcpBridge';
+import { useWebMcpBridge } from './src/agent/webmcp/useWebMcpBridge';
+import { AgentActivityPanel } from './src/components/AgentActivityPanel';
+import { installTrailObserver } from './src/agent/activityTrail';
 import { ConnectAgentDialog } from './src/components/ConnectAgentDialog';
+import { WebMcpStatusIndicator } from './src/components/WebMcpStatusIndicator';
 import { loadGoogleSheetsAuth } from './utils/googleAnalyticsAuth';
 import { Plug, Sparkles } from 'lucide-react';
 import { getVisibleCanvasIds, VisibleCanvasIds } from './utils/canvasVirtualization';
@@ -37,6 +41,11 @@ import { placeOriginal, placeDerivative, placeNote } from './utils/canvasLayout'
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 const ONBOARDING_DISMISSED_KEY = 'sheetcanvas:onboarding-dismissed:v4';
+
+// Module scope, not an effect: the trail observer is a single global slot on the shared
+// dispatch chokepoint, and React 19 StrictMode double-invokes effects. Installing here
+// runs exactly once per page load, before any door can dispatch a tool call.
+installTrailObserver();
 
 const App: React.FC = () => {
   useFrameRateLogger();
@@ -127,6 +136,7 @@ const App: React.FC = () => {
   const [agentPanelOpen, setAgentPanelOpen] = useState(false);
   const [connectAgentOpen, setConnectAgentOpen] = useState(false);
   const mcpBridge = useMcpBridge({ getSelection: () => activeSelectionRef.current });
+  const webmcpBridge = useWebMcpBridge({ getSelection: () => activeSelectionRef.current });
   const openConnectAgent = useCallback(() => {
     setAgentPanelOpen(false);
     setConnectAgentOpen(true);
@@ -1235,6 +1245,7 @@ const App: React.FC = () => {
                     <Plug size={18} strokeWidth={1.5} className={mcpBridge.connectionStatus === 'connected' ? 'text-teal-500' : mcpBridge.connectionStatus === 'replaced' ? 'text-amber-500' : ''} />
                     <span className="text-xs font-medium">Connect Agent</span>
                 </button>
+                <WebMcpStatusIndicator bridge={webmcpBridge} darkMode={darkMode} />
                 <button
                     onClick={() => setAgentPanelOpen((v) => !v)}
                     title="Open Copilot"
@@ -1261,6 +1272,7 @@ const App: React.FC = () => {
             enabled={agentEvalEnabled}
             getSelection={() => activeSelectionRef.current}
         />
+        <AgentActivityPanel />
 
         <GlobalCommandBar
             isOpen={isCommandBarOpen} 

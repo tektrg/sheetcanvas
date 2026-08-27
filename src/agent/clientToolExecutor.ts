@@ -856,6 +856,7 @@ export async function executeClientTool(
         if (Object.keys(updates).length === 0) {
           return { ok: false, error: 'Provide at least one of content or color to update.' };
         }
+        store.saveSnapshot();
         store.updateNote(note.id, updates);
         accumulateNoteFocus({ ...note, ...updates });
         return { ok: true, noteId: note.id };
