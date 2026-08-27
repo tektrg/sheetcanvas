@@ -14,9 +14,9 @@ dist-ssr
 test-results/
 reports/seo/search-console/
 .agent-eval-runs/
+.webmcp-smoke-runs/
 *.local
 
-# Local design-tool artifacts
 # Secrets — explicit, because `*.local` above does NOT match `.env.local.json`,
 # `foo.local.json`, or anything with a suffix after `.local`.
 .env
@@ -33,6 +33,7 @@ secrets.json
 .tmux-*.sock
 *.sock
 
+# Local design-tool artifacts
 public/landing-page-design/.thumbnail
 public/landing-page-design/uploads/
 

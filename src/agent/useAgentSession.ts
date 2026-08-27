@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls, type UIMessage } from 'ai';
 import type { SelectionContext } from '../../types';
-import { executeClientTool } from './clientToolExecutor';
 import { flushAgentFocus } from './agentFocusAccumulator';
+import { dispatchTool } from './webmcp/toolDispatch';
 import { buildAgentContextLine } from './contextBuilder';
 import { hydrateAnalyticsKnowledgeOverlays } from './analyticsKnowledgeStore';
 import { getBackendBaseUrl } from '../../utils/backendApi';
@@ -78,10 +78,10 @@ export function useAgentSession({ getSelection, getAttachSelection }: UseAgentSe
     onToolCall: async ({ toolCall }) => {
       const c = chatRef.current;
       if (!c) return;
-      const result = await executeClientTool(
+      const result = await dispatchTool(
         toolCall.toolName,
         (toolCall as any).input,
-        { getSelection: () => selectionRef.current() },
+        { getSelection: () => selectionRef.current(), door: 'copilot' },
       );
       c.addToolResult({
         tool: toolCall.toolName as any,

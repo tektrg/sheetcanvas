@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SelectionContext } from '../../types';
 import { TOOL_NAMES, type ToolName } from '../../agent/tools';
 import { requestJson } from '../../utils/backendApi';
-import { executeClientTool } from './clientToolExecutor';
 import { flushAgentFocus } from './agentFocusAccumulator';
+import { dispatchTool } from './webmcp/toolDispatch';
 
 /**
  * Connects this tab to the backend CanvasBridge Durable Object over WebSocket
@@ -186,8 +186,9 @@ export function useMcpBridge({ getSelection }: UseMcpBridgeOptions) {
           reply = { id: call.id, ok: false, error: `Unknown tool: ${call.name}` };
         } else {
           try {
-            const result = await executeClientTool(call.name, call.input, {
+            const result = await dispatchTool(call.name, call.input, {
               getSelection: () => selectionRef.current(),
+              door: 'remote-mcp',
             });
             // executeClientTool reports failures via { ok: false, error } —
             // propagate them so MCP clients see isError, not a fake success.

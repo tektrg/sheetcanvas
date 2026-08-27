@@ -10,6 +10,7 @@
     "test": "vitest --run",
     "tmux:capture": "node scripts/tmux-run-capture.mjs",
     "agent:eval": "node scripts/agent-eval.mjs",
+    "webmcp:smoke": "node scripts/webmcp-smoke.mjs",
     "build": "vite build",
     "seo:gsc": "node scripts/search-console-report.mjs",
     "seo:gsc:smoke": "node scripts/search-console-report-smoke.mjs",
