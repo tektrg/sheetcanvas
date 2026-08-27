@@ -41,7 +41,9 @@ max WebMCP tool name: 26 chars (cap is 30)
 
 ## The `additionalProperties: false` trap
 
-WebMCP tool registration is stricter about extra properties than the remote MCP door needs to be, so `webmcpDescriptors.ts`'s `walkJsonSchemaNode` recursively sets `additionalProperties: false` on every schema node that has a `properties` key and no `additionalProperties` of its own — this is what makes a client's tool-calling UI treat the schema as a closed, well-typed form instead of an open bag.
+To be precise about why this pass exists: the **browser validates tool input not at all** — `registerTool` accepts whatever `inputSchema` you hand it, and nothing checks the arguments before `execute` runs. The schema is consumed by the *agent*, not enforced by the platform. Closing objects with `additionalProperties: false` is therefore about how a model and a client's tool-calling UI read the schema — a closed, well-typed form rather than an open bag — and it matches what OpenAI's strict function-calling mode expects. Actual enforcement is a separate mechanism: the `execute` wrapper `safeParse`s against the original zod schema (see [Input validation](#input-validation-webmcp-validates-nothing)).
+
+So `webmcpDescriptors.ts`'s `walkJsonSchemaNode` recursively sets `additionalProperties: false` on every schema node that has a `properties` key and no `additionalProperties` of its own.
 
 The trap: **`z.record(...)` schemas already emit their own `additionalProperties`** (a value schema, not `false`), and have **no `properties` key at all**. A blanket "every object gets `additionalProperties: false`" pass would either leave `z.record` nodes untouched (fine) or, if implemented carelessly as "every object node gets it," overwrite their existing, load-bearing `additionalProperties` schema — making the tool structurally uncallable, because the whole point of those fields is an open, caller-defined key set.
 

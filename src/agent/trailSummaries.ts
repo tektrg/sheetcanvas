@@ -136,9 +136,15 @@ export const SUMMARIZERS: Partial<Record<ToolName, Summarizer>> = {
     const count = isOk(result) && Array.isArray(r.sheets) ? r.sheets.length : undefined;
     return count !== undefined ? `Listed ${count} sheet${count === 1 ? '' : 's'}` : 'Listed sheets';
   },
-  describeSheet: (input) => `Inspected ${sheetTitle(input?.sheetId)}`,
+  describeSheet: (input, result) => {
+    if (!isOk(result)) return `Failed to inspect ${sheetTitle(input?.sheetId)}`;
+    return `Inspected ${sheetTitle(input?.sheetId)}`;
+  },
   getSelection: () => 'Checked current selection',
-  getRange: (input) => `Read range ${input?.range ?? '?'} from ${sheetTitle(input?.sheetId)}`,
+  getRange: (input, result) => {
+    if (!isOk(result)) return `Failed to read range ${input?.range ?? '?'} from ${sheetTitle(input?.sheetId)}`;
+    return `Read range ${input?.range ?? '?'} from ${sheetTitle(input?.sheetId)}`;
+  },
   listNotes: (_input, result) => {
     const r = result as any;
     const count = isOk(result) && Array.isArray(r.notes) ? r.notes.length : undefined;
@@ -153,8 +159,12 @@ export const SUMMARIZERS: Partial<Record<ToolName, Summarizer>> = {
     const count = isOk(result) && Array.isArray(r.connections) ? r.connections.length : undefined;
     return count !== undefined ? `Listed ${count} connection${count === 1 ? '' : 's'}` : 'Listed connections';
   },
-  listConnectionProperties: () => 'Listed connection properties',
-  describeConnection: (input) => `Inspected connection ${input?.connectionId ?? ''}`.trim(),
+  listConnectionProperties: (_input, result) =>
+    isOk(result) ? 'Listed connection properties' : 'Failed to list connection properties',
+  describeConnection: (input, result) => {
+    if (!isOk(result)) return `Failed to inspect connection ${input?.connectionId ?? ''}`.trim();
+    return `Inspected connection ${input?.connectionId ?? ''}`.trim();
+  },
   createQuerySheet: (_input, result) => {
     if (!isOk(result)) return 'Failed to create query sheet';
     const r = result as any;

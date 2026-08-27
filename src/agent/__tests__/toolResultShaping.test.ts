@@ -284,6 +284,16 @@ function buildCreateChartResult() {
   };
 }
 
+// Mirrors the REAL two-condition case from validateChartAnalysisIntent
+// (clientToolExecutor.ts): a date-like label column with no timeRange
+// (2 guidance lines) that ALSO has duplicate label values (1 more guidance
+// line explaining the aggregation risk). All three conditions are genuinely
+// independent and all three fire together on real CSV data — e.g. daily
+// sales repeated across stores/products. This is the exact shape that
+// exposed the original bug: a positional slice(0, 2) silently dropped the
+// third line (the only place the duplicate-label reason is explained) even
+// though the full message has budget to spare once suggestedNextTools is
+// dropped instead.
 function buildCreateChartError() {
   return {
     ok: false,
@@ -302,7 +312,7 @@ function buildCreateChartError() {
     guidance: [
       'Column A (Date) is date-like, so ask the user for the intended date range and time granularity before charting.',
       'If the user wants the full available range, pass timeRange="full available range" explicitly.',
-      'This third guidance line should be dropped — only the first two survive.',
+      'The label column has repeated labels. For a trustworthy visualization, use chart group mode for a clean visual aggregate, or create a persistent pivot/summary when the user needs an inspectable analytical trail.',
     ],
     suggestedNextTools: ['createChart', 'createPivot'],
   };
@@ -609,12 +619,46 @@ describe('buildErrorMessage: querySheet', () => {
 });
 
 describe('createChart error path preserves guidance', () => {
-  it('keeps missingParameters, first 2 guidance lines, and suggestedNextTools', () => {
+  // Regression guard for the positional-slice bug: when BOTH the "date-like
+  // column, missing timeRange" condition and the "duplicate labels" condition
+  // fire together, every guidance line must survive — that's the only place
+  // each blocking reason is explained, and it's what lets the agent's retry
+  // actually succeed instead of failing again for an unstated reason.
+  it('keeps missingParameters and every guidance line for the date-like + duplicate-labels case', () => {
     const message = buildErrorMessage('createChart', buildCreateChartError());
     expect(message).toContain('missingParameters: timeRange, timeGranularity');
+    // Guidance line 1: date-like column, missing timeRange/timeGranularity.
+    expect(message).toContain('date-like');
+    // Guidance line 2: the "full available range" shortcut.
+    expect(message).toContain('full available range');
+    // Guidance line 3: the duplicate-label explanation — this is the exact
+    // line a positional slice(0, 2) drops. A regression to that must fail
+    // this assertion.
+    expect(message).toContain('repeated labels');
+    expect(message).toContain('group mode');
+    // suggestedNextTools is the lower-value field here (its entries are
+    // already implied by the guidance text above), so it's the one dropped
+    // to make room for the third guidance line within the 600-char budget.
+    expect(message).not.toContain('suggestedNextTools');
+    expect(message.length).toBeLessThanOrEqual(600);
+  });
+
+  it('drops suggestedNextTools before ever dropping a guidance line', () => {
+    // A shorter guidance set that fits alongside suggestedNextTools should
+    // still keep it — dropping is budget-driven, not unconditional.
+    const result = {
+      ok: false,
+      error: 'Chart needs more analysis intent before it can be created without risking a misleading visualization.',
+      missingParameters: ['timeRange', 'timeGranularity'],
+      guidance: [
+        'Column A (Date) is date-like, so ask the user for the intended date range and time granularity before charting.',
+        'If the user wants the full available range, pass timeRange="full available range" explicitly.',
+      ],
+      suggestedNextTools: ['createChart', 'createPivot'],
+    };
+    const message = buildErrorMessage('createChart', result);
     expect(message).toContain('date-like');
     expect(message).toContain('full available range');
-    expect(message).not.toContain('This third guidance line should be dropped');
     expect(message).toContain('suggestedNextTools: createChart, createPivot');
     expect(message.length).toBeLessThanOrEqual(600);
   });

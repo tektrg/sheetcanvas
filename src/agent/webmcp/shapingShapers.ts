@@ -523,20 +523,51 @@ function shapeCreateChart(result: Record<string, unknown>): Record<string, unkno
   };
 }
 
-// This is an intentional "ask the user" signal, not a bug — losing
-// `guidance` would make the agent retry blindly instead of asking for the
-// missing timeRange/timeGranularity or offering group mode / a pivot.
+// `guidance` is an intentional "ask the user" signal, not a bug: losing a
+// line would make the agent retry blindly instead of asking for the missing
+// timeRange/timeGranularity or offering group mode / a pivot. Each guidance
+// line comes from an independent condition in validateChartAnalysisIntent
+// (clientToolExecutor.ts) — e.g. "date-like column, no timeRange" and
+// "duplicate labels need aggregation" can both fire at once — so a
+// *positional* cap (slice(0, N)) silently drops whichever condition happened
+// to push last, even when the message has budget to spare. Cap by character
+// budget instead, so every guidance line survives whenever it fits.
+//
+// Drop order when it doesn't all fit: `suggestedNextTools` goes first. Its
+// entries (tool names like 'createChart', 'createPivot') are near-redundant
+// with what the guidance text right above it already says to do, whereas
+// each guidance line is the only place its specific blocking reason is
+// explained. If guidance itself is still too long even alone, keep whole
+// lines up to the budget (in the order the validator pushed them) rather
+// than truncating a line mid-sentence — a half-explanation isn't actionable
+// either.
+function joinNonEmpty(parts: string[]): string {
+  return parts.filter(Boolean).join('\n');
+}
+
 function createChartErrorMessage(result: Record<string, unknown>): string {
   const missing = Array.isArray(result.missingParameters) ? (result.missingParameters as string[]).join(', ') : '';
-  const guidance = Array.isArray(result.guidance) ? (result.guidance as string[]).slice(0, 2) : [];
+  const guidanceIn = Array.isArray(result.guidance) ? (result.guidance as string[]) : [];
   const suggested = Array.isArray(result.suggestedNextTools) ? (result.suggestedNextTools as string[]).join(', ') : '';
-  const parts = [
-    String(result.error ?? 'createChart failed'),
-    missing ? `missingParameters: ${missing}` : '',
-    ...guidance.map((g) => `guidance: ${g}`),
-    suggested ? `suggestedNextTools: ${suggested}` : '',
-  ].filter(Boolean);
-  return capMessage(parts.join('\n'), ERROR_MESSAGE_MAX_CHARS);
+
+  const base = [String(result.error ?? 'createChart failed'), missing ? `missingParameters: ${missing}` : ''];
+  const guidanceLines = guidanceIn.map((g) => `guidance: ${g}`);
+  const suggestedLine = suggested ? `suggestedNextTools: ${suggested}` : '';
+
+  let message = joinNonEmpty([...base, ...guidanceLines, suggestedLine]);
+  if (message.length > ERROR_MESSAGE_MAX_CHARS) {
+    message = joinNonEmpty([...base, ...guidanceLines]);
+  }
+  if (message.length > ERROR_MESSAGE_MAX_CHARS) {
+    const kept = [...base];
+    for (const line of guidanceLines) {
+      const withLine = joinNonEmpty([...kept, line]);
+      if (withLine.length > ERROR_MESSAGE_MAX_CHARS) break;
+      kept.push(line);
+    }
+    message = joinNonEmpty(kept);
+  }
+  return capMessage(message, ERROR_MESSAGE_MAX_CHARS);
 }
 
 // applyFormat ───────────────────────────────────────────────────────────
