@@ -87,6 +87,8 @@ import {
   httpOriginFromWebSocket,
   killStrayHarnessChromeProcesses,
   launchChrome,
+  NATIVE_SINGLE_CALL_CAP_MS,
+  pageFunctionCall,
   scaleTimeoutMs,
   waitForTargetWebSocket,
 } from './webmcp-smoke-cdp.mjs';
@@ -202,9 +204,9 @@ it for you.`);
 
 // ── Preflight: dev server must already be up ────────────────────────────────
 
-async function checkAppReachable(appUrl) {
+async function checkAppReachable(appUrl, timeoutMs = 30_000) {
   try {
-    const response = await fetch(appUrl, { method: 'GET', signal: AbortSignal.timeout(5000) });
+    const response = await fetch(appUrl, { method: 'GET', signal: AbortSignal.timeout(scaleTimeoutMs(5_000, timeoutMs)) });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
@@ -290,24 +292,33 @@ const MODEL_CONTEXT_SHIM_SOURCE = `
 
 // ── Page open + console/exception capture ───────────────────────────────────
 
-async function openPageAndNavigate(browserWsUrl, url, { injectShim, consoleSink }) {
+// `timeoutMs` is the run's own `--timeout-ms` (or a caller-scaled fraction of
+// it, e.g. detectNativeFlags' per-candidate budget) — every CDP round trip
+// this function makes is scaled from it, so a run that asks for more
+// headroom actually gets it here too, not just in the later evaluate() calls
+// (previously these six sends and the two CdpClient.connect() calls all fell
+// through to webmcp-smoke-cdp.mjs's hardcoded 15s DEFAULT_SEND_TIMEOUT_MS
+// regardless of --timeout-ms — confirmed by grepping every send()/connect()
+// call site in this file).
+async function openPageAndNavigate(browserWsUrl, url, { injectShim, consoleSink, timeoutMs = 30_000 }) {
+  const sendTimeoutMs = scaleTimeoutMs(15_000, timeoutMs);
   const origin = httpOriginFromWebSocket(browserWsUrl);
-  const browser = await CdpClient.connect(browserWsUrl);
-  const { targetId } = await browser.send('Target.createTarget', { url: 'about:blank' });
+  const browser = await CdpClient.connect(browserWsUrl, sendTimeoutMs);
+  const { targetId } = await browser.send('Target.createTarget', { url: 'about:blank' }, sendTimeoutMs);
   browser.close();
-  const target = await waitForTargetWebSocket(origin, targetId, 5000);
-  const page = await CdpClient.connect(target.webSocketDebuggerUrl);
-  await page.send('Page.enable');
-  await page.send('Runtime.enable');
-  await page.send('Log.enable');
+  const target = await waitForTargetWebSocket(origin, targetId, scaleTimeoutMs(5_000, timeoutMs));
+  const page = await CdpClient.connect(target.webSocketDebuggerUrl, sendTimeoutMs);
+  await page.send('Page.enable', {}, sendTimeoutMs);
+  await page.send('Runtime.enable', {}, sendTimeoutMs);
+  await page.send('Log.enable', {}, sendTimeoutMs);
 
   if (consoleSink) attachConsoleCapture(page, consoleSink);
   if (injectShim) {
-    await page.send('Page.addScriptToEvaluateOnNewDocument', { source: MODEL_CONTEXT_SHIM_SOURCE });
+    await page.send('Page.addScriptToEvaluateOnNewDocument', { source: MODEL_CONTEXT_SHIM_SOURCE }, sendTimeoutMs);
   }
 
-  await page.send('Page.navigate', { url });
-  await settlePageAfterNavigate();
+  await page.send('Page.navigate', { url }, sendTimeoutMs);
+  await settlePageAfterNavigate(scaleTimeoutMs(PAGE_SETTLE_MS, timeoutMs));
   return page;
 }
 
@@ -353,30 +364,120 @@ function attachConsoleCapture(page, sink) {
 // webmcp-smoke-checks.mjs), which are themselves single evaluate() round
 // trips that poll *inside* the browser rather than from Node — that pattern
 // is safe.
-const PAGE_SETTLE_MS = 4_000;
-function settlePageAfterNavigate() {
-  return new Promise((resolvePromise) => setTimeout(resolvePromise, PAGE_SETTLE_MS));
+const PAGE_SETTLE_MS = 4_000; // baseline; openPageAndNavigate scales this by --timeout-ms
+function settlePageAfterNavigate(settleMs = PAGE_SETTLE_MS) {
+  return new Promise((resolvePromise) => setTimeout(resolvePromise, settleMs));
 }
 
 // ── Native-mode flag detection ──────────────────────────────────────────────
+//
+// Functional validation, not a truthy check: a `typeof document.modelContext
+// !== 'undefined'` probe only proves the property exists — it says nothing
+// about whether registerTool/getTools/executeTool actually work end to end
+// on this candidate. `browserProbeModelContextRoundTrip` (evaluated in-page)
+// registers a disposable probe tool, fetches it back via getTools(), and
+// executes it, tolerating both calling conventions this Chrome build's
+// native executeTool() has been observed to require depending on flag/build
+// (a bare object input vs. a JSON.stringify'd one — see this file's header
+// comment) so the probe itself doesn't misreport a working candidate as
+// broken just because it guessed the wrong convention on the first try.
+//
+// This makes up to 4 sequential native calls (registerTool, getTools,
+// executeTool, and — only if the first executeTool convention is rejected —
+// a second executeTool retry with the other input convention). Each is
+// raced against `perCallCapMs` (NATIVE_SINGLE_CALL_CAP_MS-derived; see that
+// constant's comment in webmcp-smoke-cdp.mjs for the evidence — a single
+// native call has been measured taking up to 20243ms even in an otherwise-
+// clean run) so one unlucky stall fails with a precise, named reason instead
+// of the whole probe silently eating the caller's entire budget. detectNativeFlags
+// sizes the OUTER evaluate() budget as 4 x perCallCapMs + margin — previously
+// a flat 20000ms regardless of how many native calls this makes, which is the
+// same class of bug that made webmcp-smoke-checks.mjs's gating-snapshot check
+// fail in the field (a flat single-call-sized budget applied to a multi-call
+// sequence).
+async function browserProbeModelContextRoundTrip(perCallCapMs) {
+  async function boundedCall(label, fn) {
+    let timer;
+    const capped = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label} exceeded its ${perCallCapMs}ms cap`)), perCallCapMs);
+    });
+    try {
+      return await Promise.race([fn(), capped]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  if (typeof document.modelContext === 'undefined' || typeof document.modelContext.registerTool !== 'function') {
+    return { ok: false, reason: 'document.modelContext (or registerTool) is not present' };
+  }
+  const probeName = 'webmcpSmokeFlagProbeTool';
+  try {
+    await boundedCall('registerTool', () =>
+      document.modelContext.registerTool({
+        name: probeName,
+        description: 'WebMCP smoke harness flag-validation probe tool (disposable; never surfaced to a real agent).',
+        inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+        execute: async () => ({ probe: 'ok' }),
+      }),
+    );
+  } catch (err) {
+    return { ok: false, reason: `registerTool threw: ${err && err.message ? err.message : err}` };
+  }
+  try {
+    const handles = await boundedCall('getTools', () => document.modelContext.getTools());
+    const handle = handles.find((h) => h.name === probeName);
+    if (!handle) return { ok: false, reason: `getTools() did not include ${probeName} right after registerTool (${handles.length} tool(s) present)` };
+    let raw;
+    try {
+      raw = await boundedCall('executeTool (object input)', () => document.modelContext.executeTool(handle, {}));
+    } catch (objectInputError) {
+      try {
+        raw = await boundedCall('executeTool (stringified input)', () => document.modelContext.executeTool(handle, JSON.stringify({})));
+      } catch (stringInputError) {
+        return {
+          ok: false,
+          reason: `executeTool rejected both a bare object and a JSON.stringify'd input: ${objectInputError && objectInputError.message} / ${stringInputError && stringInputError.message}`,
+        };
+      }
+    }
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (!parsed || parsed.probe !== 'ok') {
+      return { ok: false, reason: `executeTool round trip returned an unexpected value: ${JSON.stringify(parsed)}` };
+    }
+    return { ok: true, reason: 'registerTool -> getTools -> executeTool round-tripped successfully' };
+  } catch (err) {
+    return { ok: false, reason: `getTools/executeTool threw: ${err && err.message ? err.message : err}` };
+  }
+}
 
 async function detectNativeFlags(appUrl, timeoutMs) {
   const probeTimeoutMs = scaleTimeoutMs(5_000, timeoutMs);
+  const nativeCallCap = scaleTimeoutMs(NATIVE_SINGLE_CALL_CAP_MS, timeoutMs);
+  const roundTripTimeoutMs = 4 * nativeCallCap + scaleTimeoutMs(10_000, timeoutMs); // up to 4 sequential native calls, see comment above
   const attempts = [];
   for (const flags of NATIVE_FLAG_CANDIDATES) {
     let chrome;
     try {
-      chrome = trackChrome(await launchChrome({ flags, headless: true }));
-      const page = await openPageAndNavigate(chrome.browserWsUrl, appUrl, { injectShim: false, consoleSink: null });
-      const hasNative = await evaluate(
+      chrome = trackChrome(await launchChrome({ flags, headless: true, startupTimeoutMs: scaleTimeoutMs(30_000, timeoutMs) }));
+      const page = await openPageAndNavigate(chrome.browserWsUrl, appUrl, { injectShim: false, consoleSink: null, timeoutMs });
+      const hasProperty = await evaluate(
         page,
         "typeof document.modelContext !== 'undefined' && typeof document.modelContext.registerTool === 'function'",
         probeTimeoutMs,
         `probing for native document.modelContext with flags ${JSON.stringify(flags)}`,
       ).catch(() => false);
+      let roundTrip = { ok: false, reason: 'document.modelContext (or registerTool) not present — skipped functional round trip' };
+      if (hasProperty) {
+        roundTrip = await evaluate(
+          page,
+          pageFunctionCall(browserProbeModelContextRoundTrip, nativeCallCap),
+          roundTripTimeoutMs,
+          `functionally validating document.modelContext (registerTool+getTools+executeTool round trip) with flags ${JSON.stringify(flags)}`,
+        ).catch((err) => ({ ok: false, reason: `round-trip evaluate() threw: ${err instanceof Error ? err.message : err}` }));
+      }
       page.close();
-      attempts.push({ flags, hasNative });
-      if (hasNative) return { flags, attempts };
+      attempts.push({ flags, hasNative: roundTrip.ok, reason: roundTrip.reason });
+      if (roundTrip.ok) return { flags, attempts };
     } catch (error) {
       attempts.push({ flags, hasNative: false, error: error instanceof Error ? error.message : String(error) });
     } finally {
@@ -397,12 +498,14 @@ function printModeBanner(mode, requireNative, nativeAttempts, chromePath) {
   if (mode === 'native') {
     const winner = nativeAttempts.find((a) => a.hasNative);
     console.log(`  Reached real document.modelContext with flags: ${JSON.stringify(winner?.flags ?? [])}`);
+    console.log(`  Why this flag won: ${winner?.reason ?? '(no reason recorded)'}`);
   } else {
     console.log('  *** document.modelContext NOT reached natively on this browser. ***');
     console.log('  *** Falling back to a spec-faithful IN-PROCESS SHIM. Native browser behaviour is UNVERIFIED. ***');
     console.log(`  Tried ${nativeAttempts.length} candidate flag set(s), none exposed document.modelContext:`);
     for (const attempt of nativeAttempts) {
-      console.log(`    - ${JSON.stringify(attempt.flags)}${attempt.error ? ` (error: ${attempt.error})` : ''}`);
+      const why = attempt.error ? `error: ${attempt.error}` : attempt.reason ? attempt.reason : '(no reason recorded)';
+      console.log(`    - ${JSON.stringify(attempt.flags)} — ${why}`);
     }
     if (requireNative) {
       console.log('  --require-native was passed: this run WILL fail regardless of assertion results.');
@@ -452,7 +555,7 @@ function writeRunLog({ startedAt, mode, requireNative, appUrl, chromePath, nativ
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  await checkAppReachable(args.appUrl);
+  await checkAppReachable(args.appUrl, args.timeoutMs);
   // Defect 1: a Chrome instance orphaned by a prior crashed/killed run must
   // never be left running into this one — clean up before launching.
   await killStrayHarnessChromeProcesses();
@@ -464,7 +567,9 @@ async function main() {
 
   printModeBanner(mode, args.requireNative, nativeAttempts, chromePath);
 
-  const chrome = trackChrome(await launchChrome({ flags: nativeFlags ?? [], headless: true }));
+  const chrome = trackChrome(
+    await launchChrome({ flags: nativeFlags ?? [], headless: true, startupTimeoutMs: scaleTimeoutMs(30_000, args.timeoutMs) }),
+  );
   // Shared across both pages (not just the behavior page) so assertion 10b
   // ("zero InvalidStateError in console") actually covers the schema page's
   // console too — that page's own dynamic import of app source is
@@ -488,10 +593,10 @@ async function main() {
     // depend on — that import may only ever happen on this disposable page,
     // never the live one under test (same reasoning, see
     // webmcp-smoke-checks.mjs's top-of-file comment).
-    schemaPage = await openPageAndNavigate(chrome.browserWsUrl, args.appUrl, { injectShim: mode === 'shim', consoleSink });
+    schemaPage = await openPageAndNavigate(chrome.browserWsUrl, args.appUrl, { injectShim: mode === 'shim', consoleSink, timeoutMs: args.timeoutMs });
     schemaExtra = await runStaticSchemaAssertions(schemaPage, tracker, args.timeoutMs);
 
-    behaviorPage = await openPageAndNavigate(chrome.browserWsUrl, args.appUrl, { injectShim: mode === 'shim', consoleSink });
+    behaviorPage = await openPageAndNavigate(chrome.browserWsUrl, args.appUrl, { injectShim: mode === 'shim', consoleSink, timeoutMs: args.timeoutMs });
     extra = await runAssertions(behaviorPage, tracker, consoleSink, mode, args.timeoutMs, schemaExtra.gatingTable);
   } finally {
     schemaPage?.close();

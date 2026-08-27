@@ -85,7 +85,32 @@ export function scaleTimeoutMs(baselineMs, requestedTotalMs, referenceMs = 30_00
   return Math.max(1000, Math.round((baselineMs * requestedTotalMs) / referenceMs));
 }
 
-export async function launchChrome({ flags = [], headless = true }) {
+// A single native document.modelContext call (getTools/registerTool/
+// executeTool, behind --enable-features=WebMCPTesting) has been empirically
+// observed to intermittently take well into the tens of seconds to respond.
+// 2026-08-28: a dedicated diagnostic (5 fresh trials, timing each call in
+// the real 5-call gating-snapshot sequence against the running app)
+// measured individual native-call latencies up to 20243ms WITHIN otherwise-
+// clean, successful runs (two full sequences totaled 31552ms and 28485ms —
+// both of which a flat 25000ms budget for the whole sequence was too tight
+// for, exactly matching a real reported failure at that boundary). Any
+// caller chaining multiple native calls in one straight-line evaluate()
+// (webmcp-smoke-checks.mjs's execTool/gatingSnapshot/deleteAllNotes,
+// webmcp-smoke.mjs's flag round-trip probe) must size its OUTER budget as
+// (number of native calls) x this + margin — never a flat number, since a
+// flat budget picked for "one call" silently starves a function making
+// several. Set above the observed 20243ms single-call max so a genuinely
+// slow-but-working call is never needlessly cut off; a call exceeding even
+// this is presumed truly stalled and named in the resulting error.
+export const NATIVE_SINGLE_CALL_CAP_MS = 25_000;
+
+// `startupTimeoutMs` bounds how long we wait for Chrome to print its
+// DevTools WebSocket URL. Scaled from a 30s baseline by callers that have a
+// `--timeout-ms` value in hand, so a run asking for more headroom (e.g.
+// under the kind of process contention that leaked 51 stray Chrome
+// processes in a prior session) actually gets a longer wait here too, not
+// just in the CDP calls made after Chrome is up.
+export async function launchChrome({ flags = [], headless = true, startupTimeoutMs = 30_000 }) {
   const userDataDir = mkdtempSync(join(tmpdir(), USER_DATA_DIR_PREFIX));
   const debuggingPort = await findFreePort();
   const chromePath = findChromePath();
@@ -113,7 +138,7 @@ export async function launchChrome({ flags = [], headless = true }) {
 
   let wsUrl;
   try {
-    wsUrl = await waitForChromeWebSocket(debuggingPort, chrome, output);
+    wsUrl = await waitForChromeWebSocket(debuggingPort, chrome, output, startupTimeoutMs);
   } catch (error) {
     await closeChromeProcess(chrome, userDataDir);
     rmSync(userDataDir, { recursive: true, force: true });
@@ -162,7 +187,7 @@ async function killChromeUserDataDir(userDataDir) {
   });
 }
 
-async function waitForChromeWebSocket(debuggingPort, chrome, output) {
+async function waitForChromeWebSocket(debuggingPort, chrome, output, timeoutMs = 30_000) {
   return new Promise((resolvePromise, reject) => {
     let pollTimer;
     let settled = false;
@@ -190,7 +215,7 @@ async function waitForChromeWebSocket(debuggingPort, chrome, output) {
       const match = text.match(/DevTools listening on (ws:\/\/[^\s]+)/);
       if (match) finish(null, match[1]);
       else finish(new Error(`Timed out waiting for Chrome DevTools endpoint on ${debuggingPort}. ${text.slice(-1000)}`));
-    }, 30_000);
+    }, timeoutMs);
     pollTimer = setInterval(() => {
       requestJson(`http://127.0.0.1:${debuggingPort}/json/version`, { timeoutMs: 1000 })
         .then((version) => {
@@ -292,7 +317,12 @@ export class CdpClient {
     webSocket.addEventListener('error', (event) => rejectAllPending(new Error(`CDP WebSocket error while request(s) were pending: ${event?.message || event}`)));
   }
 
-  static connect(wsUrl) {
+  // `connectTimeoutMs` defaults to DEFAULT_SEND_TIMEOUT_MS for any caller
+  // that doesn't have a `--timeout-ms`-scaled value handy, but every actual
+  // call site in this harness now passes one explicitly (see
+  // webmcp-smoke.mjs's openPageAndNavigate) so `--timeout-ms` genuinely
+  // reaches the WebSocket handshake, not just later CDP round trips.
+  static connect(wsUrl, connectTimeoutMs = DEFAULT_SEND_TIMEOUT_MS) {
     if (typeof WebSocket !== 'function') {
       throw new Error('This Node runtime does not provide global WebSocket. Use Node 22+.');
     }
@@ -305,7 +335,7 @@ export class CdpClient {
           // best effort
         }
         reject(new Error(`Timed out connecting to CDP WebSocket: ${wsUrl}`));
-      }, DEFAULT_SEND_TIMEOUT_MS);
+      }, connectTimeoutMs);
       webSocket.addEventListener('open', () => {
         clearTimeout(connectTimer);
         resolvePromise(new CdpClient(webSocket));
