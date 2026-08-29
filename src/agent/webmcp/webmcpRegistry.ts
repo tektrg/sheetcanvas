@@ -16,6 +16,7 @@ import type { SelectionContext } from '../../../types';
 import { toolDefs, type ToolName } from '../../../agent/tools';
 import { useStore } from '../../../store';
 import { dispatchTool } from './toolDispatch';
+import { flushAgentFocus } from '../agentFocusAccumulator';
 import { computeDesiredTools, gatingKey, readGatingState } from './webmcpToolGating';
 import { buildDescriptorMeta } from './webmcpDescriptors';
 import { buildErrorMessage, shapeSuccess } from './toolResultShaping';
@@ -52,6 +53,18 @@ const registry = new Map<ToolName, RegistryEntry>();
 
 let selectionProvider: (() => SelectionContext) | null = null;
 let registryEnabled = true;
+
+// Debounced viewport flush, matching the remote-MCP door's pattern (see
+// useMcpBridge.ts) — ChatGPT calls tools one at a time with no turn boundary,
+// so we coalesce a burst of calls into a single camera pan rather than
+// snapping the view on every tool. Module-level like the rest of this file's
+// state: `executeWrapped` isn't hook-owned.
+const WEBMCP_FOCUS_FLUSH_DEBOUNCE_MS = 500;
+let focusFlushTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleFocusFlush(): void {
+  if (focusFlushTimer) clearTimeout(focusFlushTimer);
+  focusFlushTimer = setTimeout(flushAgentFocus, WEBMCP_FOCUS_FLUSH_DEBOUNCE_MS);
+}
 let blocked = false;
 let currentStatus: WebMcpStatus = 'idle';
 
@@ -159,6 +172,9 @@ async function executeWrapped(name: ToolName, input: unknown): Promise<unknown> 
       getSelection: resolveSelection,
       door: 'chatgpt',
     });
+    // Arm the debounced viewport flush regardless of outcome — the
+    // accumulator only collected rects for tools that actually wrote.
+    scheduleFocusFlush();
 
     if (result.ok === false) {
       throw new Error(buildErrorMessage(name, result as Record<string, unknown>));

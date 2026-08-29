@@ -872,7 +872,6 @@ const ChartNodeComponent: React.FC<ChartNodeProps> = ({
   const renderChart = () => {
     const CommonProps = {
       data: activeData,
-      key: playbackKey,
       margin: { top: 20, right: 20, left: 20, bottom: 20 }
     };
     const animProps = {
@@ -939,7 +938,7 @@ const ChartNodeComponent: React.FC<ChartNodeProps> = ({
       const pieOuterRadius = Math.max(32, Math.min(data.size.width, data.size.height - 88) / 3);
 
       return (
-        <PieChart {...CommonProps} margin={{ top: 16, right: 20, left: 20, bottom: showPieLegend ? 56 : 20 }}>
+        <PieChart key={playbackKey} {...CommonProps} margin={{ top: 16, right: 20, left: 20, bottom: showPieLegend ? 56 : 20 }}>
            <Pie
               data={activeData}
               dataKey={isGroupMode && dynamicSeriesKeys ? dynamicSeriesKeys[0] : "value_0"}
@@ -1422,7 +1421,7 @@ const ChartNodeComponent: React.FC<ChartNodeProps> = ({
     }
 
     return (
-        <ComposedChart {...CommonProps}>
+        <ComposedChart key={playbackKey} {...CommonProps}>
             <defs>{defs}</defs>
             {chartChildren}
         </ComposedChart>
