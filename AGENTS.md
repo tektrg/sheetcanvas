@@ -38,6 +38,12 @@ After deployment, smoke check at minimum:
 
 Known-good reference from the May 27, 2026 deploy: project `sheetcanvas`, source commit `021c60c`, deployment `c1980e27-a5fe-44e0-8757-ca5ba3604029`, preview `https://c1980e27.sheetcanvas.pages.dev`.
 
+## Two-Machine Dev (Pro + Air)
+
+Dev also runs on a second Mac ("Air"): `ssh trungs-air`, path `~/01_Project/SheetCanvas/flexsheet` (same relative layout as Pro). Air has a reverse alias back to this Mac: `ssh mbp-m4` (tailscale IP, user `trungluong`) — no such alias existed from Pro to Air as of Sep 2026, so reach Air only via `trungs-air`. On Air, always `source ~/.nvm/nvm.sh` and put its bin dir **ahead of** `/usr/local/bin` on `PATH` before running anything Node-related — Air also has a stray system Node that otherwise shadows the pinned `.nvmrc` version and breaks native deps like `rollup`'s platform binary.
+
+What does NOT travel via git and must be copied by hand per machine: `.env.local`, `backend/.dev.vars`, and any local `.wrangler` D1 state (`wrangler d1 execute DB --local ...` is per-machine). Copy these with plain `rsync -a` (no `-E`) — the extended-attributes flag has been observed to turn `.dev.vars` into a directory instead of a file when syncing between two Macs with mismatched rsync versions, which silently breaks `wrangler dev`.
+
 ## Coding Style & Naming Conventions
 
 Author features in TypeScript with functional React components. Use two-space indentation, `PascalCase` for components/hooks, `camelCase` for functions and Zustand selectors, and `SCREAMING_SNAKE_CASE` for exported constants. Keep shared types in `types.ts` and prefer discriminated unions over `any`. Run code-formatting through your editor’s Prettier (aligned with the existing style), and colocate component-specific styles or helpers beside each component rather than in `src/` root.
