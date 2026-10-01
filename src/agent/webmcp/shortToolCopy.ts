@@ -1,5 +1,5 @@
 import type { ToolName } from '../../../agent/tools';
-import type { WebMcpAnnotations } from './modelContext';
+export { TOOL_ANNOTATIONS } from '../../../agent/toolAnnotations';
 
 // WebMCP tool copy, budgeted for a general-purpose model with no SheetCanvas
 // system prompt and no priors about this app — unlike the descriptions in
@@ -216,53 +216,5 @@ export const SHORT_TOOL_COPY: Record<ToolName, ShortToolCopy> = {
   },
 };
 
-// WebMCP has exactly two annotation hints: `readOnlyHint` and
-// `untrustedContentHint`. There is no `destructiveHint` in the spec — do not
-// add one.
-//
-// `readOnlyHint: true` — the tool makes no observable change to canvas state.
-// `describeConnection` and `queryConnection` look read-only but are
-// DELIBERATELY EXCLUDED: `describeConnection` mutates the store
-// (`setConnectionSchemaToken`/`setGaMetadata`, see
-// `src/agent/clientToolExecutor.ts:1025,1036-1038`) and `queryConnection`
-// calls `store.addPrivateQueryResult` (`src/agent/querySheetTools.ts:216`).
-// The next tool in the connector flow (queryConnection/createQuerySheet)
-// depends on that mutation having happened, so a client that treats these as
-// read-only and caches/dedupes/replays them would silently break the flow.
-//
-// `untrustedContentHint: true` — the tool's result can carry text authored by
-// a user or a third-party warehouse (imported CSV values, typed cell/note
-// content, or rows returned from ClickHouse/GA/Google Sheets) that could
-// smuggle instructions ("ignore previous instructions...") into a model's
-// context when the result is read back. Applies to every read tool plus the
-// connector tools whose payload is warehouse-controlled data.
-export const TOOL_ANNOTATIONS: Record<ToolName, WebMcpAnnotations> = {
-  listSheets: { readOnlyHint: true, untrustedContentHint: true },
-  describeSheet: { readOnlyHint: true, untrustedContentHint: true },
-  getSelection: { readOnlyHint: true, untrustedContentHint: true },
-  getRange: { readOnlyHint: true, untrustedContentHint: true },
-  querySheet: { readOnlyHint: true, untrustedContentHint: true },
-  setCells: {},
-  createSheet: {},
-  applyFilter: {},
-  applySort: {},
-  applyFormat: {},
-  createChart: {},
-  createPivot: {},
-  createSparkline: {},
-  createNote: {},
-  listNotes: { readOnlyHint: true, untrustedContentHint: true },
-  readNote: { readOnlyHint: true, untrustedContentHint: true },
-  updateNote: {},
-  deleteNote: {},
-  listConnections: { readOnlyHint: true, untrustedContentHint: true },
-  listConnectionProperties: { readOnlyHint: true, untrustedContentHint: true },
-  // Mutates store state as a side effect — see comment above. Not read-only.
-  describeConnection: { untrustedContentHint: true },
-  createQuerySheet: { untrustedContentHint: true },
-  // Mutates store state as a side effect (addPrivateQueryResult) — see comment above. Not read-only.
-  queryConnection: { untrustedContentHint: true },
-  createQuerySheetFromResult: { untrustedContentHint: true },
-  updateQuerySheet: { untrustedContentHint: true },
-  createGaTrendBySource: { untrustedContentHint: true },
-};
+// Safety hints live in the shared agent/toolAnnotations.ts module so WebMCP
+// and the remote MCP transport expose the same trust model.

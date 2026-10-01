@@ -3,6 +3,7 @@ import type { SelectionContext } from '../../types';
 import { TOOL_NAMES, type ToolName } from '../../agent/tools';
 import { requestJson } from '../../utils/backendApi';
 import { flushAgentFocus } from './agentFocusAccumulator';
+import { readPluginMcpConfig, stripPluginCredentialsFromUrl } from './mcpPluginBootstrap';
 import { dispatchTool } from './webmcp/toolDispatch';
 
 /**
@@ -85,10 +86,25 @@ export interface UseMcpBridgeOptions {
 }
 
 export function useMcpBridge({ getSelection }: UseMcpBridgeOptions) {
-  const [config, setConfig] = useState<StoredMcpConfig | null>(readStoredConfig);
+  const [pluginLaunchConfig] = useState(() =>
+    typeof window === 'undefined' ? null : readPluginMcpConfig(window.location.href),
+  );
+  const [config, setConfig] = useState<StoredMcpConfig | null>(
+    () => pluginLaunchConfig ?? readStoredConfig(),
+  );
   const [connectionStatus, setConnectionStatus] = useState<McpConnectionStatus>('disconnected');
   const selectionRef = useRef(getSelection);
   selectionRef.current = getSelection;
+
+  useEffect(() => {
+    if (!pluginLaunchConfig || typeof window === 'undefined') return;
+    writeStoredConfig(pluginLaunchConfig);
+    window.history.replaceState(
+      window.history.state,
+      '',
+      stripPluginCredentialsFromUrl(window.location.href),
+    );
+  }, [pluginLaunchConfig]);
 
   const updateConfig = useCallback((next: StoredMcpConfig | null) => {
     setConfig(next);

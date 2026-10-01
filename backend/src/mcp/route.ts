@@ -5,6 +5,13 @@ import type { Env } from '../env';
 import type { BridgeCallResult, BridgeStatus } from './bridge';
 import { requireBearerToken } from '../auth';
 import { ANALYSIS_PLAYBOOK } from '../agent/analysisPlaybook';
+import { MCP_TOOL_ANNOTATIONS } from '../../../agent/toolAnnotations';
+import {
+  SHEETCANVAS_APP_RESOURCE_URI,
+  SHEETCANVAS_APP_TOOL,
+  SHEETCANVAS_APP_TOOL_NAME,
+  buildSheetCanvasAppResource,
+} from './pluginUi';
 
 /**
  * Remote MCP endpoint (streamable HTTP, JSON responses) backed by a live
@@ -30,14 +37,18 @@ const MCP_EVENT_TYPES = {
 } as const;
 
 // Converted once at module load — toolDefs is the single source of truth.
-const MCP_TOOL_LIST = TOOL_NAMES.map((name) => ({
-  name,
-  description: toolDefs[name].description,
-  inputSchema: z.toJSONSchema(toolDefs[name].inputSchema, {
-    io: 'input',
-    unrepresentable: 'any',
-  }),
-}));
+const MCP_TOOL_LIST = [
+  SHEETCANVAS_APP_TOOL,
+  ...TOOL_NAMES.map((name) => ({
+    name,
+    description: toolDefs[name].description,
+    inputSchema: z.toJSONSchema(toolDefs[name].inputSchema, {
+      io: 'input',
+      unrepresentable: 'any',
+    }),
+    annotations: MCP_TOOL_ANNOTATIONS[name],
+  })),
+];
 
 interface JsonRpcRequest {
   jsonrpc: '2.0';
@@ -141,6 +152,16 @@ async function handleToolsCall(env: Env, token: string, request: JsonRpcRequest)
   const id = request.id ?? null;
   const params = request.params ?? {};
   const toolName = params.name;
+  if (toolName === SHEETCANVAS_APP_TOOL_NAME) {
+    const args = params.arguments ?? {};
+    if (!args || Array.isArray(args) || typeof args !== 'object' || Object.keys(args).length > 0) {
+      return rpcError(id, -32602, `${SHEETCANVAS_APP_TOOL_NAME} does not accept arguments`);
+    }
+    return rpcResult(id, {
+      content: [{ type: 'text', text: 'SheetCanvas is ready in the interactive workspace.' }],
+      structuredContent: { ready: true },
+    });
+  }
   if (typeof toolName !== 'string' || !TOOL_NAMES.includes(toolName as ToolName)) {
     return rpcError(id, -32602, `Unknown tool: ${String(toolName)}`);
   }
@@ -178,7 +199,7 @@ function handleInitialize(request: JsonRpcRequest) {
       : SUPPORTED_PROTOCOL_VERSIONS[0];
   return rpcResult(request.id ?? null, {
     protocolVersion,
-    capabilities: { tools: {} },
+    capabilities: { tools: {}, resources: {} },
     serverInfo: SERVER_INFO,
     instructions:
       'Tools execute inside a live SheetCanvas browser tab. If a call fails with "Canvas not connected", ask the user to open their SheetCanvas tab and enable "Expose to agents" in the Copilot panel. If a write tool times out, verify with a read (e.g. getRange) before retrying — the write may already have been applied.\n\n' +
@@ -202,6 +223,27 @@ async function handleMcpRequest(env: Env, token: string, request: JsonRpcRequest
       return rpcResult(request.id, { tools: MCP_TOOL_LIST });
     case 'tools/call':
       return handleToolsCall(env, token, request);
+    case 'resources/list':
+      return rpcResult(request.id, {
+        resources: [
+          {
+            uri: SHEETCANVAS_APP_RESOURCE_URI,
+            name: 'SheetCanvas workspace',
+            title: 'SheetCanvas workspace',
+            description: 'Interactive spreadsheet, chart, and analysis canvas.',
+            mimeType: 'text/html;profile=mcp-app',
+          },
+        ],
+      });
+    case 'resources/read': {
+      const uri = request.params?.uri;
+      if (uri !== SHEETCANVAS_APP_RESOURCE_URI) {
+        return rpcError(request.id, -32002, `Resource not found: ${String(uri)}`);
+      }
+      return rpcResult(request.id, {
+        contents: [buildSheetCanvasAppResource(token)],
+      });
+    }
     default:
       return rpcError(request.id, -32601, `Method not found: ${request.method}`);
   }
