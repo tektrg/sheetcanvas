@@ -30,6 +30,7 @@ import {
   getAreaGradientStops,
   getChartVisualTheme,
 } from '../utils/chartVisualTheme';
+import { getPaddedChartAxisMax } from '../utils/chartAxis';
 
 interface ChartNodeProps {
   id: string;
@@ -509,11 +510,9 @@ const ChartNodeComponent: React.FC<ChartNodeProps> = ({
         maxRight = Math.max(maxRight, rightStack, rowMaxRight);
     });
 
-    const formatMax = (m: number) => m <= 0 ? 'auto' : (m * 1.1);
-
     return {
-        left: formatMax(maxLeft),
-        right: formatMax(maxRight)
+        left: getPaddedChartAxisMax(maxLeft),
+        right: getPaddedChartAxisMax(maxRight)
     };
   }, [processedData, data.config, dynamicSeriesKeys]);
 

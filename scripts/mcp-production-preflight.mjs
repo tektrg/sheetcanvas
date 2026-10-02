@@ -11,13 +11,25 @@ const WRANGLER_BIN = join(PROJECT_ROOT, 'node_modules', '.bin', 'wrangler');
 const WRANGLER_CONFIG = join(PROJECT_ROOT, 'backend', 'wrangler.toml');
 const ZERO_D1_DATABASE_ID = '00000000-0000-0000-0000-000000000000';
 const MCP_TEST_TOKEN = '0'.repeat(48);
+const PUBLIC_BLOCKED_CONNECTOR_TOOLS = [
+  'listConnections',
+  'listConnectionProperties',
+  'describeConnection',
+  'createQuerySheet',
+  'queryConnection',
+  'createQuerySheetFromResult',
+  'updateQuerySheet',
+  'createGaTrendBySource',
+];
 const REQUEST_TIMEOUT_MS = 15000;
 const WRANGLER_TIMEOUT_MS = 45000;
 
 const requiredRoutePatterns = [
   'sheetcanvas.com/api/*',
+  'pattern = "sheetcanvas.com/mcp"',
   'sheetcanvas.com/mcp/*',
   'www.sheetcanvas.com/api/*',
+  'pattern = "www.sheetcanvas.com/mcp"',
   'www.sheetcanvas.com/mcp/*',
 ];
 
@@ -165,23 +177,36 @@ async function checkLiveStaticSurfaces() {
     const connectAgent = await fetchText('/connect-agent/');
     if (!connectAgent.response.ok) {
       recordFailure(`/connect-agent/ returned HTTP ${connectAgent.response.status}.`);
-    } else if (!connectAgent.text.includes('Turn massive data into durable')) {
-      recordFailure('/connect-agent/ is live but does not contain the MCP-first durable-insights headline.');
+    } else if (!connectAgent.text.includes('Connect your agent to a canvas for business data.')) {
+      recordFailure('/connect-agent/ is live but does not contain the agent-canvas headline.');
     } else {
-      recordPass('/connect-agent/ contains the MCP-first durable-insights headline.');
+      recordPass('/connect-agent/ contains the agent-canvas headline.');
     }
   } catch (error) {
     recordFailure(`/connect-agent/ fetch failed: ${error.message}`);
   }
 
   try {
+    const support = await fetchText('/support/');
+    if (!support.response.ok) {
+      recordFailure(`/support/ returned HTTP ${support.response.status}.`);
+    } else if (!support.text.includes('Help with SheetCanvas')) {
+      recordFailure('/support/ is live but does not contain the public support heading.');
+    } else {
+      recordPass('/support/ contains the public support heading.');
+    }
+  } catch (error) {
+    recordFailure(`/support/ fetch failed: ${error.message}`);
+  }
+
+  try {
     const sitemap = await fetchText('/sitemap.xml');
     if (!sitemap.response.ok) {
       recordFailure(`/sitemap.xml returned HTTP ${sitemap.response.status}.`);
-    } else if (!sitemap.text.includes('/connect-agent/')) {
-      recordFailure('/sitemap.xml does not include /connect-agent/.');
+    } else if (!sitemap.text.includes('/connect-agent/') || !sitemap.text.includes('/support/')) {
+      recordFailure('/sitemap.xml does not include /connect-agent/ and /support/.');
     } else {
-      recordPass('/sitemap.xml includes /connect-agent/.');
+      recordPass('/sitemap.xml includes /connect-agent/ and /support/.');
     }
   } catch (error) {
     recordFailure(`/sitemap.xml fetch failed: ${error.message}`);
@@ -191,13 +216,41 @@ async function checkLiveStaticSurfaces() {
     const llms = await fetchText('/llms.txt');
     if (!llms.response.ok) {
       recordFailure(`/llms.txt returned HTTP ${llms.response.status}.`);
-    } else if (!llms.text.includes('/connect-agent/')) {
-      recordFailure('/llms.txt does not include /connect-agent/.');
+    } else if (!llms.text.includes('/connect-agent/') || !llms.text.includes('/support/')) {
+      recordFailure('/llms.txt does not include /connect-agent/ and /support/.');
     } else {
-      recordPass('/llms.txt includes /connect-agent/.');
+      recordPass('/llms.txt includes /connect-agent/ and /support/.');
     }
   } catch (error) {
     recordFailure(`/llms.txt fetch failed: ${error.message}`);
+  }
+
+  for (const [pathname, marker] of [
+    ['/privacy/', 'Privacy notes for the SheetCanvas app.'],
+    ['/terms/', 'Terms for using SheetCanvas.'],
+  ]) {
+    try {
+      const page = await fetchText(pathname);
+      if (!page.response.ok || !page.text.includes(marker)) {
+        recordFailure(`${pathname} is missing or does not contain ${marker}.`);
+      } else {
+        recordPass(`${pathname} is live.`);
+      }
+    } catch (error) {
+      recordFailure(`${pathname} fetch failed: ${error.message}`);
+    }
+  }
+
+  try {
+    const demo = await fetchText('/plugin-review/demo.webm');
+    const contentType = demo.response.headers.get('content-type') ?? '';
+    if (!demo.response.ok || !contentType.includes('video/webm') || demo.text.length < 100_000) {
+      recordFailure('/plugin-review/demo.webm is missing or is not a usable WebM video.');
+    } else {
+      recordPass('/plugin-review/demo.webm is live as a WebM video.');
+    }
+  } catch (error) {
+    recordFailure(`/plugin-review/demo.webm fetch failed: ${error.message}`);
   }
 }
 
@@ -211,6 +264,107 @@ async function checkLiveMcpRoutes() {
     }
   } catch (error) {
     recordFailure(`/api/mcp/token fetch failed: ${error.message}`);
+  }
+
+  try {
+    const initialized = await fetchText('/mcp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: '2025-06-18',
+          capabilities: {},
+          clientInfo: { name: 'sheetcanvas-preflight', version: '1.0.0' },
+        },
+      }),
+    });
+    const session = initialized.response.headers.get('mcp-session-id') ?? '';
+    if (!initialized.response.ok) {
+      recordFailure(`/mcp initialize returned HTTP ${initialized.response.status}.`);
+    } else if (!/^p_[a-f0-9]{64}$/.test(session)) {
+      recordFailure('/mcp initialize did not return a valid short-lived Mcp-Session-Id.');
+    } else if (initialized.response.headers.get('cache-control') !== 'no-store') {
+      recordFailure('/mcp initialize is missing Cache-Control: no-store.');
+    } else {
+      recordPass('/mcp public initialize returns an isolated no-store session.');
+
+      const rpc = async (id, method, params) => {
+        const result = await fetchText('/mcp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Mcp-Session-Id': session,
+          },
+          body: JSON.stringify({ jsonrpc: '2.0', id, method, ...(params ? { params } : {}) }),
+        });
+        return { ...result, body: JSON.parse(result.text) };
+      };
+
+      const tools = await rpc(2, 'tools/list');
+      const toolNames = tools.body?.result?.tools?.map((tool) => tool.name) ?? [];
+      if (!tools.response.ok || !toolNames.includes('openSheetCanvas')) {
+        recordFailure('/mcp tools/list did not expose the public launcher.');
+      } else if (PUBLIC_BLOCKED_CONNECTOR_TOOLS.some((name) => toolNames.includes(name))) {
+        recordFailure('/mcp tools/list exposed connector access to an anonymous session.');
+      } else {
+        recordPass('/mcp tools/list exposes canvas tools without connector access.');
+      }
+
+      for (const blockedTool of PUBLIC_BLOCKED_CONNECTOR_TOOLS) {
+        const blocked = await rpc(20 + PUBLIC_BLOCKED_CONNECTOR_TOOLS.indexOf(blockedTool), 'tools/call', {
+          name: blockedTool,
+          arguments: {},
+        });
+        if (!blocked.body?.error?.message?.includes('unavailable in anonymous sessions')) {
+          recordFailure(`/mcp direct call did not block anonymous connector tool ${blockedTool}.`);
+        }
+      }
+      if (!failures.some((failure) => failure.includes('anonymous connector tool'))) {
+        recordPass('/mcp direct calls reject every anonymous connector tool.');
+      }
+
+      const opened = await rpc(3, 'tools/call', {
+        name: 'openSheetCanvas',
+        arguments: {},
+      });
+      if (
+        opened.body?.result?.structuredContent?.ready !== true ||
+        opened.body?.result?._meta?.bridgeSession !== session ||
+        'bridgeSession' in (opened.body?.result?.structuredContent ?? {})
+      ) {
+        recordFailure('/mcp launcher did not keep the bridge session in widget-only metadata.');
+      } else {
+        recordPass('/mcp launcher keeps the bridge session in widget-only metadata.');
+      }
+
+      const resourceUri = 'ui://sheetcanvas/workspace-public-v1.html';
+      const resource = await rpc(4, 'resources/read', { uri: resourceUri });
+      const resourceBody = resource.body?.result?.contents?.[0];
+      if (
+        resourceBody?.uri !== resourceUri ||
+        resourceBody?.mimeType !== 'text/html;profile=mcp-app' ||
+        resourceBody?.text?.includes(session)
+      ) {
+        recordFailure('/mcp public app resource is missing, malformed, or contains its session.');
+      } else {
+        recordPass('/mcp public app resource is cache-safe.');
+      }
+
+      const terminated = await fetchText('/mcp', {
+        method: 'DELETE',
+        headers: { 'Mcp-Session-Id': session },
+      });
+      if (terminated.response.status !== 204) {
+        recordFailure(`/mcp session termination returned HTTP ${terminated.response.status}.`);
+      } else {
+        recordPass('/mcp session termination returned HTTP 204.');
+      }
+    }
+  } catch (error) {
+    recordFailure(`/mcp public initialize failed: ${error.message}`);
   }
 
   try {

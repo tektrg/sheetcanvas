@@ -1,11 +1,11 @@
 # Continuity Ledger
 
-- Goal (incl. success criteria): Independently inspect the newly added orders sheet, create total Revenue by Region and monthly Revenue charts, and add a `Q2 Takeaways` note containing the strongest finding with its actual numbers.
-- Constraints/Assumptions: Use the in-app browser for browser work; terminal commands run through tmux. Official OpenAI documentation says the ChatGPT in-app browser supports WebMCP out of the box.
-- Key decisions: Use the app UI for status/toggle checks, targeted Vitest suites for deterministic behavior, and `npm run webmcp:smoke` for native/shim browser validation.
-- State:
-- Done: Discovered `q2-2026-online-orders` (`ua14omwij`, 90 data rows) without relying on selection. Queried regional and monthly revenue. Created `Total Revenue by Region` (`6dxioc1t8`), `Revenue by Month` (`198772db0`), and note `Q2 Takeaways` (`66r9o2dk7`). The note states APAC revenue `$31,684.61`, 57.2% of Q2 total `$55,356.41`, and 3.26× EMEA `$9,710.18`. All three artifacts are visible; browser and Vite logs show no errors.
-- Now: Hand off the completed orders analysis canvas.
-- Next: Rehearse the activity-trail rewind and in-app Copilot sparkline steps only if requested.
-- Open questions (UNCONFIRMED if needed): The prior mislabeled chart `gf45jwbnq` on `demo-1` remains untouched; the current request does not authorize deleting it.
-- Working set (files/ids/commands): Orders sheet `ua14omwij`; charts `6dxioc1t8`, `198772db0`; note `66r9o2dk7`; prior mislabeled chart `gf45jwbnq` remains on `demo-1`; tmux session `webmcp-inspect`; in-app browser tab at `http://127.0.0.1:5173/`.
+- Goal (incl. success criteria): Distribute SheetCanvas as a public ChatGPT plugin with a stable production `/mcp`, honest anonymous-session boundaries, complete review artifacts, verified deployment, and a portal draft/submission as far as publisher attestations allow.
+- Constraints/Assumptions: Use tmux for terminal work. Preserve the private tokenized plugin. Public sessions may read/write only an empty ephemeral canvas; connector/account data remains private until account-backed OAuth exists. Do not fabricate publisher identity or legal attestations.
+- Key decisions: Public `/mcp` mints a 256-bit, two-hour Durable Object session. The bridge credential is widget-only `_meta`. The public iframe neither loads nor saves the normal IndexedDB workspace. Eight connector tools are excluded and rejected at the server boundary.
+- State: Code/package QA, production deployment, and live preflight are complete. Portal upload is blocked on user authentication.
+- Done: Implemented public MCP lifecycle, cache-safe fullscreen resource, ephemeral workspace initialization, connector isolation, support/privacy/terms pages, deterministic 5-positive/3-negative review cases, an 11-second demo, release preflight, and chart tick cleanup. Full verification passes: 34 files / 511 tests, frontend/backend TypeScript, production build, SEO audit, package validation, and independent QA with no Critical/High/Medium findings.
+- Now: The OpenAI Plugins portal is open at Google sign-in in the in-app browser; the intended publisher account cannot be inferred safely.
+- Next: After the user signs in, upload the prepared ZIP, configure the domain challenge, resolve scans, and stop for explicit confirmation immediately before final representational submission/policy attestations.
+- Open questions (UNCONFIRMED if needed): Which verified OpenAI Platform publisher identity should own the listing.
+- Working set (files/ids/commands): `backend/src/mcp/` · `src/agent/` · `scripts/build-public-plugin.mjs` · `scripts/mcp-production-preflight.mjs` · `public/{support,privacy,terms,plugin-review}` · `/Users/trungluong/plugins/sheetcanvas-public-plugin.zip` · portal tab 5

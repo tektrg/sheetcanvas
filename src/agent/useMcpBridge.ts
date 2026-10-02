@@ -39,6 +39,7 @@ interface StoredMcpConfig {
   mcpUrl: string;
   bridgeWsUrl: string;
   enabled: boolean;
+  ephemeral?: boolean;
 }
 
 interface MintTokenResponse {
@@ -74,6 +75,7 @@ function readStoredConfig(): StoredMcpConfig | null {
 
 function writeStoredConfig(config: StoredMcpConfig | null) {
   try {
+    if (config?.ephemeral) return;
     if (config) localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
     else localStorage.removeItem(STORAGE_KEY);
   } catch {

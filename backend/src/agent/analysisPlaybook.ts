@@ -33,3 +33,8 @@ Cross-cutting analysis rules:
 - Analyst number formatting in narration: 2-3 significant digits with unit suffixes ("4.2K sessions, up 8% WoW"), percentages to at most 1 decimal, always with the unit and the comparison window — never raw values like "4,231".
 
 Chart form is auto-selected from series count, scales, and X-axis type. createChart returns formDecisions naming the rule that fired ("2 series, different scales -> bar + line, dual axis"); state it in one short phrase. Every default is overridable in the chart settings.`;
+
+export const PUBLIC_ANALYSIS_PLAYBOOK = ANALYSIS_PLAYBOOK.replace(
+  'discover (listSheets/describeSheet or listConnections) → explore privately (querySheet/queryConnection)',
+  'discover (listSheets/describeSheet) → explore privately (getRange/querySheet)',
+);

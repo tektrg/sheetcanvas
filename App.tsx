@@ -27,6 +27,7 @@ import { buildChartSeriesDisplayNames } from './utils/chartDisplay';
 import AgentChatPanel from './src/components/AgentChatPanel';
 import { AgentEvalBridge } from './src/agent/AgentEvalBridge';
 import { useMcpBridge } from './src/agent/useMcpBridge';
+import { readPluginMcpConfig } from './src/agent/mcpPluginBootstrap';
 import { useWebMcpBridge } from './src/agent/webmcp/useWebMcpBridge';
 import { AgentActivityPanel } from './src/components/AgentActivityPanel';
 import { installTrailObserver } from './src/agent/activityTrail';
@@ -49,6 +50,10 @@ installTrailObserver();
 
 const App: React.FC = () => {
   useFrameRateLogger();
+
+  const [isEphemeralPluginSession] = useState(() =>
+    typeof window !== 'undefined' && readPluginMcpConfig(window.location.href)?.ephemeral === true
+  );
 
   const [darkMode, setDarkMode] = useState(() =>
     typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches
@@ -173,8 +178,8 @@ const App: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    initStore();
-  }, []);
+    initStore({ ephemeral: isEphemeralPluginSession });
+  }, [initStore, isEphemeralPluginSession]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);

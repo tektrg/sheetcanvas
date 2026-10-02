@@ -39,7 +39,7 @@
             "name": "SheetCanvas Privacy",
             "url": "https://sheetcanvas.com/privacy/",
             "description": "Privacy notes for SheetCanvas local files, connector-backed sheets, and analytics.",
-            "dateModified": "2026-05-27",
+            "dateModified": "2026-10-01",
             "isPartOf": {
               "@type": "WebSite",
               "@id": "https://sheetcanvas.com/#website",
@@ -372,11 +372,24 @@
         <p class="eyebrow">Privacy</p>
         <h1 id="hero-title">Privacy notes for the SheetCanvas app.</h1>
         <p class="hero-copy">SheetCanvas is a browser-based spreadsheet canvas for local files, visual analysis objects, and connector-backed sheets. This page explains the product-specific data paths that matter when you open the app.</p>
-        <p class="reviewed">Last reviewed: May 27, 2026</p>
+        <p class="reviewed">Last reviewed: October 1, 2026</p>
         <div class="actions">
           <a class="button button-primary" href="/">Open SheetCanvas</a>
           <a class="button button-secondary" href="/docs/">Read setup docs</a>
         </div>
+      </section>
+
+      <section class="section" aria-labelledby="plugin-title">
+        <p class="eyebrow">ChatGPT plugin</p>
+        <h2 id="plugin-title">The public plugin uses a short-lived, anonymous browser session.</h2>
+        <p class="lede">When you open SheetCanvas from ChatGPT, the SheetCanvas MCP service creates a random session identifier that connects the ChatGPT tool session to the embedded browser workspace. The public plugin does not require a SheetCanvas account and does not use that identifier for advertising.</p>
+        <ul class="list">
+          <li><strong>Tool data:</strong> prompts and tool inputs selected by ChatGPT, plus requested sheet cells, chart settings, and note content, pass between ChatGPT, the SheetCanvas Worker, and the browser workspace to perform the requested action.</li>
+          <li><strong>Session metadata:</strong> the service processes a random session identifier, tool names, success or error status, and timestamps for operation and abuse prevention. The identifier expires after two hours and can be ended earlier by the MCP client.</li>
+          <li><strong>Workspace storage:</strong> the public bridge relays tool calls to an empty, ephemeral browser workspace. It does not load or save the browser's normal SheetCanvas workspace, and the relay is not a cloud backup.</li>
+          <li><strong>Connector boundary:</strong> the anonymous public plugin does not expose Google Analytics, Google Sheets, or ClickHouse connector tools. Connector setup and queries remain outside this public session.</li>
+          <li><strong>Service providers:</strong> OpenAI processes plugin prompts and responses under its own terms, while Cloudflare hosts the SheetCanvas Worker, session objects, and public site.</li>
+        </ul>
       </section>
 
       <section class="section" aria-labelledby="local-title">
@@ -410,6 +423,12 @@
         <h2 id="analytics-title">SheetCanvas uses site analytics to understand product discovery.</h2>
         <p class="lede">The public app shell includes Google Analytics measurement for page and product discovery reporting. This is separate from the Google Analytics connector, which is for bringing your GA4 reporting rows into a connected sheet.</p>
       </section>
+
+      <section class="section" aria-labelledby="control-title">
+        <p class="eyebrow">Your controls</p>
+        <h2 id="control-title">End a plugin session, clear browser data, or contact us.</h2>
+        <p class="lede">Closing the plugin workspace or ending its MCP session disconnects the public bridge. You can clear SheetCanvas browser storage through your browser and revoke source-system connector access with the source provider. For access, correction, deletion, or privacy questions, email <a href="mailto:yourfriend@theindie.app">yourfriend@theindie.app</a>. Do not include passwords, tokens, or confidential spreadsheet contents.</p>
+      </section>
     </main>
 
     <footer class="site-footer">
@@ -418,6 +437,7 @@
         <a href="/">Open app</a>
         <a href="/learn/">Learn</a>
         <a href="/docs/">Docs</a>
+        <a href="/support/">Support</a>
         <a href="/privacy/">Privacy</a>
         <a href="/terms/">Terms</a>
       </nav>

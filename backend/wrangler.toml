@@ -7,8 +7,10 @@ compatibility_date = "2025-01-01"
 # and Cloudflare zone access for sheetcanvas.com.
 routes = [
   { pattern = "sheetcanvas.com/api/*", zone_name = "sheetcanvas.com" },
+  { pattern = "sheetcanvas.com/mcp", zone_name = "sheetcanvas.com" },
   { pattern = "sheetcanvas.com/mcp/*", zone_name = "sheetcanvas.com" },
   { pattern = "www.sheetcanvas.com/api/*", zone_name = "sheetcanvas.com" },
+  { pattern = "www.sheetcanvas.com/mcp", zone_name = "sheetcanvas.com" },
   { pattern = "www.sheetcanvas.com/mcp/*", zone_name = "sheetcanvas.com" }
 ]
 

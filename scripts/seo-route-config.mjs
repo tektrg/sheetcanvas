@@ -20,6 +20,7 @@ export const ROUTE_ORDER = [
   '/alternatives/excel/',
   '/alternatives/google-sheets/',
   '/alternatives/airtable/',
+  '/support/',
   '/privacy/',
   '/terms/',
 ];
@@ -29,6 +30,7 @@ const ROUTE_METADATA = {
   '/learn/': { changefreq: 'monthly', priority: '0.7' },
   '/docs/': { changefreq: 'monthly', priority: '0.6' },
   '/blog/': { changefreq: 'weekly', priority: '0.55' },
+  '/support/': { changefreq: 'monthly', priority: '0.5' },
   '/privacy/': { changefreq: 'yearly', priority: '0.3' },
   '/terms/': { changefreq: 'yearly', priority: '0.3' },
 };

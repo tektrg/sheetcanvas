@@ -10,6 +10,7 @@ import { DurableObject } from 'cloudflare:workers';
  */
 
 const TOOL_CALL_TIMEOUT_MS = 30_000;
+const PUBLIC_SESSION_EXPIRES_AT_KEY = 'public-session-expires-at';
 
 /** Close code telling an older tab it was replaced — the tab must NOT reconnect. */
 export const WS_CLOSE_REPLACED = 4000;
@@ -98,6 +99,26 @@ export class CanvasBridge extends DurableObject {
   /** RPC from the Worker route for status checks. */
   async getStatus(): Promise<BridgeStatus> {
     return { browserConnected: this.ctx.getWebSockets().length > 0 };
+  }
+
+  /** Marks this object as a short-lived anonymous public-plugin session. */
+  async initializePublicSession(expiresAtMs: number): Promise<void> {
+    await this.ctx.storage.put(PUBLIC_SESSION_EXPIRES_AT_KEY, expiresAtMs);
+  }
+
+  async isPublicSessionActive(nowMs: number): Promise<boolean> {
+    const expiresAtMs = await this.ctx.storage.get<number>(PUBLIC_SESSION_EXPIRES_AT_KEY);
+    if (typeof expiresAtMs !== 'number') return false;
+    if (expiresAtMs > nowMs) return true;
+    await this.terminatePublicSession();
+    return false;
+  }
+
+  async terminatePublicSession(): Promise<void> {
+    await this.ctx.storage.delete(PUBLIC_SESSION_EXPIRES_AT_KEY);
+    for (const socket of this.ctx.getWebSockets()) {
+      socket.close(1000, 'SheetCanvas public session ended');
+    }
   }
 
   private async dispatchToBrowser(name: string, input: unknown): Promise<BridgeCallResult> {

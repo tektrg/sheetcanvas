@@ -32,7 +32,7 @@ export interface AppState {
   historyBase: number;
 
   // Actions
-  init: () => Promise<void>;
+  init: (options?: { ephemeral?: boolean }) => Promise<void>;
   setTransform: (transform: CanvasTransform | ((prev: CanvasTransform) => CanvasTransform)) => void;
   setToolMode: (mode: ToolMode) => void;
   select: (ids: string[], append?: boolean) => void;
@@ -213,7 +213,30 @@ export const useStore = create<AppState>((set, get) => ({
   gaMetadataCache: {},
   connectionSchemaTokens: {},
 
-  init: async () => {
+  init: async (options) => {
+      const ephemeral = options?.ephemeral === true;
+      if (ephemeral) {
+          set({
+              sheets: {},
+              charts: {},
+              notes: {},
+              privateQueryResults: {},
+              sheetIds: [],
+              chartIds: [],
+              noteIds: [],
+              privateQueryResultIds: [],
+              transform: { scale: 1, offset: { x: 0, y: 0 } },
+              selectedIds: new Set<string>(),
+              refreshingIds: new Set<string>(),
+              history: [],
+              future: [],
+              historyBase: 0,
+              connections: [],
+              gaMetadataCache: {},
+              connectionSchemaTokens: {},
+          });
+          return;
+      }
       const loaded = await loadAppState('default');
 
       if (loaded && hasPersistedWorkspaceState(loaded)) {

@@ -28,6 +28,7 @@
 - SheetCanvas vs Excel: https://sheetcanvas.com/alternatives/excel/
 - SheetCanvas vs Google Sheets: https://sheetcanvas.com/alternatives/google-sheets/
 - SheetCanvas vs Airtable: https://sheetcanvas.com/alternatives/airtable/
+- SheetCanvas Support: https://sheetcanvas.com/support/
 - SheetCanvas Privacy: https://sheetcanvas.com/privacy/
 - SheetCanvas Terms: https://sheetcanvas.com/terms/
 

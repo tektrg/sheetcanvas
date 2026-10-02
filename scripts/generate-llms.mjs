@@ -42,6 +42,7 @@ const ROUTE_GROUPS = [
       '/alternatives/excel/',
       '/alternatives/google-sheets/',
       '/alternatives/airtable/',
+      '/support/',
       '/privacy/',
       '/terms/',
     ],

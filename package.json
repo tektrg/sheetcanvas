@@ -12,6 +12,7 @@
     "agent:eval": "node scripts/agent-eval.mjs",
     "webmcp:smoke": "node scripts/webmcp-smoke.mjs",
     "plugin:setup": "node scripts/setup-chatgpt-plugin.mjs",
+    "plugin:build:public": "node scripts/build-public-plugin.mjs",
     "build": "vite build",
     "seo:gsc": "node scripts/search-console-report.mjs",
     "seo:gsc:smoke": "node scripts/search-console-report-smoke.mjs",
