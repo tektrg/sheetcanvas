@@ -2,7 +2,7 @@
 // position, size, stroke and font edits are always preserved.
 import type { DiagramElement, DiagramElementPatch } from './types';
 import { measureText } from './elementFactory';
-import { resolveColor } from './specToElements';
+import { resolveColor } from './colors';
 
 export type PatchResult =
   | { ok: true; elements: DiagramElement[] }

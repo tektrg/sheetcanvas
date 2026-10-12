@@ -4,6 +4,8 @@ import { Canvas } from './components/Canvas';
 import { SheetNode } from './components/SheetNode';
 import { ChartNode } from './components/ChartNode';
 import { NoteNode } from './components/NoteNode';
+import { DiagramNode } from './components/DiagramNode';
+import { DiagramEditor } from './components/DiagramEditor';
 import { Toolbar } from './components/Toolbar';
 import { Toast } from './components/Toast';
 import { GlobalCommandBar } from './components/GlobalCommandBar';
@@ -48,6 +50,14 @@ const ONBOARDING_DISMISSED_KEY = 'sheetcanvas:onboarding-dismissed:v4';
 // runs exactly once per page load, before any door can dispatch a tool call.
 installTrailObserver();
 
+
+// Canvas items render with DOM ids `<type>-<id>`; drag code moves them directly.
+const findCanvasItemElement = (id: string): HTMLElement | null =>
+  document.getElementById(`sheet-${id}`) ||
+  document.getElementById(`chart-${id}`) ||
+  document.getElementById(`note-${id}`) ||
+  document.getElementById(`diagram-${id}`);
+
 const App: React.FC = () => {
   useFrameRateLogger();
 
@@ -83,6 +93,9 @@ const App: React.FC = () => {
   const addNote = useStore((state: AppState) => state.addNote);
   const updateNote = useStore((state: AppState) => state.updateNote);
   const deleteNote = useStore((state: AppState) => state.deleteNote);
+  const updateDiagram = useStore((state: AppState) => state.updateDiagram);
+  const diagramIds = useStore((state: AppState) => state.diagramIds);
+  const editingDiagramId = useStore((state: AppState) => state.editingDiagramId);
   
   const undo = useStore((state: AppState) => state.undo);
   const redo = useStore((state: AppState) => state.redo);
@@ -284,6 +297,8 @@ const App: React.FC = () => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
+      // The diagram editor owns the keyboard (its own undo/delete) while open.
+      if (useStore.getState().editingDiagramId) return;
 
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
           e.preventDefault();
@@ -681,9 +696,7 @@ const App: React.FC = () => {
           Object.entries(dragInitialPositions.current).forEach(([id, initialPos]) => {
               // Explicit cast to Position to avoid 'unknown' type errors
               const pos = initialPos as Position;
-              let el = document.getElementById(`sheet-${id}`);
-              if (!el) el = document.getElementById(`chart-${id}`);
-              if (!el) el = document.getElementById(`note-${id}`);
+              const el = findCanvasItemElement(id);
 
               if (el) {
                   el.style.left = `${pos.x + deltaX}px`;
@@ -752,21 +765,18 @@ const App: React.FC = () => {
                 const newPos = { x: pos.x + deltaX, y: pos.y + deltaY };
                 
                 // Cleanup DOM hints
-                let el = document.getElementById(`sheet-${id}`);
-                if (!el) el = document.getElementById(`chart-${id}`);
-                if (!el) el = document.getElementById(`note-${id}`);
+                const el = findCanvasItemElement(id);
                 if (el) el.style.willChange = 'auto';
 
                 if (s.sheets[id]) updateSheet(id, { position: newPos });
                 else if (s.charts[id]) updateChart(id, { position: newPos });
                 else if (s.notes[id]) updateNote(id, { position: newPos });
+                else if (s.diagrams[id]) updateDiagram(id, { position: newPos });
             });
         } else {
             // Even if no movement, cleanup will-change
             Object.keys(dragInitialPositions.current).forEach(id => {
-                let el = document.getElementById(`sheet-${id}`);
-                if (!el) el = document.getElementById(`chart-${id}`);
-                if (!el) el = document.getElementById(`note-${id}`);
+                const el = findCanvasItemElement(id);
                 if (el) el.style.willChange = 'auto';
             });
         }
@@ -782,9 +792,9 @@ const App: React.FC = () => {
       window.removeEventListener('mouseup', handleGlobalMouseUp);
       dragListenersAttached.current = false;
     }
-  }, [selectionBox, transform, select, saveSnapshot, updateSheet, updateChart, updateNote, handleGlobalMouseMoveOptimized]);
+  }, [selectionBox, transform, select, saveSnapshot, updateSheet, updateChart, updateNote, updateDiagram, handleGlobalMouseMoveOptimized]);
 
-  const handleItemMouseDown = useCallback((e: React.MouseEvent, id: string, type: 'sheet' | 'chart' | 'note') => {
+  const handleItemMouseDown = useCallback((e: React.MouseEvent, id: string, type: 'sheet' | 'chart' | 'note' | 'diagram') => {
     e.stopPropagation();
     dragStartSnapshot.current = true;
 
@@ -818,6 +828,7 @@ const App: React.FC = () => {
         if (updatedState.sheets[selId]) pos = updatedState.sheets[selId].position;
         else if (updatedState.charts[selId]) pos = updatedState.charts[selId].position;
         else if (updatedState.notes[selId]) pos = updatedState.notes[selId].position;
+        else if (updatedState.diagrams[selId]) pos = updatedState.diagrams[selId].position;
 
         if (pos) {
             newDragPositions[selId] = { ...pos };
@@ -830,6 +841,7 @@ const App: React.FC = () => {
          if (type === 'sheet') pos = updatedState.sheets[id].position;
          else if (type === 'chart') pos = updatedState.charts[id].position;
          else if (type === 'note') pos = updatedState.notes[id].position;
+         else if (type === 'diagram') pos = updatedState.diagrams[id].position;
          if (pos) newDragPositions[id] = { ...pos };
     }
 
@@ -837,7 +849,7 @@ const App: React.FC = () => {
 
     // OPTIMIZATION: Set will-change once at start of drag
     Object.keys(newDragPositions).forEach(key => {
-        const el = document.getElementById(`sheet-${key}`) || document.getElementById(`chart-${key}`) || document.getElementById(`note-${key}`);
+        const el = findCanvasItemElement(key);
         if (el) el.style.willChange = 'left, top';
     });
 
@@ -852,7 +864,7 @@ const App: React.FC = () => {
   handleItemMouseDownRef.current = handleItemMouseDown;
   const itemMouseDownHandlersRef = useRef(new Map<string, (e: React.MouseEvent) => void>());
 
-  const getItemMouseDownHandler = useCallback((id: string, type: 'sheet' | 'chart' | 'note') => {
+  const getItemMouseDownHandler = useCallback((id: string, type: 'sheet' | 'chart' | 'note' | 'diagram') => {
     const key = `${type}:${id}`;
     const existingHandler = itemMouseDownHandlersRef.current.get(key);
     if (existingHandler) return existingHandler;
@@ -1069,6 +1081,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const handleGlobalPaste = (e: ClipboardEvent) => {
         const target = e.target as HTMLElement;
+        if (useStore.getState().editingDiagramId) return; // paste belongs to the diagram editor
         if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
         
         const text = e.clipboardData?.getData('text');
@@ -1362,7 +1375,17 @@ const App: React.FC = () => {
                   onMouseDown={getItemMouseDownHandler(id, 'note')}
               />
           ))}
+          {diagramIds.map(id => (
+              <DiagramNode
+                  key={id}
+                  id={id}
+                  darkMode={darkMode}
+                  isPendingDelete={selectedIds.has(id) && deleteConfirmPending}
+                  onMouseDown={getItemMouseDownHandler(id, 'diagram')}
+              />
+          ))}
         </Canvas>
+        {editingDiagramId && <DiagramEditor id={editingDiagramId} darkMode={darkMode} />}
         
         <Toolbar 
             onAddTable={addTable}

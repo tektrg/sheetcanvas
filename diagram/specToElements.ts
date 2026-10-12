@@ -4,19 +4,7 @@
 import type { CurveSpec, DiagramElement, DiagramSpec, FlowShape, FlowSpec, OrgchartSpec } from './types';
 import { addBoundElement, centerOf, createLinear, createShape, createText, measureText } from './elementFactory';
 import { createCurveScale, layoutGraph, type Box } from './layout';
-
-const NAMED_COLORS: Record<string, string> = {
-  yellow: '#ffec99',
-  blue: '#a5d8ff',
-  green: '#b2f2bb',
-  pink: '#fcc2d7',
-  purple: '#d0bfff',
-  gray: '#e9ecef',
-  red: '#ffc9c9',
-  orange: '#ffd8a8',
-};
-
-export const resolveColor = (color: string): string => NAMED_COLORS[color.toLowerCase()] ?? color;
+import { resolveColor } from './colors';
 
 export const nodeId = (id: string) => `node:${id}`;
 export const edgeId = (from: string, to: string) => `edge:${from}->${to}`;

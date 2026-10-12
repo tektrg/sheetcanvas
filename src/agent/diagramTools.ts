@@ -7,7 +7,6 @@ import {
   ensureSemanticIds,
   patchElement,
   sceneBounds,
-  specToElements,
   summarizeElements,
   type DiagramElementPatch,
   type DiagramSpec,
@@ -34,13 +33,17 @@ function cardSizeFor(elements: DiagramData['elements']) {
 const semanticIds = (elements: DiagramData['elements']) =>
   elements.map((el) => el.customData?.id).filter((id): id is string => !!id);
 
-export function handleCreateDiagram(input: {
+// Lazy: the converter bundles the dagre layout engine, kept out of the main chunk.
+const loadSpecToElements = () => import('../../diagram/specToElements').then((m) => m.specToElements);
+
+export async function handleCreateDiagram(input: {
   kind: DiagramSpec['kind'];
   title?: string;
   position?: { x: number; y: number };
   spec: unknown;
-}): ToolResult {
+}): Promise<ToolResult> {
   const spec = { kind: input.kind, spec: input.spec } as DiagramSpec;
+  const specToElements = await loadSpecToElements();
   let elements: DiagramData['elements'];
   try {
     elements = specToElements(spec);
