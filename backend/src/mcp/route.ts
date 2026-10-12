@@ -43,9 +43,8 @@ const MCP_EVENT_TYPES = {
 } as const;
 
 // Converted once at module load — toolDefs is the single source of truth.
-const MCP_TOOL_LIST = [
-  SHEETCANVAS_APP_TOOL,
-  ...TOOL_NAMES.map((name) => ({
+function toMcpTool(name: ToolName) {
+  return {
     name,
     description: toolDefs[name].description,
     inputSchema: z.toJSONSchema(toolDefs[name].inputSchema, {
@@ -53,8 +52,28 @@ const MCP_TOOL_LIST = [
       unrepresentable: 'any',
     }),
     annotations: MCP_TOOL_ANNOTATIONS[name],
-  })),
-];
+  };
+}
+
+// Agent-native diagrams: never on the anonymous public plugin (kept out of the
+// ChatGPT Plugins Directory review surface), and on private canvases only when
+// the DIAGRAMS_ENABLED env flag is "true".
+const PRIVATE_ONLY_TOOL_NAMES = new Set<ToolName>([
+  'createDiagram',
+  'updateDiagramElement',
+  'readDiagram',
+  'listDiagrams',
+]);
+
+const ALWAYS_PRIVATE_TOOL_NAMES = TOOL_NAMES.filter((name) => !PRIVATE_ONLY_TOOL_NAMES.has(name));
+const MCP_TOOL_LIST = [SHEETCANVAS_APP_TOOL, ...ALWAYS_PRIVATE_TOOL_NAMES.map(toMcpTool)];
+const MCP_TOOL_LIST_WITH_DIAGRAMS = [SHEETCANVAS_APP_TOOL, ...TOOL_NAMES.map(toMcpTool)];
+
+const diagramsEnabled = (env: Env) => env.DIAGRAMS_ENABLED?.trim() === 'true';
+
+function privateToolNames(env: Env): readonly ToolName[] {
+  return diagramsEnabled(env) ? TOOL_NAMES : ALWAYS_PRIVATE_TOOL_NAMES;
+}
 const PUBLIC_CONNECTOR_TOOL_NAMES = new Set<ToolName>([
   'listConnections',
   'listConnectionProperties',
@@ -65,19 +84,10 @@ const PUBLIC_CONNECTOR_TOOL_NAMES = new Set<ToolName>([
   'updateQuerySheet',
   'createGaTrendBySource',
 ]);
-const PUBLIC_TOOL_NAMES = TOOL_NAMES.filter((name) => !PUBLIC_CONNECTOR_TOOL_NAMES.has(name));
-const PUBLIC_MCP_TOOL_LIST = [
-  SHEETCANVAS_PUBLIC_APP_TOOL,
-  ...PUBLIC_TOOL_NAMES.map((name) => ({
-    name,
-    description: toolDefs[name].description,
-    inputSchema: z.toJSONSchema(toolDefs[name].inputSchema, {
-      io: 'input',
-      unrepresentable: 'any',
-    }),
-    annotations: MCP_TOOL_ANNOTATIONS[name],
-  })),
-];
+const PUBLIC_TOOL_NAMES = TOOL_NAMES.filter(
+  (name) => !PUBLIC_CONNECTOR_TOOL_NAMES.has(name) && !PRIVATE_ONLY_TOOL_NAMES.has(name),
+);
+const PUBLIC_MCP_TOOL_LIST = [SHEETCANVAS_PUBLIC_APP_TOOL, ...PUBLIC_TOOL_NAMES.map(toMcpTool)];
 
 interface McpConnection {
   bridgeKey: string;
@@ -217,6 +227,9 @@ async function handleToolsCall(env: Env, connection: McpConnection, request: Jso
   if (connection.mode === 'public' && !PUBLIC_TOOL_NAMES.includes(toolName as ToolName)) {
     return rpcError(id, -32602, `Tool is unavailable in anonymous sessions: ${toolName}`);
   }
+  if (connection.mode === 'private' && !privateToolNames(env).includes(toolName as ToolName)) {
+    return rpcError(id, -32602, `Unknown tool: ${toolName}`);
+  }
 
   const args = params.arguments ?? {};
   const parsed = toolDefs[toolName as ToolName].inputSchema.safeParse(args);
@@ -276,7 +289,12 @@ async function handleMcpRequest(env: Env, connection: McpConnection, request: Js
       return rpcResult(request.id, {});
     case 'tools/list':
       return rpcResult(request.id, {
-        tools: connection.mode === 'public' ? PUBLIC_MCP_TOOL_LIST : MCP_TOOL_LIST,
+        tools:
+          connection.mode === 'public'
+            ? PUBLIC_MCP_TOOL_LIST
+            : diagramsEnabled(env)
+              ? MCP_TOOL_LIST_WITH_DIAGRAMS
+              : MCP_TOOL_LIST,
       });
     case 'tools/call':
       return handleToolsCall(env, connection, request);

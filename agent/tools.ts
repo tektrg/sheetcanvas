@@ -179,6 +179,43 @@ const QueryBriefSchema = z.object({
 
 // ── Tool definitions ────────────────────────────────────────────────────────
 
+// ── Diagram schemas (agent-native diagrams; private MCP only, see backend/src/mcp/route.ts) ──
+const DiagramIdPart = z.string().min(1).max(60).regex(/^[A-Za-z0-9_.-]+$/, 'ids use letters, digits, _ . -');
+const DiagramLabel = z.string().min(1).max(200);
+const DiagramColor = z
+  .string()
+  .min(1)
+  .max(32)
+  .describe('Named color (yellow, blue, green, pink, purple, gray, red, orange) or hex like #a5d8ff.');
+
+const OrgchartSpecSchema = z.object({
+  nodes: z
+    .array(z.object({ id: DiagramIdPart, label: DiagramLabel, parentId: DiagramIdPart.optional(), color: DiagramColor.optional() }))
+    .min(1)
+    .max(150),
+});
+
+const FlowSpecSchema = z.object({
+  nodes: z
+    .array(z.object({ id: DiagramIdPart, label: DiagramLabel, shape: z.enum(['rect', 'diamond', 'ellipse']).optional() }))
+    .min(1)
+    .max(150),
+  edges: z.array(z.object({ from: DiagramIdPart, to: DiagramIdPart, label: z.string().min(1).max(80).optional() })).max(300),
+  direction: z.enum(['TB', 'LR']).optional(),
+});
+
+const CurveSpecSchema = z.object({
+  points: z.array(z.object({ x: z.number(), y: z.number() })).min(2).max(500),
+  annotations: z.array(z.object({ id: DiagramIdPart, at: z.number(), label: DiagramLabel })).max(30),
+  axes: z.object({ x: z.string().max(60).optional(), y: z.string().max(60).optional() }).optional(),
+});
+
+export const DIAGRAM_SPEC_SCHEMAS = {
+  orgchart: OrgchartSpecSchema,
+  flow: FlowSpecSchema,
+  curve: CurveSpecSchema,
+} as const;
+
 export const toolDefs = {
   listSheets: {
     description:
@@ -554,6 +591,62 @@ export const toolDefs = {
       brief: QueryBriefSchema,
       title: z.string().min(1).max(120).optional(),
     }),
+  },
+
+  createDiagram: {
+    description:
+      'Use this to draw an editable diagram on the canvas: an org chart, a flow chart, or an annotated curve (e.g. the Dunning-Kruger curve). Describe meaning, not geometry — layout is automatic and the user can then freely edit shapes, text and colors. ' +
+      'Specs by kind: orgchart {nodes:[{id,label,parentId?,color?}]}; flow {nodes:[{id,label,shape?:rect|diamond|ellipse}], edges:[{from,to,label?}], direction?:TB|LR}; curve {points:[{x,y}], annotations:[{id,at:x,label}], axes?:{x?,y?}}. ' +
+      'Returns diagramId and elementIds: semantic ids such as "node:ceo", "edge:ceo->cto", "pt:peak", "curve:main" to use with updateDiagramElement.',
+    inputSchema: z
+      .object({
+        kind: z.enum(['orgchart', 'flow', 'curve']).describe('Diagram kind; selects the spec shape.'),
+        title: z.string().min(1).max(120).optional().describe('Optional diagram title shown on the canvas card.'),
+        position: z.object({ x: z.number(), y: z.number() }).optional().describe('Optional canvas position; defaults to free space on the right.'),
+        spec: z
+          .union([OrgchartSpecSchema, FlowSpecSchema, CurveSpecSchema])
+          .describe('Spec matching kind (see tool description).'),
+      })
+      .superRefine((value, ctx) => {
+        const parsed = DIAGRAM_SPEC_SCHEMAS[value.kind].safeParse(value.spec);
+        if (!parsed.success) {
+          ctx.addIssue({ code: 'custom', path: ['spec'], message: `spec does not match kind "${value.kind}": ${parsed.error.issues[0]?.message ?? 'invalid'}` });
+        }
+      }),
+  },
+
+  updateDiagramElement: {
+    description:
+      'Use this to change one element of an existing diagram by its semantic id (from createDiagram or readDiagram), e.g. relabel "node:cto", recolor it, or remove it. Only the fields you pass change; the user\'s own position, size and style edits are kept. ' +
+      'patch fields: label, color, revealAt (0..1 scroll-reveal point), draw ([from,to] progress range, lines/arrows only), remove (true deletes the element plus its label and attached arrows). Fails while the user has the diagram open in the editor.',
+    inputSchema: z.object({
+      diagramId: z.string().min(1).describe('Diagram id from createDiagram or listDiagrams.'),
+      id: z.string().min(1).max(200).describe('Semantic element id, e.g. "node:ceo" or "edge:ceo->cto".'),
+      patch: z
+        .object({
+          label: z.string().min(1).max(200).optional(),
+          color: DiagramColor.optional(),
+          revealAt: z.number().min(0).max(1).optional(),
+          draw: z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)]).optional(),
+          remove: z.boolean().optional(),
+        })
+        .refine((v) => Object.keys(v).length > 0, { message: 'patch must set at least one field' }),
+    }),
+  },
+
+  readDiagram: {
+    description:
+      'Use this before updateDiagramElement to see a diagram as the user left it (they may have edited it). Returns its elements by semantic id with type, label, color, from/to for arrows, and revealAt/draw. Geometry is omitted unless includeGeometry is true.',
+    inputSchema: z.object({
+      diagramId: z.string().min(1).describe('Diagram id from createDiagram or listDiagrams.'),
+      includeGeometry: z.boolean().optional().describe('Include x/y/width/height per element. Default false.'),
+    }),
+  },
+
+  listDiagrams: {
+    description:
+      'Use this to discover diagram ids on the canvas. Returns each diagramId, title, kind and element count. Returns an empty list if there are none.',
+    inputSchema: z.object({}),
   },
 } as const;
 

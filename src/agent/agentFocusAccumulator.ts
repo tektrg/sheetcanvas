@@ -32,7 +32,8 @@ export function accumulateChartFocus(chart: ChartData): void {
   });
 }
 
-export function accumulateNoteFocus(note: NoteData): void {
+// Also used for diagrams: any free-floating item sized in pixels.
+export function accumulateNoteFocus(note: Pick<NoteData, 'position' | 'size'>): void {
   // A note's size is already in pixels, so its rect is position + size directly.
   pendingRects.push({
     x: note.position.x,

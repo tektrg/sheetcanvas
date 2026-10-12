@@ -42,6 +42,10 @@ export const TOOL_ANNOTATIONS: Record<ToolName, SharedToolAnnotations> = {
   createQuerySheetFromResult: { untrustedContentHint: true },
   updateQuerySheet: { untrustedContentHint: true },
   createGaTrendBySource: { untrustedContentHint: true },
+  createDiagram: {},
+  updateDiagramElement: {},
+  readDiagram: { readOnlyHint: true, untrustedContentHint: true },
+  listDiagrams: { readOnlyHint: true, untrustedContentHint: true },
 };
 
 /**
@@ -75,4 +79,8 @@ export const MCP_TOOL_ANNOTATIONS: Record<ToolName, McpToolAnnotations> = {
   createQuerySheetFromResult: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   updateQuerySheet: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
   createGaTrendBySource: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+  createDiagram: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+  updateDiagramElement: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+  readDiagram: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+  listDiagrams: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
 };

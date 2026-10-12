@@ -30,6 +30,12 @@ import {
   type BasicConnection,
 } from './gaMcpTools';
 import {
+  handleCreateDiagram,
+  handleListDiagrams,
+  handleReadDiagram,
+  handleUpdateDiagramElement,
+} from './diagramTools';
+import {
   handleCreateQuerySheet,
   handleCreateQuerySheetFromResult,
   handleQueryConnection,
@@ -1089,6 +1095,18 @@ export async function executeClientTool(
       case 'createGaTrendBySource': {
         return createGaTrendBySourceSheet({ input, store, generateId }) as Promise<ToolResult>;
       }
+
+      case 'createDiagram':
+        return handleCreateDiagram(input);
+
+      case 'updateDiagramElement':
+        return handleUpdateDiagramElement(input);
+
+      case 'readDiagram':
+        return handleReadDiagram(input);
+
+      case 'listDiagrams':
+        return handleListDiagrams();
 
       default:
         return { ok: false, error: `Unknown tool: ${name}` };

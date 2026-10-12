@@ -14,4 +14,6 @@ export type Env = {
   AGENT_FLOW_DEBUG?: string;
   AGENT_QUOTA?: KVNamespace;
   ENVIRONMENT?: string;
+  // "true" exposes the agent diagram tools on private /mcp/:token canvases.
+  DIAGRAMS_ENABLED?: string;
 };

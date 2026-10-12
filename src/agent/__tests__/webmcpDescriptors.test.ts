@@ -18,6 +18,8 @@ const READ_ONLY_TOOL_NAMES: ToolName[] = [
   'readNote',
   'listConnections',
   'listConnectionProperties',
+  'listDiagrams',
+  'readDiagram',
 ];
 
 // z.record(...) nodes: {type:'object', propertyNames, additionalProperties}
@@ -141,7 +143,7 @@ describe('buildDescriptorMeta', () => {
 });
 
 describe('TOOL_ANNOTATIONS readOnlyHint', () => {
-  it('is set on exactly the 9 tools with no observable canvas side effect', () => {
+  it('is set on exactly the 11 tools with no observable canvas side effect', () => {
     const actualReadOnly = TOOL_NAMES.filter((name) => TOOL_ANNOTATIONS[name].readOnlyHint === true);
     expect(actualReadOnly.sort()).toEqual([...READ_ONLY_TOOL_NAMES].sort());
   });
@@ -165,7 +167,7 @@ describe('TOOL_ANNOTATIONS untrustedContentHint', () => {
     'createGaTrendBySource',
   ];
 
-  it('is set on exactly the 15 tools whose results can carry third-party or user-authored text', () => {
+  it('is set on exactly the 17 tools whose results can carry third-party or user-authored text', () => {
     const actualUntrusted = TOOL_NAMES.filter((name) => TOOL_ANNOTATIONS[name].untrustedContentHint === true);
     expect(actualUntrusted.sort()).toEqual([...UNTRUSTED_TOOL_NAMES].sort());
   });

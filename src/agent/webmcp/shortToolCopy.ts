@@ -214,6 +214,30 @@ export const SHORT_TOOL_COPY: Record<ToolName, ShortToolCopy> = {
     description:
       'Runs a full Google Analytics daily-trend-by-source workflow in one step: queries date + hostName + source + medium + one metric, creates the raw connected sheet, then a grouped sparkline trend table by source. Requires schemaToken from describeConnection for the same GA connection/property, plus a structured brief for the raw sheet. If the report returns no rows, no sheet is created and the response includes diagnostics (propertyId, date range, host filter, top hostnames) to adjust and retry.',
   },
+
+  // ── Diagrams ─────────────────────────────────────────────────────────────
+  createDiagram: {
+    title: 'Create Diagram',
+    description:
+      'Draws an editable diagram on the canvas from meaning, with automatic layout: kind orgchart {nodes:[{id,label,parentId?,color?}]}, flow {nodes:[{id,label,shape?}], edges:[{from,to,label?}], direction?:TB|LR}, or curve {points:[{x,y}], annotations:[{id,at,label}], axes?}. Returns diagramId and semantic elementIds like "node:ceo", "edge:ceo->cto", "pt:peak" for updateDiagramElement.',
+  },
+
+  updateDiagramElement: {
+    title: 'Update Diagram Element',
+    description:
+      "Changes one diagram element by semantic id (from createDiagram/readDiagram). patch: label, color, revealAt (0..1), draw ([from,to], lines only), remove. Only these fields change; the user's own layout and style edits are kept. Fails while the user has the diagram open in the editor.",
+  },
+
+  readDiagram: {
+    title: 'Read Diagram',
+    description:
+      'Reads a diagram as the user left it: elements by semantic id with type, label, color, arrow from/to, revealAt/draw. Pass includeGeometry for x/y/size. Use before updateDiagramElement.',
+  },
+
+  listDiagrams: {
+    title: 'List Diagrams',
+    description: 'Lists diagrams on the canvas with diagramId, title, kind and element count.',
+  },
 };
 
 // Safety hints live in the shared agent/toolAnnotations.ts module so WebMCP

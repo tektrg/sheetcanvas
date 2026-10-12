@@ -11,6 +11,7 @@ function makeState(overrides: Partial<AppState> = {}): AppState {
     sheets: {},
     sheetIds: [],
     noteIds: [],
+    diagramIds: [],
     privateQueryResultIds: [],
     connectionSchemaTokens: {},
   };
@@ -34,12 +35,24 @@ const NEVER_GATED: ToolName[] = [
   'createSheet',
   'createNote',
   'listNotes',
+  'createDiagram',
   'listConnections',
   'listConnectionProperties',
   'describeConnection',
 ];
 
 describe('computeDesiredTools', () => {
+  it('offers createDiagram always, and list/read/update diagram only once a diagram exists', () => {
+    const diagramTools: ToolName[] = ['listDiagrams', 'readDiagram', 'updateDiagramElement'];
+    const empty = computeDesiredTools(readGatingState(makeState()));
+    expect(empty.has('createDiagram')).toBe(true);
+    for (const tool of diagramTools) expect(empty.has(tool)).toBe(false);
+
+    const withDiagram = computeDesiredTools(readGatingState(makeState({ diagramIds: ['d1'] })));
+    for (const tool of diagramTools) expect(withDiagram.has(tool)).toBe(true);
+    expect(gatingKey(makeState({ diagramIds: ['d1'] }))).not.toBe(gatingKey(makeState()));
+  });
+
   it('empty canvas exposes exactly the never-gated set, including listNotes but not describeSheet', () => {
     const gating = readGatingState(makeState());
     const desired = computeDesiredTools(gating);
