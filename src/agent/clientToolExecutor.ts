@@ -35,6 +35,7 @@ import {
   handleReadDiagram,
   handleUpdateDiagramElement,
 } from './diagramTools';
+import { DIAGRAM_TOOL_NAMES, diagramsEnabled } from './diagramsFlag';
 import {
   handleCreateQuerySheet,
   handleCreateQuerySheetFromResult,
@@ -395,6 +396,10 @@ export async function executeClientTool(
   resolver: SelectionResolver,
 ): Promise<ToolResult> {
   const store = useStore.getState();
+
+  if ((DIAGRAM_TOOL_NAMES as readonly string[]).includes(name) && !diagramsEnabled()) {
+    return { ok: false, error: 'diagrams disabled' };
+  }
 
   try {
     switch (name) {

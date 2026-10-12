@@ -14,6 +14,7 @@
 // exist, does a note exist, ...), not on conversational history.
 import type { AppState } from '../../../store';
 import { TOOL_NAMES, type ToolName } from '../../../agent/tools';
+import { DIAGRAM_TOOL_NAMES, diagramsEnabled } from '../diagramsFlag';
 
 export interface GatingState {
   hasSheet: boolean;
@@ -106,6 +107,7 @@ export function computeDesiredTools(gating: GatingState): Set<ToolName> {
   if (gating.hasSchemaToken) SCHEMA_TOKEN_GATED.forEach((name) => desired.add(name));
   if (gating.hasPrivateResult) PRIVATE_RESULT_GATED.forEach((name) => desired.add(name));
   if (gating.hasConnectorSheet) CONNECTOR_SHEET_GATED.forEach((name) => desired.add(name));
+  if (!diagramsEnabled()) DIAGRAM_TOOL_NAMES.forEach((name) => desired.delete(name));
   return desired;
 }
 
