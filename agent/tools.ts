@@ -190,25 +190,25 @@ const DiagramColor = z
 
 const OrgchartSpecSchema = z.object({
   nodes: z
-    .array(z.object({ id: DiagramIdPart, label: DiagramLabel, parentId: DiagramIdPart.optional(), color: DiagramColor.optional() }))
+    .array(z.object({ id: DiagramIdPart, label: DiagramLabel, parentId: DiagramIdPart.optional(), color: DiagramColor.optional() }).strict())
     .min(1)
     .max(150),
-});
+}).strict();
 
 const FlowSpecSchema = z.object({
   nodes: z
-    .array(z.object({ id: DiagramIdPart, label: DiagramLabel, shape: z.enum(['rect', 'diamond', 'ellipse']).optional() }))
+    .array(z.object({ id: DiagramIdPart, label: DiagramLabel, shape: z.enum(['rect', 'diamond', 'ellipse']).optional() }).strict())
     .min(1)
     .max(150),
-  edges: z.array(z.object({ from: DiagramIdPart, to: DiagramIdPart, label: z.string().min(1).max(80).optional() })).max(300),
+  edges: z.array(z.object({ from: DiagramIdPart, to: DiagramIdPart, label: z.string().min(1).max(80).optional() }).strict()).max(300),
   direction: z.enum(['TB', 'LR']).optional(),
-});
+}).strict();
 
 const CurveSpecSchema = z.object({
-  points: z.array(z.object({ x: z.number(), y: z.number() })).min(2).max(500),
-  annotations: z.array(z.object({ id: DiagramIdPart, at: z.number(), label: DiagramLabel })).max(30),
-  axes: z.object({ x: z.string().max(60).optional(), y: z.string().max(60).optional() }).optional(),
-});
+  points: z.array(z.object({ x: z.number(), y: z.number() }).strict()).min(2).max(500),
+  annotations: z.array(z.object({ id: DiagramIdPart, at: z.number(), label: DiagramLabel }).strict()).max(30).default([]),
+  axes: z.object({ x: z.string().max(60).optional(), y: z.string().max(60).optional() }).strict().optional(),
+}).strict();
 
 export const DIAGRAM_SPEC_SCHEMAS = {
   orgchart: OrgchartSpecSchema,
@@ -596,21 +596,23 @@ export const toolDefs = {
   createDiagram: {
     description:
       'Use this to draw an editable diagram on the canvas: an org chart, a flow chart, or an annotated curve (e.g. the Dunning-Kruger curve). Describe meaning, not geometry — layout is automatic and the user can then freely edit shapes, text and colors. ' +
-      'Specs by kind: orgchart {nodes:[{id,label,parentId?,color?}]}; flow {nodes:[{id,label,shape?:rect|diamond|ellipse}], edges:[{from,to,label?}], direction?:TB|LR}; curve {points:[{x,y}], annotations:[{id,at:x,label}], axes?:{x?,y?}}. ' +
+      'Specs by kind: orgchart {nodes:[{id,label,parentId?,color?}]}; flow {nodes:[{id,label,shape?:rect|diamond|ellipse}], edges:[{from,to,label?}], direction?:TB|LR}; curve {points:[{x,y}], annotations?:[{id,at:x,label}], axes?:{x?,y?}}. ' +
+      'Ids are ASCII only (letters, digits, _ . -). Keep labels short (a few words); long labels wrap at ~30 characters. ' +
       'Returns diagramId and elementIds: semantic ids such as "node:ceo", "edge:ceo->cto", "pt:peak", "curve:main" to use with updateDiagramElement.',
     inputSchema: z
       .object({
         kind: z.enum(['orgchart', 'flow', 'curve']).describe('Diagram kind; selects the spec shape.'),
         title: z.string().min(1).max(120).optional().describe('Optional diagram title shown on the canvas card.'),
         position: z.object({ x: z.number(), y: z.number() }).optional().describe('Optional canvas position; defaults to free space on the right.'),
-        spec: z
-          .union([OrgchartSpecSchema, FlowSpecSchema, CurveSpecSchema])
-          .describe('Spec matching kind (see tool description).'),
+        // Validated per kind below, so errors name the exact field (e.g. spec.nodes.0.label).
+        spec: z.record(z.string(), z.unknown()).describe('Spec object matching kind (see tool description).'),
       })
       .superRefine((value, ctx) => {
         const parsed = DIAGRAM_SPEC_SCHEMAS[value.kind].safeParse(value.spec);
-        if (!parsed.success) {
-          ctx.addIssue({ code: 'custom', path: ['spec'], message: `spec does not match kind "${value.kind}": ${parsed.error.issues[0]?.message ?? 'invalid'}` });
+        if (parsed.success) return;
+        for (const issue of parsed.error.issues) {
+          const where = ['spec', ...issue.path].join('.');
+          ctx.addIssue({ code: 'custom', path: ['spec', ...issue.path], message: `${where}: ${issue.message} (kind "${value.kind}")` });
         }
       }),
   },

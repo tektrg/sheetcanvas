@@ -219,7 +219,7 @@ export const SHORT_TOOL_COPY: Record<ToolName, ShortToolCopy> = {
   createDiagram: {
     title: 'Create Diagram',
     description:
-      'Draws an editable diagram on the canvas from meaning, with automatic layout: kind orgchart {nodes:[{id,label,parentId?,color?}]}, flow {nodes:[{id,label,shape?}], edges:[{from,to,label?}], direction?:TB|LR}, or curve {points:[{x,y}], annotations:[{id,at,label}], axes?}. Returns diagramId and semantic elementIds like "node:ceo", "edge:ceo->cto", "pt:peak" for updateDiagramElement.',
+      'Draws an editable diagram on the canvas from meaning, with automatic layout: kind orgchart {nodes:[{id,label,parentId?,color?}]}, flow {nodes:[{id,label,shape?}], edges:[{from,to,label?}], direction?:TB|LR}, or curve {points:[{x,y}], annotations:[{id,at,label}], axes?}. ASCII ids, short labels. Returns diagramId and semantic elementIds like "node:ceo", "edge:ceo->cto" for updateDiagramElement.',
   },
 
   updateDiagramElement: {

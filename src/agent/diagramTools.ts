@@ -12,6 +12,7 @@ import {
   type DiagramSpec,
 } from '../../diagram';
 import { placeNote } from '../../utils/canvasLayout';
+import { DIAGRAM_SPEC_SCHEMAS } from '../../agent/tools';
 import { accumulateNoteFocus } from './agentFocusAccumulator';
 import type { ToolResult } from './clientToolExecutor';
 
@@ -23,7 +24,7 @@ const semanticIds = (elements: DiagramData['elements']) =>
   elements.map((el) => el.customData?.id).filter((id): id is string => !!id);
 
 // Lazy: the converter bundles the dagre layout engine, kept out of the main chunk.
-const loadSpecToElements = () => import('../../diagram/specToElements').then((m) => m.specToElements);
+const loadSpecToScene = () => import('../../diagram/specToElements').then((m) => m.specToScene);
 
 export async function handleCreateDiagram(input: {
   kind: DiagramSpec['kind'];
@@ -31,11 +32,17 @@ export async function handleCreateDiagram(input: {
   position?: { x: number; y: number };
   spec: unknown;
 }): Promise<ToolResult> {
-  const spec = { kind: input.kind, spec: input.spec } as DiagramSpec;
-  const specToElements = await loadSpecToElements();
+  const parsedSpec = DIAGRAM_SPEC_SCHEMAS[input.kind]?.safeParse(input.spec);
+  if (!parsedSpec?.success) {
+    const issue = parsedSpec?.error.issues[0];
+    return { ok: false, error: issue ? `spec.${issue.path.join('.')}: ${issue.message}` : `Unknown kind: ${input.kind}` };
+  }
+  const spec = { kind: input.kind, spec: parsedSpec.data } as DiagramSpec;
+  const specToScene = await loadSpecToScene();
   let elements: DiagramData['elements'];
+  let warnings: string[];
   try {
-    elements = specToElements(spec);
+    ({ elements, warnings } = specToScene(spec));
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
@@ -51,7 +58,12 @@ export async function handleCreateDiagram(input: {
   };
   store.addDiagram(diagram);
   accumulateNoteFocus(diagram);
-  return { ok: true, diagramId: diagram.id, elementIds: semanticIds(elements) };
+  return {
+    ok: true,
+    diagramId: diagram.id,
+    elementIds: semanticIds(elements),
+    ...(warnings.length > 0 ? { warnings } : {}),
+  };
 }
 
 export function handleUpdateDiagramElement(input: { diagramId: string; id: string; patch: DiagramElementPatch }): ToolResult {

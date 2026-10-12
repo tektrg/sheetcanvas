@@ -78,3 +78,31 @@ describe('diagram tools', () => {
   });
 });
 
+
+describe('createDiagram input validation (QA pass 2)', () => {
+  const schema = toolDefs.createDiagram.inputSchema;
+  const messages = (input: unknown) => {
+    const parsed = schema.safeParse(input);
+    return parsed.success ? [] : parsed.error.issues.map((i) => i.message);
+  };
+
+  it('names the exact failing field instead of "Invalid input"', () => {
+    expect(messages({ kind: 'orgchart', spec: { nodes: [{ id: 'a' }] } })[0]).toMatch(/^spec\.nodes\.0\.label: /);
+  });
+
+  it('rejects unknown keys per kind (strict)', () => {
+    expect(messages({ kind: 'flow', spec: { nodes: [{ id: 'a', label: 'A' }], edges: [], extra: 1 } }).join(' ')).toMatch(/spec: .*extra/i);
+    expect(messages({ kind: 'orgchart', spec: { nodes: [{ id: 'a', label: 'A', shape: 'rect' }] } }).length).toBeGreaterThan(0);
+  });
+
+  it('rejects non-ASCII ids', () => {
+    expect(messages({ kind: 'orgchart', spec: { nodes: [{ id: 'giám-đốc', label: 'A' }] } }).length).toBeGreaterThan(0);
+  });
+
+  it('defaults curve annotations and returns clamp warnings', async () => {
+    const result = await run('createDiagram', { kind: 'curve', spec: { points: [{ x: 0, y: 0 }, { x: 4, y: 2 }] } });
+    expect(result.ok).toBe(true);
+    const warned = await run('createDiagram', { kind: 'curve', spec: { points: [{ x: 0, y: 0 }, { x: 4, y: 2 }], annotations: [{ id: 'p', at: -3, label: 'P' }] } });
+    expect(warned.warnings[0]).toMatch(/clamped to 0/);
+  });
+});
