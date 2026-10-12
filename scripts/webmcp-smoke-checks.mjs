@@ -732,7 +732,7 @@ export async function runAssertions(page, tracker, consoleSink, mode, timeoutMs,
 // Discovered during harness development: dynamically `import()`-ing the
 // app's own TS source (agent/tools.ts, webmcpDescriptors.ts) via
 // Runtime.evaluate — needed to compute these checks against the real,
-// currently-shipping descriptors for all 26 tools, including ones gating
+// currently-shipping descriptors for all tools (30 incl. 4 diagram tools), including ones gating
 // never registers in this run (see browserComputeStaticSchemaChecks) —
 // reliably and silently breaks that PAGE's live WebMCP reconcile loop
 // afterwards: a subsequent deleteNote-driven gating change stopped

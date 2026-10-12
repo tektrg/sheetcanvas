@@ -138,6 +138,37 @@ describe('ensureSemanticIds', () => {
   });
 });
 
+describe('ensureSemanticIds original wins', () => {
+  it('keeps the id on the older element even when the copy comes first', () => {
+    const [shape] = specToElements(ORG);
+    const copy = { ...shape, id: 'copy-1', version: shape.version + 3 };
+    const result = ensureSemanticIds([copy, shape]);
+    expect(result.find((el) => el.id === shape.id)!.customData?.id).toBe('node:ceo');
+    expect(result.find((el) => el.id === 'copy-1')!.customData?.id).toBe('user:1');
+  });
+});
+
+describe('patchElement labels', () => {
+  it('grows the container about its centre and centres a long multi-line label', () => {
+    const els = specToElements(ORG);
+    const before = findBySemanticId(els, 'node:cto')!;
+    const label = 'Chief Technology Officer and Head of Platform\nSecond line\nThird line';
+    const result = patchElement(els, 'node:cto', { label });
+    if (!result.ok) throw new Error('patch failed');
+    const shape = findBySemanticId(result.elements, 'node:cto')!;
+    const text = findBySemanticId(result.elements, 'node:cto:label')!;
+    expect(shape.width).toBeGreaterThan(before.width);
+    expect(shape.height).toBeGreaterThan(before.height);
+    expect(shape.width).toBeGreaterThanOrEqual(text.width);
+    expect(shape.height).toBeGreaterThanOrEqual(text.height);
+    const centre = (e: DiagramElement) => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 });
+    expect(centre(shape).x).toBeCloseTo(centre(before).x);
+    expect(centre(shape).y).toBeCloseTo(centre(before).y);
+    expect(centre(text).x).toBeCloseTo(centre(shape).x);
+    expect(centre(text).y).toBeCloseTo(centre(shape).y);
+  });
+});
+
 describe('summarizeElements', () => {
   it('folds labels into owners, reports edges by semantic id, omits geometry by default', () => {
     const summary = summarizeElements(specToElements(FLOW));

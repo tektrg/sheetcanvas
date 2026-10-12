@@ -2,6 +2,7 @@ import React, { Suspense, useRef } from 'react';
 import { X } from 'lucide-react';
 import { useStore } from '../store';
 import { ensureSemanticIds } from '../diagram/ensureIds';
+import { cardSizeFor, sameElements } from '../diagram/scene';
 import type { DiagramSceneApi } from './DiagramExcalidraw';
 
 // Excalidraw fetches its fonts from EXCALIDRAW_ASSET_PATH (falling back to a
@@ -10,6 +11,8 @@ import type { DiagramSceneApi } from './DiagramExcalidraw';
 const EXCALIDRAW_ASSET_PATH = (import.meta as any).env?.DEV
   ? '/node_modules/@excalidraw/excalidraw/dist/prod/'
   : '/excalidraw-assets/';
+
+const DEFAULT_BACKGROUND = '#ffffff'; // Excalidraw's default canvas color
 
 const DiagramExcalidraw = React.lazy(() => {
   (window as unknown as { EXCALIDRAW_ASSET_PATH?: string }).EXCALIDRAW_ASSET_PATH = EXCALIDRAW_ASSET_PATH;
@@ -31,13 +34,20 @@ export const DiagramEditor: React.FC<DiagramEditorProps> = ({ id, darkMode }) =>
 
   const save = () => {
     const api = sceneApi.current;
-    if (api) {
-      const store = useStore.getState();
-      store.saveSnapshot();
-      store.updateDiagram(id, {
-        elements: ensureSemanticIds(api.getElements()),
-        appState: { viewBackgroundColor: api.getBackground() },
-      });
+    const current = useStore.getState().diagrams[id];
+    if (api && current) {
+      const elements = ensureSemanticIds(api.getElements());
+      const background = api.getBackground();
+      const changed = !sameElements(elements, current.elements) || (background ?? DEFAULT_BACKGROUND) !== (current.appState?.viewBackgroundColor ?? DEFAULT_BACKGROUND);
+      if (changed) {
+        const store = useStore.getState();
+        store.saveSnapshot();
+        store.updateDiagram(id, {
+          elements,
+          size: cardSizeFor(elements),
+          appState: { viewBackgroundColor: background },
+        });
+      }
     }
     close();
   };

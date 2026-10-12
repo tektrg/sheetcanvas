@@ -4,9 +4,9 @@
 import { useStore } from '../../store';
 import type { DiagramData } from '../../types';
 import {
+  cardSizeFor,
   ensureSemanticIds,
   patchElement,
-  sceneBounds,
   summarizeElements,
   type DiagramElementPatch,
   type DiagramSpec,
@@ -15,20 +15,9 @@ import { placeNote } from '../../utils/canvasLayout';
 import { accumulateNoteFocus } from './agentFocusAccumulator';
 import type { ToolResult } from './clientToolExecutor';
 
-const CARD_PADDING = 40;
-const CARD_MIN = { width: 320, height: 220 };
-const CARD_MAX = { width: 1200, height: 900 };
 export const DIAGRAM_BEING_EDITED = 'diagram is being edited';
 
 const generateId = () => `diagram-${Math.random().toString(36).slice(2, 11)}`;
-
-function cardSizeFor(elements: DiagramData['elements']) {
-  const bounds = sceneBounds(elements);
-  return {
-    width: Math.round(Math.min(CARD_MAX.width, Math.max(CARD_MIN.width, bounds.width + CARD_PADDING * 2))),
-    height: Math.round(Math.min(CARD_MAX.height, Math.max(CARD_MIN.height, bounds.height + CARD_PADDING * 2))),
-  };
-}
 
 const semanticIds = (elements: DiagramData['elements']) =>
   elements.map((el) => el.customData?.id).filter((id): id is string => !!id);
@@ -73,7 +62,8 @@ export function handleUpdateDiagramElement(input: { diagramId: string; id: strin
   const result = patchElement(diagram.elements, input.id, input.patch);
   if (result.ok === false) return { ok: false, error: result.error };
   store.saveSnapshot();
-  store.updateDiagram(diagram.id, { elements: ensureSemanticIds(result.elements) });
+  const elements = ensureSemanticIds(result.elements);
+  store.updateDiagram(diagram.id, { elements, size: cardSizeFor(elements) });
   return { ok: true, diagramId: diagram.id, id: input.id };
 }
 

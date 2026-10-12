@@ -77,3 +77,4 @@ describe('diagram tools', () => {
     expect(toolDefs.createDiagram.inputSchema.safeParse(ORG_INPUT).success).toBe(true);
   });
 });
+

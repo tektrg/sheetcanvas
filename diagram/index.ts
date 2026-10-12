@@ -7,3 +7,4 @@ export { patchElement, findBySemanticId, type PatchResult } from './patch';
 export { ensureSemanticIds } from './ensureIds';
 export { summarizeElements, type DiagramElementSummary } from './summarize';
 export { sceneBounds } from './renderSvg';
+export { cardSizeFor, sameElements } from './scene';

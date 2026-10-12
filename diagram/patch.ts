@@ -27,19 +27,30 @@ function bump(el: DiagramElement): DiagramElement {
   return { ...el, version: (el.version ?? 0) + 1, versionNonce: (el.versionNonce ?? 0) + 1, updated: Date.now() };
 }
 
+const LABEL_PADDING = { x: 28, y: 20 };
+
+/** New text, re-centred on its old centre (bound text) or kept top-left (free text). */
 function withLabel(text: DiagramElement, label: string): DiagramElement {
   const size = measureText(label, text.fontSize);
-  const centerX = text.x + text.width / 2;
   const centered = !!text.containerId;
+  const center = { x: text.x + text.width / 2, y: text.y + text.height / 2 };
   return {
     ...text,
     text: label,
     originalText: label,
-    // Re-centre bound text on its old centre; free text keeps its top-left.
-    x: centered ? centerX - size.width / 2 : text.x,
+    x: centered ? center.x - size.width / 2 : text.x,
+    y: centered ? center.y - size.height / 2 : text.y,
     width: size.width,
     height: size.height,
   };
+}
+
+/** Grow a shape (about its centre) so `text` fits with padding; never shrinks user sizing. */
+function fitContainer(shape: DiagramElement, text: DiagramElement): DiagramElement {
+  const width = Math.max(shape.width, text.width + LABEL_PADDING.x * 2);
+  const height = Math.max(shape.height, text.height + LABEL_PADDING.y * 2);
+  if (width === shape.width && height === shape.height) return shape;
+  return { ...shape, x: shape.x - (width - shape.width) / 2, y: shape.y - (height - shape.height) / 2, width, height };
 }
 
 /** Ids removed together with `target`: its bound text, attached arrows, and their labels. */
@@ -104,7 +115,9 @@ export function patchElement(elements: DiagramElement[], semanticId: string, pat
   if (labelElement && labelElement.id === target.id) next = withLabel(next, patch.label as string);
   updates.set(target.id, bump(next));
   if (labelElement && labelElement.id !== target.id) {
-    updates.set(labelElement.id, bump(withLabel(labelElement, patch.label as string)));
+    const text = withLabel(labelElement, patch.label as string);
+    updates.set(labelElement.id, bump(text));
+    if (isShape(target)) updates.set(target.id, bump(fitContainer(next, text)));
   }
 
   return { ok: true, elements: elements.map((el) => updates.get(el.id) ?? el) };
