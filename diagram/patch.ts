@@ -1,7 +1,7 @@
 // Agent edits by semantic id. Only the named fields change; the user's
 // position, size, stroke and font edits are always preserved.
 import type { DiagramElement, DiagramElementPatch } from './types';
-import { measureText } from './elementFactory';
+import { addBoundElement, createText, measureText, wrapLabel } from './elementFactory';
 import { resolveColor } from './colors';
 
 export type PatchResult =
@@ -30,7 +30,8 @@ function bump(el: DiagramElement): DiagramElement {
 const LABEL_PADDING = { x: 28, y: 20 };
 
 /** New text, re-centred on its old centre (bound text) or kept top-left (free text). */
-function withLabel(text: DiagramElement, label: string): DiagramElement {
+function withLabel(text: DiagramElement, rawLabel: string): DiagramElement {
+  const label = wrapLabel(rawLabel);
   const size = measureText(label, text.fontSize);
   const centered = !!text.containerId;
   const center = { x: text.x + text.width / 2, y: text.y + text.height / 2 };
@@ -82,6 +83,18 @@ function removeElements(elements: DiagramElement[], ids: Set<string>): DiagramEl
     });
 }
 
+/** Creates a label bound to an arrow at its middle point. */
+function addArrowLabel(elements: DiagramElement[], arrow: DiagramElement, label: string): DiagramElement[] {
+  const points = arrow.points ?? [[0, 0]];
+  const a = points[Math.floor((points.length - 1) / 2)];
+  const b = points[Math.ceil((points.length - 1) / 2)];
+  const mid = { x: arrow.x + (a[0] + b[0]) / 2, y: arrow.y + (a[1] + b[1]) / 2 };
+  const text = createText(`${semanticIdOf(arrow) ?? arrow.id}:label`, label, mid, arrow.id);
+  const updatedArrow = bump({ ...arrow });
+  addBoundElement(updatedArrow, text);
+  return [...elements.map((el) => (el.id === arrow.id ? updatedArrow : el)), text];
+}
+
 export function patchElement(elements: DiagramElement[], semanticId: string, patch: DiagramElementPatch): PatchResult {
   const target = findBySemanticId(elements, semanticId);
   if (!target) return { ok: false, error: `Unknown element id: ${semanticId}` };
@@ -93,7 +106,8 @@ export function patchElement(elements: DiagramElement[], semanticId: string, pat
   }
   const labelElement = patch.label !== undefined ? findLabelElement(elements, target) : undefined;
   if (patch.label !== undefined && !labelElement) {
-    return { ok: false, error: `Element ${semanticId} has no label to change` };
+    if (target.type !== 'arrow') return { ok: false, error: `Element ${semanticId} has no label to change` };
+    return { ok: true, elements: addArrowLabel(elements, target, patch.label) };
   }
 
   const updates = new Map<string, DiagramElement>();

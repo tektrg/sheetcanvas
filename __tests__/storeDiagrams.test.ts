@@ -76,6 +76,19 @@ describe('store diagrams', () => {
     expect(useStore.getState().diagramIds).toEqual([]);
   });
 
+  it('closes the editor when its diagram is deleted or undone away', () => {
+    useStore.getState().addDiagram(makeDiagram('d3'));
+    useStore.getState().setEditingDiagramId('d3');
+    useStore.getState().deleteDiagram('d3');
+    expect(useStore.getState().editingDiagramId).toBeNull();
+
+    useStore.getState().undo();
+    useStore.getState().setEditingDiagramId('d3');
+    useStore.getState().undo(); // back to before addDiagram
+    expect(useStore.getState().diagramIds).toEqual([]);
+    expect(useStore.getState().editingDiagramId).toBeNull();
+  });
+
   it('deleteSelected removes selected diagrams', () => {
     useStore.getState().addDiagram(makeDiagram('d2'));
     useStore.getState().select(['d2']);

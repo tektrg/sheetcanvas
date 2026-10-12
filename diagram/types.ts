@@ -94,7 +94,7 @@ export interface FlowSpec {
 
 export interface CurveSpec {
   points: { x: number; y: number }[];
-  annotations: { id: string; at: number; label: string }[];
+  annotations?: { id: string; at: number; label: string }[];
   axes?: { x?: string; y?: string };
 }
 

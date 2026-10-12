@@ -189,3 +189,60 @@ describe('DiagramSvg', () => {
     expect(markup).toContain('OK?');
   });
 });
+
+describe('QA pass 2 converter rules', () => {
+  const byId2 = (els: DiagramElement[]) => new Map(els.map((el) => [el.customData?.id, el]));
+
+  it('wraps long labels at ~30 chars on word boundaries and sizes the node to fit', () => {
+    const els = specToElements({ kind: 'orgchart', spec: { nodes: [{ id: 'a', label: 'Chief Executive Officer of the Whole Holding Group' }] } });
+    const map = byId2(els);
+    const text = map.get('node:a:label')!;
+    expect(text.text).toBe('Chief Executive Officer of the\nWhole Holding Group');
+    expect(text.text!.split('\n').every((line) => line.length <= 30)).toBe(true);
+    expect(map.get('node:a')!.height).toBeGreaterThanOrEqual(text.height);
+  });
+
+  it('routes a back edge around the side so it does not overlap the forward edge', () => {
+    const els = specToElements({ kind: 'flow', spec: {
+      nodes: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }],
+      edges: [{ from: 'a', to: 'b', label: 'go' }, { from: 'b', to: 'a', label: 'retry' }],
+    } });
+    const map = byId2(els);
+    const forward = map.get('edge:a->b')!;
+    const back = map.get('edge:b->a')!;
+    expect(forward.points).toHaveLength(2);
+    expect(back.points).toHaveLength(3);
+    const backMaxX = back.x + Math.max(...back.points!.map((p) => p[0]));
+    expect(backMaxX).toBeGreaterThan(forward.x + 30);
+    const fl = map.get('edge:a->b:label')!;
+    const bl = map.get('edge:b->a:label')!;
+    expect(Math.abs(fl.x - bl.x)).toBeGreaterThan(20);
+  });
+
+  it('rejects self-loops and org chart cycles with clear messages', () => {
+    expect(() => specToElements({ kind: 'flow', spec: { nodes: [{ id: 'a', label: 'A' }], edges: [{ from: 'a', to: 'a' }] } }))
+      .toThrow('Self-loops are not supported: edge a -> a');
+    expect(() => specToElements({ kind: 'orgchart', spec: { nodes: [
+      { id: 'a', label: 'A', parentId: 'c' }, { id: 'b', label: 'B', parentId: 'a' }, { id: 'c', label: 'C', parentId: 'b' },
+    ] } })).toThrow(/parentId cycle: a -> c -> b -> a/);
+  });
+
+  it('clamps out-of-range curve annotations with a warning, and annotations are optional', async () => {
+    const { specToScene } = await import('../specToElements');
+    const scene = specToScene({ kind: 'curve', spec: { points: [{ x: 0, y: 0 }, { x: 10, y: 5 }], annotations: [{ id: 'far', at: 99, label: 'Far' }] } });
+    expect(scene.warnings[0]).toMatch(/far: at=99 .*clamped to 10/);
+    const dot = byId2(scene.elements).get('pt:far')!;
+    expect(dot.x + dot.width / 2).toBe(560);
+    expect(() => specToElements({ kind: 'curve', spec: { points: [{ x: 0, y: 0 }, { x: 1, y: 1 }] } })).not.toThrow();
+  });
+
+  it('labelling an unlabelled arrow creates a bound label', () => {
+    const els = specToElements(ORG);
+    const result = patchElement(els, 'edge:ceo->cto', { label: 'reports' });
+    if (!result.ok) throw new Error('patch failed');
+    const arrow = findBySemanticId(result.elements, 'edge:ceo->cto')!;
+    const label = findBySemanticId(result.elements, 'edge:ceo->cto:label')!;
+    expect(label).toMatchObject({ text: 'reports', containerId: arrow.id });
+    expect(arrow.boundElements).toContainEqual({ id: label.id, type: 'text' });
+  });
+});

@@ -17,6 +17,29 @@ export function hashSeed(text: string): number {
   return (hash >>> 0) % 2147483647 || 1;
 }
 
+const WRAP_AT = 30;
+
+/** Wraps each line at word boundaries to ~WRAP_AT chars (long words stay whole). */
+export function wrapLabel(text: string, width = WRAP_AT): string {
+  return text
+    .split('\n')
+    .map((line) => {
+      const out: string[] = [];
+      let current = '';
+      for (const word of line.split(/\s+/).filter(Boolean)) {
+        if (current && current.length + 1 + word.length > width) {
+          out.push(current);
+          current = word;
+        } else {
+          current = current ? `${current} ${word}` : word;
+        }
+      }
+      out.push(current);
+      return out.join('\n');
+    })
+    .join('\n');
+}
+
 export function measureText(text: string, fontSize = FONT_SIZE) {
   const lines = text.split('\n');
   const longest = Math.max(1, ...lines.map((line) => line.length));
@@ -75,6 +98,7 @@ export function createText(
   at: { x: number; y: number },
   containerId: string | null = null,
 ): DiagramElement {
+  text = wrapLabel(text);
   const size = measureText(text);
   const centered = containerId !== null;
   return {

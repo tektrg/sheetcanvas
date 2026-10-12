@@ -95,6 +95,10 @@ export interface AppState {
 
 const MAX_HISTORY = 50;
 
+// The editor closes when its diagram disappears (delete, undo, redo).
+const keepEditingIfPresent = (editingId: string | null, diagramIds: string[]) =>
+    editingId && diagramIds.includes(editingId) ? editingId : null;
+
 // Dirty tracking module-scope variables for optimized persistence
 const dirtyFlags = {
     fullSync: false,
@@ -716,6 +720,7 @@ export const useStore = create<AppState>((set, get) => ({
           return {
               diagrams: newDiagrams,
               diagramIds: state.diagramIds.filter(did => did !== id),
+              editingDiagramId: state.editingDiagramId === id ? null : state.editingDiagramId,
               selectedIds: new Set(Array.from(state.selectedIds).filter(sid => sid !== id))
           };
       });
@@ -800,6 +805,7 @@ export const useStore = create<AppState>((set, get) => ({
           noteIds: state.noteIds.filter(id => newNotes[id]),
           diagrams: newDiagrams,
           diagramIds: state.diagramIds.filter(id => newDiagrams[id]),
+          editingDiagramId: state.editingDiagramId && newDiagrams[state.editingDiagramId] ? state.editingDiagramId : null,
           selectedIds: new Set<string>()
       });
   },
@@ -826,6 +832,7 @@ export const useStore = create<AppState>((set, get) => ({
       return {
           ...previous,
           sheetIds, chartIds, noteIds, diagramIds,
+          editingDiagramId: keepEditingIfPresent(state.editingDiagramId, diagramIds),
           history: newHistory,
           future: newFuture
       };
@@ -865,6 +872,7 @@ export const useStore = create<AppState>((set, get) => ({
       return {
           ...next,
           sheetIds, chartIds, noteIds, diagramIds,
+          editingDiagramId: keepEditingIfPresent(state.editingDiagramId, diagramIds),
           history: newHistory,
           future: newFuture
       };
