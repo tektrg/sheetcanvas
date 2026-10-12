@@ -1,6 +1,7 @@
 
 
 import React from 'react';
+import type { DiagramElement, DiagramSpec } from './diagram/types';
 
 export interface Position {
   x: number;
@@ -313,6 +314,20 @@ export interface NoteData {
   // Original HTML preserved when a legacy note is migrated to markdown, so a
   // bad conversion can be recovered / rendered as a fallback.
   legacyHtml?: string;
+}
+
+// Agent-native diagram: an Excalidraw scene drawn as a canvas item. Element
+// semantics live in element.customData (see diagram/types.ts).
+export interface DiagramData {
+  id: string;
+  position: Position;
+  size: Size; // In pixels
+  title?: string;
+  elements: DiagramElement[];
+  appState?: { viewBackgroundColor?: string };
+  // The spec the agent created it from (reference only; elements are the truth).
+  spec?: DiagramSpec;
+  version: 1;
 }
 
 export interface SelectionContext {

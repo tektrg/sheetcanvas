@@ -1,6 +1,6 @@
 
 import { create } from 'zustand';
-import { SheetData, ChartData, NoteData, CanvasTransform, ToolMode, CellData, ConnectionSchemaScope, PrivateQueryResult } from './types';
+import { SheetData, ChartData, NoteData, DiagramData, CanvasTransform, ToolMode, CellData, ConnectionSchemaScope, PrivateQueryResult } from './types';
 import { refreshPivotTable } from './utils/pivotHelpers';
 import { refreshSparklineTable } from './utils/sparklineHelpers';
 import { propagateDerivedRefresh, collectDependentSheetIdsTopo, collectDependentChartIds } from './utils/propagateRefresh';
@@ -9,14 +9,24 @@ import { initSheetCalculation, updateSheetCalculation, deleteSheetCalculation } 
 import { htmlToMarkdown } from './utils/htmlToMarkdown';
 import { placeOriginal } from './utils/canvasLayout';
 
+// One undo/redo entry: every user-editable canvas object collection.
+type HistorySnapshot = {
+  sheets: Record<string, SheetData>;
+  charts: Record<string, ChartData>;
+  notes: Record<string, NoteData>;
+  diagrams: Record<string, DiagramData>;
+};
+
 export interface AppState {
   sheets: Record<string, SheetData>;
   charts: Record<string, ChartData>;
   notes: Record<string, NoteData>;
+  diagrams: Record<string, DiagramData>;
   privateQueryResults: Record<string, PrivateQueryResult>;
   sheetIds: string[];
   chartIds: string[];
   noteIds: string[];
+  diagramIds: string[];
   privateQueryResultIds: string[];
   
   transform: CanvasTransform;
@@ -24,8 +34,8 @@ export interface AppState {
   toolMode: ToolMode;
   
   // Undo/Redo Stacks
-  history: Array<{ sheets: Record<string, SheetData>, charts: Record<string, ChartData>, notes: Record<string, NoteData> }>;
-  future: Array<{ sheets: Record<string, SheetData>, charts: Record<string, ChartData>, notes: Record<string, NoteData> }>;
+  history: HistorySnapshot[];
+  future: HistorySnapshot[];
   // Absolute count of snapshots ever shifted out of `history` by the MAX_HISTORY cap below.
   // historyBase + history.length is a depth that stays stable across that shift, unlike a raw
   // index into `history` (see saveSnapshot). Read by src/agent/activityTrail.ts.
@@ -58,6 +68,14 @@ export interface AppState {
   updateNote: (id: string, updates: Partial<NoteData>) => void;
   deleteNote: (id: string) => void;
 
+  addDiagram: (diagram: DiagramData) => void;
+  updateDiagram: (id: string, updates: Partial<DiagramData>) => void;
+  deleteDiagram: (id: string) => void;
+  // Transient: the diagram open in the Excalidraw editor. Agent writes to it
+  // are refused while open so the editor save never clobbers them.
+  editingDiagramId: string | null;
+  setEditingDiagramId: (id: string | null) => void;
+
   addPrivateQueryResult: (result: PrivateQueryResult) => void;
   deletePrivateQueryResult: (id: string) => void;
   
@@ -83,22 +101,27 @@ const dirtyFlags = {
     sheets: new Set<string>(),
     charts: new Set<string>(),
     notes: new Set<string>(),
+    diagrams: new Set<string>(),
     privateQueryResults: new Set<string>(),
     deletedSheets: new Set<string>(),
     deletedCharts: new Set<string>(),
     deletedNotes: new Set<string>(),
+    deletedDiagrams: new Set<string>(),
     deletedPrivateQueryResults: new Set<string>(),
     transform: false,
     colors: false
 };
 
-const markDirty = (type: 'sheet' | 'chart' | 'note', id: string) => {
+type CanvasItemType = 'sheet' | 'chart' | 'note' | 'diagram';
+
+const markDirty = (type: CanvasItemType, id: string) => {
     if (type === 'sheet') dirtyFlags.sheets.add(id);
     if (type === 'chart') dirtyFlags.charts.add(id);
     if (type === 'note') dirtyFlags.notes.add(id);
+    if (type === 'diagram') dirtyFlags.diagrams.add(id);
 };
 
-const markDeleted = (type: 'sheet' | 'chart' | 'note', id: string) => {
+const markDeleted = (type: CanvasItemType, id: string) => {
     if (type === 'sheet') {
         dirtyFlags.sheets.delete(id);
         dirtyFlags.deletedSheets.add(id);
@@ -111,6 +134,10 @@ const markDeleted = (type: 'sheet' | 'chart' | 'note', id: string) => {
         dirtyFlags.notes.delete(id);
         dirtyFlags.deletedNotes.add(id);
     }
+    if (type === 'diagram') {
+        dirtyFlags.diagrams.delete(id);
+        dirtyFlags.deletedDiagrams.add(id);
+    }
 };
 
 const markFullSync = () => {
@@ -118,10 +145,12 @@ const markFullSync = () => {
     dirtyFlags.sheets.clear();
     dirtyFlags.charts.clear();
     dirtyFlags.notes.clear();
+    dirtyFlags.diagrams.clear();
     dirtyFlags.privateQueryResults.clear();
     dirtyFlags.deletedSheets.clear();
     dirtyFlags.deletedCharts.clear();
     dirtyFlags.deletedNotes.clear();
+    dirtyFlags.deletedDiagrams.clear();
     dirtyFlags.deletedPrivateQueryResults.clear();
     dirtyFlags.transform = false;
     dirtyFlags.colors = false;
@@ -131,12 +160,14 @@ export function hasPersistedWorkspaceState(loaded: {
     sheets: unknown[];
     charts: unknown[];
     notes: unknown[];
+    diagrams?: unknown[];
     privateQueryResults?: unknown[];
 } | null | undefined): boolean {
     return !!loaded && (
         loaded.sheets.length > 0 ||
         loaded.charts.length > 0 ||
         loaded.notes.length > 0 ||
+        (loaded.diagrams?.length ?? 0) > 0 ||
         (loaded.privateQueryResults?.length ?? 0) > 0
     );
 }
@@ -194,10 +225,13 @@ export const useStore = create<AppState>((set, get) => ({
   sheets: {},
   charts: {},
   notes: {},
+  diagrams: {},
   privateQueryResults: {},
   sheetIds: [],
   chartIds: [],
   noteIds: [],
+  diagramIds: [],
+  editingDiagramId: null,
   privateQueryResultIds: [],
   
   transform: { scale: 1, offset: { x: 0, y: 0 } },
@@ -220,10 +254,13 @@ export const useStore = create<AppState>((set, get) => ({
               sheets: {},
               charts: {},
               notes: {},
+              diagrams: {},
               privateQueryResults: {},
               sheetIds: [],
               chartIds: [],
               noteIds: [],
+              diagramIds: [],
+              editingDiagramId: null,
               privateQueryResultIds: [],
               transform: { scale: 1, offset: { x: 0, y: 0 } },
               selectedIds: new Set<string>(),
@@ -267,6 +304,11 @@ export const useStore = create<AppState>((set, get) => ({
               if (changed) markDirty('note', migratedNote.id);
           });
 
+          // Saves from before diagrams existed have none.
+          const diagrams: Record<string, DiagramData> = {};
+          const diagramIds: string[] = [];
+          (loaded.diagrams ?? []).forEach(d => { diagrams[d.id] = d; diagramIds.push(d.id); });
+
           const privateQueryResults: Record<string, PrivateQueryResult> = {};
           const privateQueryResultIds: string[] = [];
           (loaded.privateQueryResults ?? []).forEach(result => {
@@ -278,6 +320,7 @@ export const useStore = create<AppState>((set, get) => ({
               sheets, sheetIds,
               charts, chartIds,
               notes, noteIds,
+              diagrams, diagramIds,
               privateQueryResults, privateQueryResultIds,
               transform: loaded.transform || { scale: 1, offset: { x: 0, y: 0 } }
           });
@@ -355,7 +398,10 @@ export const useStore = create<AppState>((set, get) => ({
                   Object.values(s.charts),
                   Object.values(s.notes),
                   s.transform,
-                  Object.values(s.privateQueryResults)
+                  Object.values(s.privateQueryResults),
+                  undefined,
+                  undefined,
+                  Object.values(s.diagrams)
               );
               dirtyFlags.fullSync = false;
               return;
@@ -366,10 +412,12 @@ export const useStore = create<AppState>((set, get) => ({
               dirtyFlags.sheets.size > 0 ||
               dirtyFlags.charts.size > 0 ||
               dirtyFlags.notes.size > 0 ||
+              dirtyFlags.diagrams.size > 0 ||
               dirtyFlags.privateQueryResults.size > 0 ||
               dirtyFlags.deletedSheets.size > 0 ||
               dirtyFlags.deletedCharts.size > 0 ||
               dirtyFlags.deletedNotes.size > 0 ||
+              dirtyFlags.deletedDiagrams.size > 0 ||
               dirtyFlags.deletedPrivateQueryResults.size > 0 ||
               dirtyFlags.transform ||
               dirtyFlags.colors;
@@ -378,16 +426,19 @@ export const useStore = create<AppState>((set, get) => ({
               const sheetsToSave = Array.from(dirtyFlags.sheets).map(id => s.sheets[id]).filter(Boolean);
               const chartsToSave = Array.from(dirtyFlags.charts).map(id => s.charts[id]).filter(Boolean);
               const notesToSave = Array.from(dirtyFlags.notes).map(id => s.notes[id]).filter(Boolean);
+              const diagramsToSave = Array.from(dirtyFlags.diagrams).map(id => s.diagrams[id]).filter(Boolean);
               const privateQueryResultsToSave = Array.from(dirtyFlags.privateQueryResults).map(id => s.privateQueryResults[id]).filter(Boolean);
 
               saveIncrementalState({
                   sheets: sheetsToSave.length > 0 ? sheetsToSave : undefined,
                   charts: chartsToSave.length > 0 ? chartsToSave : undefined,
                   notes: notesToSave.length > 0 ? notesToSave : undefined,
+                  diagrams: diagramsToSave.length > 0 ? diagramsToSave : undefined,
                   privateQueryResults: privateQueryResultsToSave.length > 0 ? privateQueryResultsToSave : undefined,
                   deletedSheetIds: dirtyFlags.deletedSheets.size > 0 ? Array.from(dirtyFlags.deletedSheets) : undefined,
                   deletedChartIds: dirtyFlags.deletedCharts.size > 0 ? Array.from(dirtyFlags.deletedCharts) : undefined,
                   deletedNoteIds: dirtyFlags.deletedNotes.size > 0 ? Array.from(dirtyFlags.deletedNotes) : undefined,
+                  deletedDiagramIds: dirtyFlags.deletedDiagrams.size > 0 ? Array.from(dirtyFlags.deletedDiagrams) : undefined,
                   deletedPrivateQueryResultIds: dirtyFlags.deletedPrivateQueryResults.size > 0 ? Array.from(dirtyFlags.deletedPrivateQueryResults) : undefined,
                   transform: dirtyFlags.transform ? s.transform : undefined
               });
@@ -396,10 +447,12 @@ export const useStore = create<AppState>((set, get) => ({
               dirtyFlags.sheets.clear();
               dirtyFlags.charts.clear();
               dirtyFlags.notes.clear();
+              dirtyFlags.diagrams.clear();
               dirtyFlags.privateQueryResults.clear();
               dirtyFlags.deletedSheets.clear();
               dirtyFlags.deletedCharts.clear();
               dirtyFlags.deletedNotes.clear();
+              dirtyFlags.deletedDiagrams.clear();
               dirtyFlags.deletedPrivateQueryResults.clear();
               dirtyFlags.transform = false;
               dirtyFlags.colors = false;
@@ -429,7 +482,8 @@ export const useStore = create<AppState>((set, get) => ({
           const snapshot = {
               sheets: state.sheets,
               charts: state.charts,
-              notes: state.notes
+              notes: state.notes,
+              diagrams: state.diagrams
           };
           const newHistory = [...state.history, snapshot];
           if (newHistory.length > MAX_HISTORY) {
@@ -636,6 +690,39 @@ export const useStore = create<AppState>((set, get) => ({
       });
   },
 
+  addDiagram: (diagram) => {
+      get().saveSnapshot();
+      markDirty('diagram', diagram.id);
+      set(state => ({
+          diagrams: { ...state.diagrams, [diagram.id]: diagram },
+          diagramIds: [...state.diagramIds, diagram.id],
+          selectedIds: new Set([diagram.id])
+      }));
+  },
+
+  updateDiagram: (id, updates) => {
+      markDirty('diagram', id);
+      set(state => ({
+          diagrams: { ...state.diagrams, [id]: { ...state.diagrams[id], ...updates } }
+      }));
+  },
+
+  deleteDiagram: (id) => {
+      get().saveSnapshot();
+      markDeleted('diagram', id);
+      set(state => {
+          const newDiagrams = { ...state.diagrams };
+          delete newDiagrams[id];
+          return {
+              diagrams: newDiagrams,
+              diagramIds: state.diagramIds.filter(did => did !== id),
+              selectedIds: new Set(Array.from(state.selectedIds).filter(sid => sid !== id))
+          };
+      });
+  },
+
+  setEditingDiagramId: (id) => set({ editingDiagramId: id }),
+
   addPrivateQueryResult: (result) => {
       dirtyFlags.privateQueryResults.add(result.id);
       dirtyFlags.deletedPrivateQueryResults.delete(result.id);
@@ -668,6 +755,7 @@ export const useStore = create<AppState>((set, get) => ({
       const newSheets = { ...state.sheets };
       const newCharts = { ...state.charts };
       const newNotes = { ...state.notes };
+      const newDiagrams = { ...state.diagrams };
       
       ids.forEach(id => {
           if (newSheets[id]) {
@@ -697,6 +785,9 @@ export const useStore = create<AppState>((set, get) => ({
           } else if (newNotes[id]) {
               delete newNotes[id];
               markDeleted('note', id);
+          } else if (newDiagrams[id]) {
+              delete newDiagrams[id];
+              markDeleted('diagram', id);
           }
       });
       
@@ -707,6 +798,8 @@ export const useStore = create<AppState>((set, get) => ({
           chartIds: state.chartIds.filter(id => newCharts[id]),
           notes: newNotes,
           noteIds: state.noteIds.filter(id => newNotes[id]),
+          diagrams: newDiagrams,
+          diagramIds: state.diagramIds.filter(id => newDiagrams[id]),
           selectedIds: new Set<string>()
       });
   },
@@ -716,12 +809,13 @@ export const useStore = create<AppState>((set, get) => ({
       const previous = state.history[state.history.length - 1];
       const newHistory = state.history.slice(0, -1);
       
-      const currentSnapshot = { sheets: state.sheets, charts: state.charts, notes: state.notes };
+      const currentSnapshot = { sheets: state.sheets, charts: state.charts, notes: state.notes, diagrams: state.diagrams };
       const newFuture = [...state.future, currentSnapshot];
 
       const sheetIds = Object.keys(previous.sheets);
       const chartIds = Object.keys(previous.charts);
       const noteIds = Object.keys(previous.notes);
+      const diagramIds = Object.keys(previous.diagrams);
       
       sheetIds.forEach(id => {
           initSheetCalculation(previous.sheets[id]);
@@ -731,7 +825,7 @@ export const useStore = create<AppState>((set, get) => ({
 
       return {
           ...previous,
-          sheetIds, chartIds, noteIds,
+          sheetIds, chartIds, noteIds, diagramIds,
           history: newHistory,
           future: newFuture
       };
@@ -741,7 +835,7 @@ export const useStore = create<AppState>((set, get) => ({
   // bottom of the left column (see utils/canvasLayout.ts).
   getNextSheetPosition: () => {
     const state = get();
-    return placeOriginal({ sheets: state.sheets, charts: state.charts, notes: state.notes }, { x: 100, y: 100 });
+    return placeOriginal({ sheets: state.sheets, charts: state.charts, notes: state.notes, diagrams: state.diagrams }, { x: 100, y: 100 });
   },
   setConnections: (connections) => set({ connections }),
   setGaMetadata: (cacheKey, metadata) =>
@@ -754,12 +848,13 @@ export const useStore = create<AppState>((set, get) => ({
       const next = state.future[state.future.length - 1];
       const newFuture = state.future.slice(0, -1);
       
-      const currentSnapshot = { sheets: state.sheets, charts: state.charts, notes: state.notes };
+      const currentSnapshot = { sheets: state.sheets, charts: state.charts, notes: state.notes, diagrams: state.diagrams };
       const newHistory = [...state.history, currentSnapshot];
 
       const sheetIds = Object.keys(next.sheets);
       const chartIds = Object.keys(next.charts);
       const noteIds = Object.keys(next.notes);
+      const diagramIds = Object.keys(next.diagrams);
 
       sheetIds.forEach(id => {
           initSheetCalculation(next.sheets[id]);
@@ -769,7 +864,7 @@ export const useStore = create<AppState>((set, get) => ({
 
       return {
           ...next,
-          sheetIds, chartIds, noteIds,
+          sheetIds, chartIds, noteIds, diagramIds,
           history: newHistory,
           future: newFuture
       };
