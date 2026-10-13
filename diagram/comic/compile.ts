@@ -6,8 +6,8 @@ import type { ComicFacing, ComicItem, ComicPanel, ComicPropKind, ComicSpec } fro
 import type { SceneShape } from '../freeform';
 import { stickFigure } from './figures';
 import { prop } from './props';
-import { blockBox, speechBlock, speechShapes, type SpeakerTarget, type SpeechBlock } from './speech';
-import { clamp, inflate, overlaps, type Box } from './geometry';
+import { blockBox, planTail, speechBlock, speechShapes, type SpeakerTarget } from './speech';
+import { clamp, inflate, overlaps, segmentHitsBox, type Box } from './geometry';
 import type { Pt } from './draw';
 
 const PANEL = { width: 400, height: 300 };
@@ -31,6 +31,11 @@ const SURFACE: Partial<Record<ComicPropKind, { height: number; halfWidth: number
 const ON_SURFACE: ComicPropKind[] = ['monitor', 'laptop'];
 const DEFAULT_PROP_X: Partial<Record<ComicPropKind, number>> = { desk: 0.62, table: 0.62, bed: 0.5, door: 0.15 };
 const CHAIR_TO_DESK = 100;
+const OFF_PANEL_X = { left: -0.1, right: 1.1, top: 0.5 } as const;
+const HEADROOM_STEP = 40;
+const GRID_STEP = 10;
+const OFF_PANEL_TAIL = 30;
+const MAX_HEADROOM = 400;
 
 type CharacterItem = Extract<ComicItem, { type: 'character' }>;
 type PropItem = Extract<ComicItem, { type: 'prop' }>;
@@ -58,10 +63,15 @@ class PanelLayout {
   readonly props = new Map<string, Placed<PropItem>>();
   readonly heads = new Map<string, SpeakerTarget>();
   readonly shapes: SceneShape[] = [];
+  /** Panel top in scene coordinates: -headroom (extra space added above for speech). */
+  readonly top: number;
+  /** Set when speech could not sit above its speaker, clear of drawings, with a clean tail. */
+  crowded = false;
 
-  constructor(readonly panel: ComicPanel, readonly box: Box, readonly warnings: string[]) {
+  constructor(readonly panel: ComicPanel, readonly box: Box, readonly warnings: string[], headroom = 0) {
     this.scale = (box.height * FIGURE_SHARE) / FIGURE_HEIGHT;
     this.floor = box.height * FLOOR;
+    this.top = -headroom;
   }
 
   private note(id: string, what: string) {
@@ -108,12 +118,24 @@ class PanelLayout {
     this.shapes.push(...prop(placed));
   }
 
+  /** Explicit side, else behind the first on-panel character (opposite its facing). */
+  private offPanelSide(item: CharacterItem): 'left' | 'right' | 'top' {
+    if (item.side) return item.side;
+    const listener = this.facings.values().next().value;
+    return listener === 'left' ? 'right' : 'left';
+  }
+
+  private readonly facings = new Map<string, ComicFacing>();
+  /** Off-panel speakers without coordinates: which panel edge their voice comes from. */
+  private readonly offPanel = new Map<string, 'left' | 'right' | 'top'>();
+
   /** `slot` 0..1 spreads characters without coordinates across the panel. */
   placeCharacter(item: CharacterItem, slot: number) {
     const scale = item.scale ?? this.scale;
     if (item.offPanel) {
-      const at = { x: item.x ?? this.box.width + 40, y: item.y ?? this.box.height * 0.15 };
-      this.heads.set(item.id, { x: clamp(at.x, 0, this.box.width), y: clamp(at.y, 0, this.box.height), r: 0 });
+      const at = { x: item.x ?? OFF_PANEL_X[this.offPanelSide(item)] * this.box.width, y: item.y ?? (item.side === 'top' ? this.top - 40 : this.box.height * 0.15) };
+      if (item.x === undefined && item.y === undefined) this.offPanel.set(item.id, this.offPanelSide(item));
+      else this.heads.set(item.id, { x: clamp(at.x, 0, this.box.width), y: clamp(at.y, this.top, this.box.height), r: 0 });
       return;
     }
     let x = item.x ?? this.box.width * slot;
@@ -133,59 +155,100 @@ class PanelLayout {
     }
     const figure = stickFigure({ id: item.id, x, y, pose: item.pose, facing, scale });
     this.heads.set(item.id, figure.head);
+    this.facings.set(item.id, facing);
     this.shapes.push(...figure.shapes);
   }
 
-  placeSpeech(items: SpeechItem[]) {
-    const top = PAD + (this.panel.items.some((it) => it.type === 'caption') ? CAPTION_SPACE : 0);
-    let cursor = top;
-    const placed: { item: SpeechItem; block: SpeechBlock; target: SpeakerTarget }[] = [];
-    for (const item of items) {
-      const target = typeof item.speaker === 'string' ? this.heads.get(item.speaker) : { ...item.speaker, r: 0 };
-      if (!target) throw new Error(`Speech "${item.id}" in panel "${this.panel.id}": unknown speaker "${item.speaker}" (declare the character in the same panel)`);
-      const block = speechBlock(item);
-      const want = { x: item.x ?? target.x, y: item.y ?? cursor + block.radii.y };
-      block.center = this.fit(block, want, [...this.drawingBoxes(), ...placed.map((p) => blockBox(p.block))]);
-      const given = item.x !== undefined || item.y !== undefined;
-      if (given && Math.hypot(block.center.x - want.x, block.center.y - want.y) > MOVED) this.note(block.id, 'moved to stay inside the panel and clear of other speech');
-      cursor = Math.max(cursor, block.center.y + block.radii.y + STACK_GAP);
-      placed.push({ item, block, target });
+  /** Where a speaker's tail aims when the text sits at `center`. */
+  private targetFor(item: SpeechItem): (center: Pt) => SpeakerTarget {
+    if (typeof item.speaker !== 'string') {
+      const point = { ...item.speaker, r: 0 };
+      return () => point;
     }
-    for (const { block, target } of placed) {
-      const others = placed.filter((p) => p.block !== block).map((p) => blockBox(p.block));
-      this.shapes.push(...speechShapes(block, target, others, this.warnings));
-    }
-  }
-
-  /** Figures and upright props that speech must not cover (desk/table/bed tops are open space). */
-  private drawingBoxes(): Box[] {
-    const open = /^(panel|prop:[^:]+$|prop:.*:(seat|back)$)/;
-    return this.shapes.filter((sh) => !open.test(sh.id)).map((sh) => inflate(shapeBox(sh), STACK_GAP));
+    const side = this.offPanel.get(item.speaker);
+    // Off-panel voices: the tail runs to the nearest point of their panel edge.
+    if (side === 'top') return (c) => ({ x: c.x, y: this.top, r: 0 });
+    if (side) return (c) => ({ x: side === 'left' ? 0 : this.box.width, y: c.y, r: 0 });
+    const head = this.heads.get(item.speaker);
+    if (!head) throw new Error(`Speech "${item.id}" in panel "${this.panel.id}": unknown speaker "${item.speaker}" (declare the character in the same panel)`);
+    return () => head;
   }
 
   /**
-   * Nearest spot to `want` that stays inside the panel and clears `taken`:
-   * candidates are `want` itself plus spots beside/below each taken box.
+   * Places speech in reading order. Each block takes the spot nearest its
+   * preferred one where it stays inside the panel, sits above its speaker,
+   * covers no drawing, speech or earlier tail, and gets a tail that crosses
+   * nothing. If no spot exists the panel is marked crowded (it then grows).
    */
-  private fit(block: SpeechBlock, want: Pt, taken: Box[]): Pt {
-    const r = block.radii;
-    const inside = (p: Pt) => ({
-      x: clamp(p.x, PAD + r.x, this.box.width - PAD - r.x),
-      y: clamp(p.y, PAD + r.y, this.box.height - PAD - r.y),
-    });
-    const free = (p: Pt) => !taken.some((t) => overlaps({ x: p.x - r.x, y: p.y - r.y, width: r.x * 2, height: r.y * 2 }, t));
-    const candidates = [want, ...taken.flatMap((t) => [
-      { x: want.x, y: t.y + t.height + STACK_GAP + r.y },
-      { x: t.x + t.width + STACK_GAP + r.x, y: want.y },
-      { x: t.x - STACK_GAP - r.x, y: want.y },
-      { x: t.x + t.width + STACK_GAP + r.x, y: t.y + r.y },
-      { x: t.x - STACK_GAP - r.x, y: t.y + r.y },
-    ])].map(inside);
-    const dist = (p: Pt) => Math.hypot(p.x - want.x, p.y - want.y);
-    const best = candidates.filter(free).sort((a, b) => dist(a) - dist(b))[0];
-    if (!best) this.note(block.id, 'has no free spot; it overlaps other content');
-    return best ?? inside(want);
+  placeSpeech(items: SpeechItem[]) {
+    let cursor = this.top + PAD + (this.panel.items.some((it) => it.type === 'caption') ? CAPTION_SPACE : 0);
+    const boxes: Box[] = [];
+    const tails: Pt[][] = [];
+    const drawings = this.drawingBoxes();
+    for (const item of items) {
+      const targetAt = this.targetFor(item);
+      const block = speechBlock(item);
+      const r = block.radii;
+      const preferred = targetAt({ x: this.box.width / 2, y: cursor });
+      // Off-panel voices keep a visible tail to their edge, so start a little way in.
+      const offEdge = typeof item.speaker === 'string' && this.offPanel.has(item.speaker);
+      const inset = r.x + PAD + OFF_PANEL_TAIL;
+      const edgeX = preferred.x <= 0 ? inset : preferred.x >= this.box.width ? this.box.width - inset : preferred.x;
+      const want = { x: item.x ?? (offEdge ? edgeX : preferred.x), y: item.y ?? cursor + r.y };
+      const own = typeof item.speaker === 'string' ? `char:${item.speaker}:` : '\0';
+      const tailObstacles = [...boxes, ...this.drawingBoxes((id) => !id.startsWith(own))];
+      const boxAt = (c: Pt): Box => ({ x: c.x - r.x, y: c.y - r.y, width: r.x * 2, height: r.y * 2 });
+      const crossesTail = (b: Box) => tails.some((t) => t.some((p, i) => i > 0 && segmentHitsBox(t[i - 1], p, b)));
+      let chosen: { center: Pt; tail: Pt[] | null } | undefined;
+      for (const center of this.candidates(r, want)) {
+        const target = targetAt(center);
+        const b = boxAt(center);
+        if (target.r && b.y + b.height > target.y - target.r - STACK_GAP) continue;
+        if ([...drawings, ...boxes].some((t) => overlaps(b, t)) || crossesTail(b)) continue;
+        block.center = center;
+        const plan = planTail(block, target, tailObstacles);
+        if (!plan.clean || (offEdge && !plan.pts)) continue;
+        chosen = { center, tail: plan.pts };
+        break;
+      }
+      if (!chosen) {
+        this.crowded = true;
+        block.center = this.inside(r, want);
+        chosen = { center: block.center, tail: planTail(block, targetAt(block.center), []).pts };
+      }
+      block.center = chosen.center;
+      const given = item.x !== undefined || item.y !== undefined;
+      if (given && Math.hypot(block.center.x - want.x, block.center.y - want.y) > MOVED) this.note(block.id, 'moved to stay inside the panel and clear of other speech');
+      cursor = Math.max(cursor, block.center.y + r.y + STACK_GAP);
+      boxes.push(blockBox(block));
+      if (chosen.tail) tails.push(chosen.tail);
+      this.shapes.push(...speechShapes(block, chosen.tail));
+    }
   }
+
+  private inside(r: Pt, p: Pt): Pt {
+    return {
+      x: clamp(p.x, PAD + r.x, this.box.width - PAD - r.x),
+      y: clamp(p.y, this.top + PAD + r.y, this.box.height - PAD - r.y),
+    };
+  }
+
+  /** `want` first, then a grid over the panel, nearest first. */
+  private candidates(r: Pt, want: Pt): Pt[] {
+    const grid: Pt[] = [];
+    for (let y = this.top + PAD + r.y; y <= this.box.height - PAD - r.y; y += GRID_STEP) {
+      for (let x = PAD + r.x; x <= this.box.width - PAD - r.x; x += GRID_STEP) grid.push({ x, y });
+    }
+    const dist = (p: Pt) => Math.hypot(p.x - want.x, p.y - want.y);
+    return [this.inside(r, want), ...grid.sort((a, b) => dist(a) - dist(b))];
+  }
+
+  /** Figures and upright props that speech must not cover (desk/table/bed tops are open space). */
+  private drawingBoxes(keep: (id: string) => boolean = () => true): Box[] {
+    const open = /^(panel|speech:|caption:|prop:[^:]+$|prop:.*:(seat|back)$)/;
+    return this.shapes.filter((sh) => !open.test(sh.id) && keep(sh.id)).map((sh) => inflate(shapeBox(sh), STACK_GAP));
+  }
+
 }
 
 function shapeBox(sh: SceneShape): Box {
@@ -197,34 +260,58 @@ function shapeBox(sh: SceneShape): Box {
 
 const shift = (shapes: SceneShape[], by: Box): SceneShape[] => shapes.map((s) => ({ ...s, x: s.x + by.x, y: s.y + by.y }));
 
+function layoutPanel(panel: ComicPanel, size: { width: number; height: number }, headroom: number, warnings: string[]): PanelLayout {
+  const box = { x: 0, y: 0, ...size };
+  const layout = new PanelLayout(panel, box, warnings, headroom);
+  const of = <T extends ComicItem['type']>(type: T) => panel.items.filter((it): it is Extract<ComicItem, { type: T }> => it.type === type);
+  // Floor props first so surface props and seated characters can snap to them.
+  const props = of('prop');
+  for (const p of props.filter((p) => !ON_SURFACE.includes(p.kind) && p.kind !== 'chair')) layout.placeProp(p);
+  for (const p of props.filter((p) => p.kind === 'chair' || ON_SURFACE.includes(p.kind))) layout.placeProp(p);
+  // On-panel characters first: off-panel speakers default to the side behind them.
+  const onPanel = of('character').filter((c) => !c.offPanel);
+  for (const c of onPanel) layout.placeCharacter(c, (onPanel.indexOf(c) + 1) / (onPanel.length + 1));
+  for (const c of of('character').filter((c) => c.offPanel)) layout.placeCharacter(c, 0);
+  for (const c of of('caption')) {
+    layout.shapes.push({ id: `caption:${c.id}`, type: 'text', text: c.text, x: box.width / 2, y: layout.top + CAPTION_TOP, textAlign: 'center', fontSize: 16 });
+  }
+  for (const s of of('shape')) {
+    const { type: _item, shape, id, ...rest } = s;
+    layout.shapes.push({ ...rest, id: `shape:${id}`, type: shape });
+  }
+  layout.placeSpeech(of('speech'));
+  return layout;
+}
+
+/** Lays a panel out, adding headroom on top until its speech fits cleanly. */
+function growPanel(panel: ComicPanel, size: { width: number; height: number }, warnings: string[]) {
+  for (let headroom = 0; ; headroom += HEADROOM_STEP) {
+    const attempt: string[] = [];
+    const layout = layoutPanel(panel, size, headroom, attempt);
+    if (!layout.crowded || headroom >= MAX_HEADROOM) {
+      if (headroom > 0) attempt.push(`panel ${panel.id}: grew ${headroom}px taller to fit speech above the speakers`);
+      if (layout.crowded) attempt.push(`panel ${panel.id}: speech still crowded; shorten the text or widen the panel`);
+      warnings.push(...attempt);
+      return { layout, headroom };
+    }
+  }
+}
+
 export function comicToShapes(spec: ComicSpec, warnings: string[] = []): SceneShape[] {
-  const boxes = panelBoxes(spec.panels, spec.layout);
-  const shapes: SceneShape[] = [];
   const characterIds = new Set<string>();
+  for (const c of spec.panels.flatMap((p) => p.items)) {
+    if (c.type !== 'character') continue;
+    if (characterIds.has(c.id)) throw new Error(`Duplicate character id "${c.id}" (character ids are unique across panels)`);
+    characterIds.add(c.id);
+  }
+  const grown = spec.panels.map((panel) => growPanel(panel, { width: panel.width ?? PANEL.width, height: panel.height ?? PANEL.height }, warnings));
+  const sized = spec.panels.map((panel, i) => ({ ...panel, height: (panel.height ?? PANEL.height) + grown[i].headroom }));
+  const boxes = panelBoxes(sized, spec.layout);
+  const shapes: SceneShape[] = [];
   spec.panels.forEach((panel, i) => {
     const box = boxes[i];
     if (panel.border !== false) shapes.push({ id: `panel:${panel.id}`, type: 'rect', ...box });
-    const layout = new PanelLayout(panel, box, warnings);
-    const of = <T extends ComicItem['type']>(type: T) => panel.items.filter((it): it is Extract<ComicItem, { type: T }> => it.type === type);
-    for (const c of of('character')) {
-      if (characterIds.has(c.id)) throw new Error(`Duplicate character id "${c.id}" (character ids are unique across panels)`);
-      characterIds.add(c.id);
-    }
-    // Floor props first so surface props and seated characters can snap to them.
-    const props = of('prop');
-    for (const p of props.filter((p) => !ON_SURFACE.includes(p.kind) && p.kind !== 'chair')) layout.placeProp(p);
-    for (const p of props.filter((p) => p.kind === 'chair' || ON_SURFACE.includes(p.kind))) layout.placeProp(p);
-    const onPanel = of('character').filter((c) => !c.offPanel);
-    for (const c of of('character')) layout.placeCharacter(c, (onPanel.indexOf(c) + 1) / (onPanel.length + 1));
-    for (const c of of('caption')) {
-      layout.shapes.push({ id: `caption:${c.id}`, type: 'text', text: c.text, x: box.width / 2, y: CAPTION_TOP, textAlign: 'center', fontSize: 16 });
-    }
-    for (const s of of('shape')) {
-      const { type: _item, shape, id, ...rest } = s;
-      layout.shapes.push({ ...rest, id: `shape:${id}`, type: shape });
-    }
-    layout.placeSpeech(of('speech'));
-    shapes.push(...shift(layout.shapes, box));
+    shapes.push(...shift(grown[i].layout.shapes, { ...box, y: box.y + grown[i].headroom }));
   });
   return shapes;
 }

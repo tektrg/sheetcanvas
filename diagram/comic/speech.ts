@@ -39,7 +39,7 @@ export function speechBlock(input: { id: string; text: string; tail?: 'line' | '
 
 export const blockBox = (b: SpeechBlock): Box => ({ x: b.center.x - b.radii.x, y: b.center.y - b.radii.y, width: b.radii.x * 2, height: b.radii.y * 2 });
 
-export function speechShapes(block: SpeechBlock, target: SpeakerTarget, obstacles: Box[], warnings: string[]): SceneShape[] {
+export function speechShapes(block: SpeechBlock, tail: Pt[] | null): SceneShape[] {
   const { id, center, radii } = block;
   const shapes: SceneShape[] = [
     { id, type: 'text', text: block.text, x: center.x, y: center.y - block.textHeight / 2, fontSize: FONT_SIZE, textAlign: 'center', wrapAt: WRAP_AT },
@@ -47,13 +47,20 @@ export function speechShapes(block: SpeechBlock, target: SpeakerTarget, obstacle
   if (block.bubble) {
     shapes.push({ id: `${id}:bubble`, type: 'ellipse', x: center.x - radii.x, y: center.y - radii.y, width: radii.x * 2, height: radii.y * 2, strokeWidth: 1 });
   }
-  const tail = tailPoints(block, target);
-  if (!tail) return shapes;
-  const path = routeAround(tail, obstacles.map((o) => inflate(o, 4)));
-  if (!path) warnings.push(`${id}: tail crosses other speech; move the text to untangle it`);
-  const pts = path ?? tail;
-  shapes.push({ id: `${id}:tail`, type: 'line', x: pts[0].x, y: pts[0].y, points: pts.map((p) => [p.x - pts[0].x, p.y - pts[0].y]), strokeWidth: 1 });
+  if (tail) shapes.push({ id: `${id}:tail`, type: 'line', x: tail[0].x, y: tail[0].y, points: tail.map((p) => [p.x - tail[0].x, p.y - tail[0].y]), strokeWidth: 1 });
   return shapes;
+}
+
+/**
+ * Tail path from the block toward the target, bent once around obstacles if
+ * needed. `pts` is null when the text already sits next to the speaker;
+ * `clean` is false when no route avoids the obstacles.
+ */
+export function planTail(block: SpeechBlock, target: SpeakerTarget, obstacles: Box[]): { pts: Pt[] | null; clean: boolean } {
+  const tail = tailPoints(block, target);
+  if (!tail) return { pts: null, clean: true };
+  const path = routeAround(tail, obstacles.map((o) => inflate(o, 4)));
+  return { pts: path ?? tail, clean: path !== null };
 }
 
 function tailPoints({ center, radii, bubble }: SpeechBlock, target: SpeakerTarget): [Pt, Pt] | null {

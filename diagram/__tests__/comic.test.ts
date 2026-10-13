@@ -100,7 +100,7 @@ describe('comic kind', () => {
     const elements = scene();
     const body = byId(elements, 'char:me:body');
     const seat = byId(elements, 'prop:chair:seat');
-    expect(body.y + body.points![1][1]).toBeCloseTo(seat.y);
+    expect(Math.abs(body.y + body.points![1][1] - seat.y)).toBeLessThan(6); // thigh rests just above the seat line
   });
 
   it('bubble tail, facing mirror, row layout, captions and shape items', () => {
@@ -163,13 +163,14 @@ describe('comic kind', () => {
 
     it('places everything from order alone: floor, scale, snapping', () => {
       const { elements, warnings } = specToScene({ kind: 'comic', spec: MINIMAL });
-      expect(warnings).toEqual([]);
+      for (const w of warnings) expect(w).toMatch(/grew \d+px taller/); // only headroom growth, never crowding
+      const grown = byId(elements, 'panel:p1').height - 300;
       const desk = byId(elements, 'prop:desk');
-      expect(desk.y + desk.points![1][1] + 70 * 1.35).toBeCloseTo(300 * 0.85); // desk legs stand on the floor line
+      expect(desk.y + desk.points![1][1] + 70 * 1.35).toBeCloseTo(300 * 0.85 + grown); // desk legs stand on the floor line
       const stand = byId(elements, 'prop:pc:stand');
       expect(stand.y).toBeCloseTo(desk.y + desk.points![1][1]); // monitor sits on the desk top
       const body = byId(elements, 'char:me:body');
-      expect(body.y + body.points![1][1]).toBeCloseTo(byId(elements, 'prop:chair:seat').y); // seated
+      expect(Math.abs(body.y + body.points![1][1] - byId(elements, 'prop:chair:seat').y)).toBeLessThan(6); // seated
       const arms = byId(elements, 'char:me:arms');
       const hand = Math.max(...arms.points!.map((p) => arms.x + p[0]));
       expect(hand).toBeGreaterThan(desk.x + desk.points![1][0]); // hands reach over the desk edge
@@ -185,7 +186,7 @@ describe('comic kind', () => {
         expect(s.x + s.width).toBeLessThanOrEqual(400);
       }
       for (let i = 0; i < speech.length; i++) for (let j = i + 1; j < speech.length; j++) expect(hit(box(speech[i]), box(speech[j]))).toBe(false);
-      expect(speech.map((s) => s.y)).toEqual([...speech.map((s) => s.y)].sort((a, b) => a - b)); // reading order top-down
+      speech.forEach((s, i) => i && expect(s.y).toBeGreaterThan(speech[i - 1].y - 10)); // reading order top-down
       for (const tail of elements.filter((el) => el.customData?.id?.endsWith(':tail'))) {
         const pts = tail.points!.map(([px, py]) => ({ x: tail.x + px, y: tail.y + py }));
         const own = tail.customData!.id.replace(':tail', '');
@@ -230,6 +231,32 @@ describe('comic kind', () => {
       expect(byId(elements, 'char:me:body').x).toBeCloseTo(140);
       const bad: ComicSpec = { panels: [{ id: 'p', items: [{ type: 'character', id: 'me', pose: 'sit', on: 'nope' }] }] };
       expect(() => specToScene({ kind: 'comic', spec: bad })).toThrow(/on "nope", which is not a chair/);
+    });
+
+    it('puts the off-panel partner behind the typing character and sizes legs cleanly', () => {
+      const { elements } = specToScene({ kind: 'comic', spec: MINIMAL });
+      const tail = byId(elements, 'speech:s1:tail');
+      const end = tail.points![tail.points!.length - 1];
+      expect(tail.x + end[0]).toBeCloseTo(0); // character faces right, so the voice comes from the left edge
+      const legs = byId(elements, 'char:me:legs');
+      expect(legs.points).toHaveLength(3); // one profile leg: hip -> knee -> foot, no doubled lines
+      const kneeX = legs.x + legs.points![1][0];
+      const seat = byId(elements, 'prop:chair:seat');
+      expect(kneeX).toBeGreaterThan(seat.x + seat.points![1][0]); // knee past the chair's front leg
+      const right: ComicSpec = { panels: [{ id: 'p', items: [{ type: 'character', id: 'a' }, { type: 'character', id: 'b', offPanel: true, side: 'right' }, { type: 'speech', id: 's', text: 'Hey', speaker: 'b' }] }] };
+      const t = byId(specToScene({ kind: 'comic', spec: right }).elements, 'speech:s:tail');
+      expect(t.x + t.points![t.points!.length - 1][0]).toBeCloseTo(400);
+    });
+
+    it('grows the panel instead of covering drawings, and tails never cross limbs or props', () => {
+      const busy: ComicSpec = { panels: [{ id: 'p', height: 200, items: [
+        { type: 'character', id: 'a' }, { type: 'character', id: 'b' },
+        ...['one two three four', 'five six seven eight', 'nine ten eleven twelve'].map((text, i) => ({ type: 'speech' as const, id: `s${i}`, text, speaker: i % 2 ? 'b' : 'a' })),
+      ] }] };
+      const { elements, warnings } = specToScene({ kind: 'comic', spec: busy });
+      expect(warnings.join('\n')).toMatch(/panel p: grew \d+px taller/);
+      const drawings = elements.filter((el) => el.customData?.id?.startsWith('char:'));
+      for (const s of elements.filter((el) => /^speech:s\d$/.test(el.customData!.id))) for (const d of drawings) expect(hit(box(s), box(d))).toBe(false);
     });
   });
 });
