@@ -5,6 +5,8 @@ import type { CurveSpec, DiagramElement, DiagramSpec, FlowShape, FlowSpec, Orgch
 import { addBoundElement, centerOf, createLinear, createShape, createText, measureText, wrapLabel } from './elementFactory';
 import { createCurveScale, layoutGraph, type Box } from './layout';
 import { resolveColor } from './colors';
+import { freeformToElements, shapesToElements } from './freeform';
+import { comicToShapes } from './comic/compile';
 
 export const nodeId = (id: string) => `node:${id}`;
 export const edgeId = (from: string, to: string) => `edge:${from}->${to}`;
@@ -227,6 +229,10 @@ export function specToScene(input: DiagramSpec): { elements: DiagramElement[]; w
       return { elements: flowToElements(input.spec), warnings };
     case 'curve':
       return { elements: curveToElements(input.spec, warnings), warnings };
+    case 'freeform':
+      return { elements: freeformToElements(input.spec, warnings), warnings };
+    case 'comic':
+      return { elements: shapesToElements(comicToShapes(input.spec)), warnings };
   }
 }
 
