@@ -1,11 +1,12 @@
 // Lightweight SVG preview of an Excalidraw scene (no Excalidraw runtime).
-// Draws clean (non-sketchy) shapes so canvas previews stay cheap.
+// Shapes go through roughjs exactly as the editor draws them (roughPaths.ts)
+// and text uses the editor's fonts, so the card matches the editor.
 import React, { useEffect, useState } from 'react';
 import { loadRoughGenerator, roughGenerator, roughPaths } from './roughPaths';
 import type { DiagramElement } from './types';
+import { fontStack, HAND_DRAWN_FONT_FACES } from './excalidrawAssets';
 
 const PADDING = 16;
-const PREVIEW_FONT = 'Virgil, "Segoe Print", "Comic Sans MS", system-ui, sans-serif';
 
 type Point = { x: number; y: number };
 
@@ -74,7 +75,7 @@ function renderText(el: DiagramElement, byId: Map<string, DiagramElement>) {
       key={el.id}
       x={at.x}
       fontSize={fontSize}
-      fontFamily={PREVIEW_FONT}
+      fontFamily={fontStack(el.fontFamily)}
       fill={el.strokeColor}
       textAnchor={at.anchor}
       dominantBaseline="central"
@@ -87,13 +88,19 @@ function renderText(el: DiagramElement, byId: Map<string, DiagramElement>) {
   );
 }
 
+/** Rough paths are element-local: move to el.x/el.y and rotate about the centre, as Excalidraw does. */
+function elementTransform(el: DiagramElement): string {
+  const move = `translate(${el.x} ${el.y})`;
+  return el.angle ? `${move} rotate(${(el.angle * 180) / Math.PI} ${el.width / 2} ${el.height / 2})` : move;
+}
+
 type Generator = NonNullable<ReturnType<typeof roughGenerator>>;
 
 function renderElement(el: DiagramElement, byId: Map<string, DiagramElement>, gen: Generator | null) {
   const rough = gen ? roughPaths(gen, el) : null;
   if (rough) {
     return (
-      <g key={el.id} opacity={el.opacity / 100}>
+      <g key={el.id} opacity={el.opacity / 100} transform={elementTransform(el)}>
         {rough.map((p, i) => (
           <path key={i} d={p.d} stroke={p.stroke} strokeWidth={p.strokeWidth} fill={p.fill ?? 'none'} strokeLinecap="round" strokeLinejoin="round" />
         ))}
@@ -174,6 +181,7 @@ export const DiagramSvg: React.FC<DiagramSvgProps> = ({ elements, background, cl
   return (
     <svg className={className} viewBox={viewBox} preserveAspectRatio="xMidYMid meet" width="100%" height="100%" role="img">
       <defs>
+        <style>{HAND_DRAWN_FONT_FACES}</style>
         {(['diagram-arrowhead', 'diagram-arrowhead-start'] as const).map((id) => (
           <marker key={id} id={id} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient={id.endsWith('start') ? 'auto-start-reverse' : 'auto'}>
             <path d="M0 0 L10 5 L0 10" fill="none" stroke="context-stroke" strokeWidth="1.5" />

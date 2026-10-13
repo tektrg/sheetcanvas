@@ -4,13 +4,7 @@ import { useStore } from '../store';
 import { ensureSemanticIds } from '../diagram/ensureIds';
 import { cardSizeFor, sameElements } from '../diagram/scene';
 import type { DiagramSceneApi } from './DiagramExcalidraw';
-
-// Excalidraw fetches its fonts from EXCALIDRAW_ASSET_PATH (falling back to a
-// CDN). Dev serves them straight from node_modules; the build copies them to
-// /excalidraw-assets/ (see vite.config.ts).
-const EXCALIDRAW_ASSET_PATH = (import.meta as any).env?.DEV
-  ? '/node_modules/@excalidraw/excalidraw/dist/prod/'
-  : '/excalidraw-assets/';
+import { EXCALIDRAW_ASSET_PATH } from '../diagram/excalidrawAssets';
 
 const DEFAULT_BACKGROUND = '#ffffff'; // Excalidraw's default canvas color
 

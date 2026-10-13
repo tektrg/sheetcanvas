@@ -303,11 +303,29 @@ describe('hand-drawn style', () => {
     const first = roughPaths(gen, arms)!;
     expect(first.length).toBeGreaterThan(0);
     expect(roughPaths(gen, arms)).toEqual(first); // same seed, same strokes
-    expect(roughPaths(gen, { ...arms, roughness: 0 })).toBeNull();
-    expect(roughPaths(gen, byId(els, 'speech:s1'))).toBeNull();
+    expect(roughPaths(gen, byId(els, 'speech:s1'))).toBeNull(); // text is not a rough shape
     const svg = renderToStaticMarkup(React.createElement(DiagramSvg, { elements: els }));
-    expect(svg).toContain('<g opacity="1"><path d="M');
+    expect(svg).toMatch(/<g opacity="1" transform="translate\([-\d.]+ [-\d.]+\)"><path d="M/);
     expect(svg).toContain('ARE YOU COMING');
+  });
+
+  it('preview draws every shape the way the Excalidraw editor does', async () => {
+    const { loadRoughGenerator, roughPaths, adjustRoughness } = await import('../roughPaths');
+    const gen = await loadRoughGenerator();
+    const els = specToScene({ kind: 'comic', spec: XKCD }).elements;
+    const arms = byId(els, 'char:me:arms');
+    // roughness 0 still goes through roughjs (Excalidraw never draws clean SVG primitives)
+    expect(roughPaths(gen, { ...arms, roughness: 0 })?.length).toBeGreaterThan(0);
+    // small shapes are calmed like Excalidraw's adjustRoughness
+    const head = els.find((el) => el.type === 'ellipse' && el.width < 50)!;
+    expect(adjustRoughness({ ...head, roughness: 2 })).toBeLessThan(2);
+    // closed, filled line = filled polygon, like the editor
+    const loop = { ...arms, roundness: null, backgroundColor: '#ffc9c9', points: [[0, 0], [40, 0], [40, 40], [0, 0]] as [number, number][] };
+    expect(roughPaths(gen, loop)!.some((p) => p.fill === '#ffc9c9')).toBe(true);
+    // text in the editor's font, not a stand-in
+    const svg = renderToStaticMarkup(React.createElement(DiagramSvg, { elements: els }));
+    expect(svg).toContain('font-family="Excalifont, Virgil');
+    expect(svg).toContain('@font-face{font-family:Excalifont');
   });
 });
 
