@@ -140,4 +140,96 @@ describe('comic kind', () => {
     expect(svg).toMatch(/<path d="M0 0 C/);
   });
 
+
+  describe('auto-layout', () => {
+    const MINIMAL: ComicSpec = {
+      panels: [{
+        id: 'p1',
+        items: [
+          { type: 'prop', id: 'desk', kind: 'desk' },
+          { type: 'prop', id: 'pc', kind: 'monitor', on: 'desk' },
+          { type: 'prop', id: 'chair', kind: 'chair' },
+          { type: 'character', id: 'me', pose: 'type', on: 'chair' },
+          { type: 'character', id: 'wife', offPanel: true },
+          { type: 'speech', id: 's1', text: 'Are you coming to bed?', speaker: 'wife' },
+          { type: 'speech', id: 's2', text: "I can't. This is important.", speaker: 'me' },
+          { type: 'speech', id: 's3', text: 'What?', speaker: 'wife' },
+          { type: 'speech', id: 's4', text: 'Someone is wrong on the internet.', speaker: 'me' },
+        ],
+      }],
+    };
+    const box = (el: DiagramElement) => ({ x: el.x, y: el.y, width: el.width, height: el.height });
+    const hit = (a: ReturnType<typeof box>, b: ReturnType<typeof box>) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+
+    it('places everything from order alone: floor, scale, snapping', () => {
+      const { elements, warnings } = specToScene({ kind: 'comic', spec: MINIMAL });
+      expect(warnings).toEqual([]);
+      const desk = byId(elements, 'prop:desk');
+      expect(desk.y + desk.points![1][1] + 70 * 1.35).toBeCloseTo(300 * 0.85); // desk legs stand on the floor line
+      const stand = byId(elements, 'prop:pc:stand');
+      expect(stand.y).toBeCloseTo(desk.y + desk.points![1][1]); // monitor sits on the desk top
+      const body = byId(elements, 'char:me:body');
+      expect(body.y + body.points![1][1]).toBeCloseTo(byId(elements, 'prop:chair:seat').y); // seated
+      const arms = byId(elements, 'char:me:arms');
+      const hand = Math.max(...arms.points!.map((p) => arms.x + p[0]));
+      expect(hand).toBeGreaterThan(desk.x + desk.points![1][0]); // hands reach over the desk edge
+      const head = byId(elements, 'char:me:head');
+      expect(head.height / 24).toBeCloseTo(300 * 0.45 / 100); // scaled to panel height
+    });
+
+    it('speech stays inside the panel, never overlaps, and tails avoid other text', () => {
+      const { elements } = specToScene({ kind: 'comic', spec: MINIMAL });
+      const speech = ['s1', 's2', 's3', 's4'].map((id) => byId(elements, `speech:${id}`));
+      for (const s of speech) {
+        expect(s.x).toBeGreaterThanOrEqual(0);
+        expect(s.x + s.width).toBeLessThanOrEqual(400);
+      }
+      for (let i = 0; i < speech.length; i++) for (let j = i + 1; j < speech.length; j++) expect(hit(box(speech[i]), box(speech[j]))).toBe(false);
+      expect(speech.map((s) => s.y)).toEqual([...speech.map((s) => s.y)].sort((a, b) => a - b)); // reading order top-down
+      for (const tail of elements.filter((el) => el.customData?.id?.endsWith(':tail'))) {
+        const pts = tail.points!.map(([px, py]) => ({ x: tail.x + px, y: tail.y + py }));
+        const own = tail.customData!.id.replace(':tail', '');
+        for (const s of speech.filter((s) => s.customData?.id !== own)) {
+          for (let k = 0; k < pts.length - 1; k++) {
+            const seg = { x: Math.min(pts[k].x, pts[k + 1].x), y: Math.min(pts[k].y, pts[k + 1].y), width: Math.abs(pts[k].x - pts[k + 1].x) || 0.1, height: Math.abs(pts[k].y - pts[k + 1].y) || 0.1 };
+            if (!hit(seg, box(s))) continue;
+            // bounding boxes touch: check the segment itself via sampling
+            for (let t = 0; t <= 1; t += 0.02) {
+              const p = { x: pts[k].x + (pts[k + 1].x - pts[k].x) * t, y: pts[k].y + (pts[k + 1].y - pts[k].y) * t };
+              expect(p.x > s.x && p.x < s.x + s.width && p.y > s.y && p.y < s.y + s.height).toBe(false);
+            }
+          }
+        }
+      }
+    });
+
+    it('corrects given coordinates that overflow or collide, with warnings', () => {
+      const spec: ComicSpec = { panels: [{ id: 'p', items: [
+        { type: 'character', id: 'a', x: 100 },
+        { type: 'speech', id: 's1', text: 'A very long sentence that would spill', x: 390, y: 20, speaker: 'a' },
+        { type: 'speech', id: 's2', text: 'Overlapping', x: 300, y: 20, speaker: 'a' },
+      ] }] };
+      const { elements, warnings } = specToScene({ kind: 'comic', spec });
+      const s1 = byId(elements, 'speech:s1');
+      expect(s1.x + s1.width).toBeLessThanOrEqual(400);
+      expect(hit(box(s1), box(byId(elements, 'speech:s2')))).toBe(false);
+      expect(warnings.join('\n')).toMatch(/speech:s1 moved/);
+      expect(warnings.join('\n')).toMatch(/speech:s2 moved/);
+    });
+
+    it('snaps a nearby monitor and seated character, warns, and rejects bad `on`', () => {
+      const spec: ComicSpec = { panels: [{ id: 'p', items: [
+        { type: 'prop', id: 'desk', kind: 'desk', x: 250, y: 255 },
+        { type: 'prop', id: 'pc', kind: 'monitor', x: 260, y: 150 },
+        { type: 'prop', id: 'chair', kind: 'chair', x: 140, y: 255 },
+        { type: 'character', id: 'me', x: 150, y: 250, pose: 'sit' },
+      ] }] };
+      const { elements, warnings } = specToScene({ kind: 'comic', spec });
+      expect(warnings.join('\n')).toMatch(/prop:pc snapped onto desk/);
+      expect(warnings.join('\n')).toMatch(/char:me snapped onto chair/);
+      expect(byId(elements, 'char:me:body').x).toBeCloseTo(140);
+      const bad: ComicSpec = { panels: [{ id: 'p', items: [{ type: 'character', id: 'me', pose: 'sit', on: 'nope' }] }] };
+      expect(() => specToScene({ kind: 'comic', spec: bad })).toThrow(/on "nope", which is not a chair/);
+    });
+  });
 });

@@ -244,8 +244,9 @@ const ComicItemSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('character'),
     id: DiagramIdPart,
-    x: Coord,
-    y: Coord,
+    x: Coord.optional(),
+    y: Coord.optional(),
+    on: DiagramIdPart.optional(),
     pose: z.enum(['stand', 'sit', 'type', 'wave']).optional(),
     facing: Facing.optional(),
     scale: Scale.optional(),
@@ -255,8 +256,8 @@ const ComicItemSchema = z.discriminatedUnion('type', [
     type: z.literal('speech'),
     id: DiagramIdPart,
     text: z.string().min(1).max(300),
-    x: Coord,
-    y: Coord,
+    x: Coord.optional(),
+    y: Coord.optional(),
     speaker: z.union([DiagramIdPart, z.object({ x: Coord, y: Coord }).strict()]),
     tail: z.enum(['line', 'bubble']).optional(),
   }).strict(),
@@ -264,8 +265,9 @@ const ComicItemSchema = z.discriminatedUnion('type', [
     type: z.literal('prop'),
     id: DiagramIdPart,
     kind: z.enum(['desk', 'monitor', 'chair', 'laptop', 'bed', 'door', 'table']),
-    x: Coord,
-    y: Coord,
+    x: Coord.optional(),
+    y: Coord.optional(),
+    on: DiagramIdPart.optional(),
     scale: Scale.optional(),
     facing: Facing.optional(),
   }).strict(),
@@ -677,10 +679,9 @@ export const toolDefs = {
       'Use this to draw an editable hand-drawn diagram on the canvas: an org chart, a flow chart, an annotated curve (e.g. the Dunning-Kruger curve), free drawing, or an xkcd-style comic. For orgchart/flow/curve describe meaning, not geometry — layout is automatic. The user can then freely edit shapes, text and colors. ' +
       'Specs by kind: orgchart {nodes:[{id,label,parentId?,color?}]}; flow {nodes:[{id,label,shape?:rect|diamond|ellipse}], edges:[{from,to,label?}], direction?:TB|LR}; curve {points:[{x,y}], annotations?:[{id,at:x,label}], axes?:{x?,y?}}; ' +
       'freeform {width?,height?, shapes:[{id, type:rect|ellipse|diamond|line|arrow|text|freedraw, x,y, width?,height?, points?:[[x,y],...] relative to x,y (line/arrow/freedraw), text?, fontSize?, textAlign?, color?, fill?, strokeWidth?, strokeStyle?:solid|dashed, roughness?:0|1|2, roundness?}]} (y grows down; max 500 shapes); ' +
-      'comic {panels:[{id, width?=400, height?=300, border?, items:[...]}], layout?:row|grid}; items use panel coordinates: character {id,x,y (floor under hips), pose:stand|sit|type|wave, facing:left|right, scale?, offPanel? (draws nothing; x,y = head position off-panel)}, ' +
-      'speech {id,text,x,y (text centre),speaker:characterId|{x,y}, tail?:line|bubble}, prop {id, kind:desk|monitor|chair|laptop|bed|door|table, x,y (bottom centre: floor; monitor/laptop sit on the desk top at floor y-70), scale?, facing?}, caption {id,text}, shape {id, shape:<freeform type>, ...freeform fields}. ' +
-      'Comic example: {panels:[{id:"p1",items:[{type:"prop",id:"desk",kind:"desk",x:250,y:270},{type:"prop",id:"pc",kind:"monitor",x:270,y:200,facing:"left"},{type:"prop",id:"chair",kind:"chair",x:170,y:270},{type:"character",id:"me",x:170,y:270,pose:"type"},{type:"character",id:"off",x:420,y:40,offPanel:true},{type:"speech",id:"s1",text:"Are you coming to bed?",x:270,y:40,speaker:"off"},{type:"speech",id:"s2",text:"I can\'t. Someone is wrong on the internet.",x:140,y:90,speaker:"me"}]}]}. ' +
-      'Ids are ASCII only (letters, digits, _ . -). Keep labels short (a few words); long labels wrap at ~30 characters. ' +
+      'comic {panels:[{id, width?=400, height?=300, border?, items:[...]}], layout?:row|grid}: coordinates are optional (panel-relative, y down) — auto-layout puts the floor at 85% height, scales figures to the panel, snaps monitor/laptop onto a desk/table, seats sit/type characters on a chair facing the desk, stacks speech above its speaker, keeps text inside the panel and routes tails around other text (adjustments come back as warnings). ' +
+      'Items: character {id, pose?:stand|sit|type|wave, facing?, x?, y? (floor under hips), on?:chairId, scale?, offPanel? (draws nothing; tail points off-panel, x,y = head)}; speech {id, text, speaker:characterId|{x,y}, x?,y? (text centre), tail?:line|bubble}; prop {id, kind:desk|monitor|chair|laptop|bed|door|table, on?:deskId, x?,y?, scale?, facing?}; caption {id,text}; shape {id, shape:<freeform type>, ...freeform fields}. List speech in reading order. ' +
+      'Comic example: {panels:[{id:"p1",items:[{type:"prop",id:"desk",kind:"desk"},{type:"prop",id:"pc",kind:"monitor",on:"desk"},{type:"prop",id:"chair",kind:"chair"},{type:"character",id:"me",pose:"type",on:"chair"},{type:"character",id:"wife",offPanel:true},{type:"speech",id:"s1",text:"Are you coming to bed?",speaker:"wife"},{type:"speech",id:"s2",text:"I can\'t. Someone is wrong on the internet.",speaker:"me"}]}]}. ' +
       'Returns diagramId and elementIds: semantic ids such as "node:ceo", "edge:ceo->cto", "pt:peak", "curve:main", freeform shape ids, or comic ids like "panel:p1", "char:me:head", "speech:s1", "speech:s1:tail", "prop:desk" to use with updateDiagramElement.',
     inputSchema: z
       .object({

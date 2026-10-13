@@ -133,9 +133,9 @@ export type ComicFacing = 'left' | 'right';
 export type ComicPropKind = 'desk' | 'monitor' | 'chair' | 'laptop' | 'bed' | 'door' | 'table';
 
 export type ComicItem =
-  | { type: 'character'; id: string; x: number; y: number; pose?: ComicPose; facing?: ComicFacing; scale?: number; offPanel?: boolean }
-  | { type: 'speech'; id: string; text: string; x: number; y: number; speaker: string | { x: number; y: number }; tail?: 'line' | 'bubble' }
-  | { type: 'prop'; id: string; kind: ComicPropKind; x: number; y: number; scale?: number; facing?: ComicFacing }
+  | { type: 'character'; id: string; x?: number; y?: number; pose?: ComicPose; facing?: ComicFacing; scale?: number; offPanel?: boolean; on?: string }
+  | { type: 'speech'; id: string; text: string; x?: number; y?: number; speaker: string | { x: number; y: number }; tail?: 'line' | 'bubble' }
+  | { type: 'prop'; id: string; kind: ComicPropKind; x?: number; y?: number; scale?: number; facing?: ComicFacing; on?: string }
   | { type: 'caption'; id: string; text: string }
   | ({ type: 'shape'; shape: FreeformShapeType } & Omit<FreeformShape, 'type'>);
 

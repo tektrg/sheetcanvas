@@ -232,7 +232,7 @@ export function specToScene(input: DiagramSpec): { elements: DiagramElement[]; w
     case 'freeform':
       return { elements: freeformToElements(input.spec, warnings), warnings };
     case 'comic':
-      return { elements: shapesToElements(comicToShapes(input.spec)), warnings };
+      return { elements: shapesToElements(comicToShapes(input.spec, warnings)), warnings };
   }
 }
 

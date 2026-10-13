@@ -6,7 +6,8 @@ export const DEFAULT_STROKE = '#1e1e1e';
 const FONT_SIZE = 16;
 const LINE_HEIGHT = 1.25;
 const FONT_FAMILY_EXCALIFONT = 5;
-const AVG_CHAR_WIDTH = 0.55;
+// Hand-drawn fonts (Excalifont/Virgil, also used by the SVG preview) run wide.
+const AVG_CHAR_WIDTH = 0.65;
 
 export function hashSeed(text: string): number {
   let hash = 2166136261;
