@@ -91,27 +91,38 @@ export function createShape(
   };
 }
 
-/** Free text (containerId null) or text bound inside a shape/arrow. */
+export interface TextOptions {
+  fontSize?: number;
+  /** Free text only: at.x is the left edge, centre or right edge. */
+  textAlign?: 'left' | 'center' | 'right';
+  wrapAt?: number;
+}
+
+/** Free text (containerId null) or text bound inside a shape/arrow (centred on `at`). */
 export function createText(
   id: string,
   text: string,
   at: { x: number; y: number },
   containerId: string | null = null,
+  options: TextOptions = {},
 ): DiagramElement {
-  text = wrapLabel(text);
-  const size = measureText(text);
+  const fontSize = options.fontSize ?? FONT_SIZE;
+  text = wrapLabel(text, options.wrapAt);
+  const size = measureText(text, fontSize);
   const centered = containerId !== null;
+  const align = centered ? 'center' : options.textAlign ?? 'left';
+  const shiftX = align === 'center' ? size.width / 2 : align === 'right' ? size.width : 0;
   return {
     ...baseElement(id, 'text', {
-      x: centered ? at.x - size.width / 2 : at.x,
+      x: at.x - shiftX,
       y: centered ? at.y - size.height / 2 : at.y,
       ...size,
     }),
     text,
     originalText: text,
-    fontSize: FONT_SIZE,
+    fontSize,
     fontFamily: FONT_FAMILY_EXCALIFONT,
-    textAlign: centered ? 'center' : 'left',
+    textAlign: align,
     verticalAlign: centered ? 'middle' : 'top',
     containerId,
     lineHeight: LINE_HEIGHT,
@@ -144,6 +155,26 @@ export function createLinear(
     startArrowhead: null,
     endArrowhead: type === 'arrow' ? 'arrow' : null,
     elbowed: false,
+  };
+}
+
+/** Hand-drawn stroke through absolute points (Excalidraw freedraw). */
+export function createFreedraw(id: string, absolutePoints: { x: number; y: number }[]): DiagramElement {
+  const origin = absolutePoints[0];
+  const points = absolutePoints.map((p) => [p.x - origin.x, p.y - origin.y] as [number, number]);
+  const xs = points.map((p) => p[0]);
+  const ys = points.map((p) => p[1]);
+  return {
+    ...baseElement(id, 'freedraw', {
+      x: origin.x,
+      y: origin.y,
+      width: Math.max(...xs) - Math.min(...xs),
+      height: Math.max(...ys) - Math.min(...ys),
+    }),
+    points,
+    pressures: [],
+    simulatePressure: true,
+    lastCommittedPoint: null,
   };
 }
 

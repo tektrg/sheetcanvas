@@ -5,7 +5,7 @@
 // `customData.id`, a semantic id ("node:ceo", "edge:ceo->cto", "pt:peak")
 // that agents use to edit by meaning without touching user geometry.
 
-export type DiagramElementType = 'rectangle' | 'ellipse' | 'diamond' | 'arrow' | 'line' | 'text';
+export type DiagramElementType = 'rectangle' | 'ellipse' | 'diamond' | 'arrow' | 'line' | 'text' | 'freedraw';
 
 export interface DiagramElementCustomData {
   /** Semantic id, unique within a diagram. */
@@ -78,7 +78,7 @@ export interface DiagramElement {
   [key: string]: unknown;
 }
 
-export type DiagramKind = 'orgchart' | 'flow' | 'curve';
+export type DiagramKind = 'orgchart' | 'flow' | 'curve' | 'freeform' | 'comic';
 
 export interface OrgchartSpec {
   nodes: { id: string; label: string; parentId?: string; color?: string }[];
@@ -98,10 +98,66 @@ export interface CurveSpec {
   axes?: { x?: string; y?: string };
 }
 
+export type FreeformShapeType = 'rect' | 'ellipse' | 'diamond' | 'line' | 'arrow' | 'text' | 'freedraw';
+
+/** One drawing primitive. Line/arrow/freedraw points are relative to x,y. */
+export interface FreeformShape {
+  id: string;
+  type: FreeformShapeType;
+  x: number;
+  y: number;
+  width?: number;
+  height?: number;
+  points?: [number, number][];
+  text?: string;
+  fontSize?: number;
+  /** Text only: x is the left edge (left), centre (center) or right edge (right). */
+  textAlign?: 'left' | 'center' | 'right';
+  color?: string;
+  fill?: string;
+  strokeWidth?: number;
+  strokeStyle?: 'solid' | 'dashed';
+  roughness?: 0 | 1 | 2;
+  /** Rounded rect corners / smooth line. */
+  roundness?: boolean;
+}
+
+export interface FreeformSpec {
+  width?: number;
+  height?: number;
+  shapes: FreeformShape[];
+}
+
+export type ComicPose = 'stand' | 'sit' | 'type' | 'wave';
+export type ComicFacing = 'left' | 'right';
+export type ComicPropKind = 'desk' | 'monitor' | 'chair' | 'laptop' | 'bed' | 'door' | 'table';
+
+export type ComicItem =
+  | { type: 'character'; id: string; x: number; y: number; pose?: ComicPose; facing?: ComicFacing; scale?: number; offPanel?: boolean }
+  | { type: 'speech'; id: string; text: string; x: number; y: number; speaker: string | { x: number; y: number }; tail?: 'line' | 'bubble' }
+  | { type: 'prop'; id: string; kind: ComicPropKind; x: number; y: number; scale?: number; facing?: ComicFacing }
+  | { type: 'caption'; id: string; text: string }
+  | ({ type: 'shape'; shape: FreeformShapeType } & Omit<FreeformShape, 'type'>);
+
+export interface ComicPanel {
+  id: string;
+  width?: number;
+  height?: number;
+  border?: boolean;
+  items: ComicItem[];
+}
+
+export interface ComicSpec {
+  panels: ComicPanel[];
+  layout?: 'row' | 'grid';
+}
+
 export type DiagramSpec =
   | { kind: 'orgchart'; spec: OrgchartSpec }
   | { kind: 'flow'; spec: FlowSpec }
-  | { kind: 'curve'; spec: CurveSpec };
+  | { kind: 'curve'; spec: CurveSpec }
+  | { kind: 'freeform'; spec: FreeformSpec }
+  | { kind: 'comic'; spec: ComicSpec };
 
 /** Fields an agent may patch on one element. Geometry is never patched. */
 export interface DiagramElementPatch {

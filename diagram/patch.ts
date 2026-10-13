@@ -2,7 +2,7 @@
 // position, size, stroke and font edits are always preserved.
 import type { DiagramElement, DiagramElementPatch } from './types';
 import { addBoundElement, createText, measureText, wrapLabel } from './elementFactory';
-import { resolveColor } from './colors';
+import { resolveColor, resolveStrokeColor } from './colors';
 
 export type PatchResult =
   | { ok: true; elements: DiagramElement[] }
@@ -113,8 +113,9 @@ export function patchElement(elements: DiagramElement[], semanticId: string, pat
   const updates = new Map<string, DiagramElement>();
   let next: DiagramElement = { ...target };
   if (patch.color !== undefined) {
-    const color = resolveColor(patch.color);
-    next = isShape(next) ? { ...next, backgroundColor: color } : { ...next, strokeColor: color };
+    next = isShape(next)
+      ? { ...next, backgroundColor: resolveColor(patch.color) }
+      : { ...next, strokeColor: resolveStrokeColor(patch.color) };
   }
   if (patch.revealAt !== undefined || patch.draw !== undefined) {
     next = {

@@ -123,6 +123,8 @@ function renderElement(el: DiagramElement, byId: Map<string, DiagramElement>) {
         />
       );
     }
+    case 'freedraw':
+      return <path key={el.id} d={smoothPath(absolutePoints(el))} fill="none" strokeLinecap="round" strokeLinejoin="round" {...common} />;
     case 'text':
       return renderText(el, byId);
     default:
