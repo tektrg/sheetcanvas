@@ -57,6 +57,14 @@ function panelBoxes(panels: ComicPanel[], layout: ComicSpec['layout']): Box[] {
   });
 }
 
+/** Extra layout inputs when items are added over an existing drawing. */
+export interface LayoutOptions {
+  /** Figure/prop scale (default: from panel height). */
+  scale?: number;
+  /** Existing content that speech and tails must avoid. */
+  obstacles?: Box[];
+}
+
 class PanelLayout {
   readonly scale: number;
   readonly floor: number;
@@ -68,8 +76,8 @@ class PanelLayout {
   /** Set when speech could not sit above its speaker, clear of drawings, with a clean tail. */
   crowded = false;
 
-  constructor(readonly panel: ComicPanel, readonly box: Box, readonly warnings: string[], headroom = 0) {
-    this.scale = (box.height * FIGURE_SHARE) / FIGURE_HEIGHT;
+  constructor(readonly panel: ComicPanel, readonly box: Box, readonly warnings: string[], headroom = 0, readonly options: LayoutOptions = {}) {
+    this.scale = options.scale ?? (box.height * FIGURE_SHARE) / FIGURE_HEIGHT;
     this.floor = box.height * FLOOR;
     this.top = -headroom;
   }
@@ -207,7 +215,8 @@ class PanelLayout {
         if ([...drawings, ...boxes].some((t) => overlaps(b, t)) || crossesTail(b)) continue;
         block.center = center;
         const plan = planTail(block, target, tailObstacles);
-        if (!plan.clean || (offEdge && !plan.pts)) continue;
+        // Every line gets a visible tail (xkcd): skip spots too close to the speaker.
+        if (!plan.clean || (!plan.pts && (offEdge || target.r > 0))) continue;
         chosen = { center, tail: plan.pts };
         break;
       }
@@ -246,23 +255,24 @@ class PanelLayout {
   /** Figures and upright props that speech must not cover (desk/table/bed tops are open space). */
   private drawingBoxes(keep: (id: string) => boolean = () => true): Box[] {
     const open = /^(panel|speech:|caption:|prop:[^:]+$|prop:.*:(seat|back)$)/;
-    return this.shapes.filter((sh) => !open.test(sh.id) && keep(sh.id)).map((sh) => inflate(shapeBox(sh), STACK_GAP));
+    const own = this.shapes.filter((sh) => !open.test(sh.id) && keep(sh.id)).map((sh) => inflate(shapeBox(sh), STACK_GAP));
+    return [...own, ...(this.options.obstacles ?? []).map((b) => inflate(b, STACK_GAP))];
   }
 
 }
 
-function shapeBox(sh: SceneShape): Box {
+export function shapeBox(sh: SceneShape): Box {
   if (!sh.points) return { x: sh.x, y: sh.y, width: sh.width ?? 0, height: sh.height ?? 0 };
   const xs = sh.points.map((p) => sh.x + p[0]);
   const ys = sh.points.map((p) => sh.y + p[1]);
   return { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) };
 }
 
-const shift = (shapes: SceneShape[], by: Box): SceneShape[] => shapes.map((s) => ({ ...s, x: s.x + by.x, y: s.y + by.y }));
+export const shift = (shapes: SceneShape[], by: Box): SceneShape[] => shapes.map((s) => ({ ...s, x: s.x + by.x, y: s.y + by.y }));
 
-function layoutPanel(panel: ComicPanel, size: { width: number; height: number }, headroom: number, warnings: string[]): PanelLayout {
+function layoutPanel(panel: ComicPanel, size: { width: number; height: number }, headroom: number, warnings: string[], options?: LayoutOptions): PanelLayout {
   const box = { x: 0, y: 0, ...size };
-  const layout = new PanelLayout(panel, box, warnings, headroom);
+  const layout = new PanelLayout(panel, box, warnings, headroom, options);
   const of = <T extends ComicItem['type']>(type: T) => panel.items.filter((it): it is Extract<ComicItem, { type: T }> => it.type === type);
   // Floor props first so surface props and seated characters can snap to them.
   const props = of('prop');
@@ -284,10 +294,10 @@ function layoutPanel(panel: ComicPanel, size: { width: number; height: number },
 }
 
 /** Lays a panel out, adding headroom on top until its speech fits cleanly. */
-function growPanel(panel: ComicPanel, size: { width: number; height: number }, warnings: string[]) {
+export function growPanel(panel: ComicPanel, size: { width: number; height: number }, warnings: string[], options?: LayoutOptions) {
   for (let headroom = 0; ; headroom += HEADROOM_STEP) {
     const attempt: string[] = [];
-    const layout = layoutPanel(panel, size, headroom, attempt);
+    const layout = layoutPanel(panel, size, headroom, attempt, options);
     if (!layout.crowded || headroom >= MAX_HEADROOM) {
       if (headroom > 0) attempt.push(`panel ${panel.id}: grew ${headroom}px taller to fit speech above the speakers`);
       if (layout.crowded) attempt.push(`panel ${panel.id}: speech still crowded; shorten the text or widen the panel`);

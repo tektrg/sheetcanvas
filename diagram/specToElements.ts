@@ -237,5 +237,6 @@ export function specToScene(input: DiagramSpec): { elements: DiagramElement[]; w
 }
 
 export { applyStyle, defaultStyle } from './style';
+export { addItems } from './extras';
 
 export const specToElements = (input: DiagramSpec): DiagramElement[] => specToScene(input).elements;

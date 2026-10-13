@@ -139,6 +139,16 @@ export type ComicItem =
   | { type: 'caption'; id: string; text: string }
   | ({ type: 'shape'; shape: FreeformShapeType } & Omit<FreeformShape, 'type'>);
 
+/** Where an added item sits relative to an existing element (by semantic id). */
+export interface ItemAnchor {
+  anchor?: string;
+  placement?: 'above' | 'below' | 'left' | 'right' | 'on';
+  offset?: { x?: number; y?: number };
+}
+
+/** Items addable to any diagram: comic items plus a drawing title. */
+export type DiagramExtraItem = (ComicItem | { type: 'title'; id: string; text: string }) & ItemAnchor;
+
 export interface ComicPanel {
   id: string;
   width?: number;
