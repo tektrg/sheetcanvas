@@ -210,10 +210,89 @@ const CurveSpecSchema = z.object({
   axes: z.object({ x: z.string().max(60).optional(), y: z.string().max(60).optional() }).strict().optional(),
 }).strict();
 
+const Coord = z.number().min(-10000).max(10000);
+const Length = z.number().positive().max(10000);
+const Facing = z.enum(['left', 'right']);
+const Scale = z.number().min(0.2).max(5);
+const FREEFORM_TYPES = ['rect', 'ellipse', 'diamond', 'line', 'arrow', 'text', 'freedraw'] as const;
+
+// Everything about a primitive except its id/type, shared by freeform shapes and comic shape items.
+const FreeformShapeFields = {
+  x: Coord,
+  y: Coord,
+  width: Length.optional(),
+  height: Length.optional(),
+  points: z.array(z.tuple([Coord, Coord])).min(2).max(1000).optional(),
+  text: z.string().min(1).max(500).optional(),
+  fontSize: z.number().min(8).max(96).optional(),
+  textAlign: z.enum(['left', 'center', 'right']).optional(),
+  color: DiagramColor.optional(),
+  fill: DiagramColor.optional(),
+  strokeWidth: z.number().min(0.5).max(16).optional(),
+  strokeStyle: z.enum(['solid', 'dashed']).optional(),
+  roughness: z.union([z.literal(0), z.literal(1), z.literal(2)]).optional(),
+  roundness: z.boolean().optional(),
+};
+
+const FreeformSpecSchema = z.object({
+  width: Length.optional(),
+  height: Length.optional(),
+  shapes: z.array(z.object({ id: DiagramIdPart, type: z.enum(FREEFORM_TYPES), ...FreeformShapeFields }).strict()).min(1).max(500),
+}).strict();
+
+const ComicItemSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('character'),
+    id: DiagramIdPart,
+    x: Coord,
+    y: Coord,
+    pose: z.enum(['stand', 'sit', 'type', 'wave']).optional(),
+    facing: Facing.optional(),
+    scale: Scale.optional(),
+    offPanel: z.boolean().optional(),
+  }).strict(),
+  z.object({
+    type: z.literal('speech'),
+    id: DiagramIdPart,
+    text: z.string().min(1).max(300),
+    x: Coord,
+    y: Coord,
+    speaker: z.union([DiagramIdPart, z.object({ x: Coord, y: Coord }).strict()]),
+    tail: z.enum(['line', 'bubble']).optional(),
+  }).strict(),
+  z.object({
+    type: z.literal('prop'),
+    id: DiagramIdPart,
+    kind: z.enum(['desk', 'monitor', 'chair', 'laptop', 'bed', 'door', 'table']),
+    x: Coord,
+    y: Coord,
+    scale: Scale.optional(),
+    facing: Facing.optional(),
+  }).strict(),
+  z.object({ type: z.literal('caption'), id: DiagramIdPart, text: z.string().min(1).max(200) }).strict(),
+  z.object({ type: z.literal('shape'), id: DiagramIdPart, shape: z.enum(FREEFORM_TYPES), ...FreeformShapeFields }).strict(),
+]);
+
+const ComicSpecSchema = z.object({
+  panels: z
+    .array(z.object({
+      id: DiagramIdPart,
+      width: z.number().min(100).max(2000).optional(),
+      height: z.number().min(100).max(2000).optional(),
+      border: z.boolean().optional(),
+      items: z.array(ComicItemSchema).max(150),
+    }).strict())
+    .min(1)
+    .max(12),
+  layout: z.enum(['row', 'grid']).optional(),
+}).strict();
+
 export const DIAGRAM_SPEC_SCHEMAS = {
   orgchart: OrgchartSpecSchema,
   flow: FlowSpecSchema,
   curve: CurveSpecSchema,
+  freeform: FreeformSpecSchema,
+  comic: ComicSpecSchema,
 } as const;
 
 export const toolDefs = {
@@ -595,13 +674,17 @@ export const toolDefs = {
 
   createDiagram: {
     description:
-      'Use this to draw an editable diagram on the canvas: an org chart, a flow chart, or an annotated curve (e.g. the Dunning-Kruger curve). Describe meaning, not geometry — layout is automatic and the user can then freely edit shapes, text and colors. ' +
-      'Specs by kind: orgchart {nodes:[{id,label,parentId?,color?}]}; flow {nodes:[{id,label,shape?:rect|diamond|ellipse}], edges:[{from,to,label?}], direction?:TB|LR}; curve {points:[{x,y}], annotations?:[{id,at:x,label}], axes?:{x?,y?}}. ' +
+      'Use this to draw an editable hand-drawn diagram on the canvas: an org chart, a flow chart, an annotated curve (e.g. the Dunning-Kruger curve), free drawing, or an xkcd-style comic. For orgchart/flow/curve describe meaning, not geometry — layout is automatic. The user can then freely edit shapes, text and colors. ' +
+      'Specs by kind: orgchart {nodes:[{id,label,parentId?,color?}]}; flow {nodes:[{id,label,shape?:rect|diamond|ellipse}], edges:[{from,to,label?}], direction?:TB|LR}; curve {points:[{x,y}], annotations?:[{id,at:x,label}], axes?:{x?,y?}}; ' +
+      'freeform {width?,height?, shapes:[{id, type:rect|ellipse|diamond|line|arrow|text|freedraw, x,y, width?,height?, points?:[[x,y],...] relative to x,y (line/arrow/freedraw), text?, fontSize?, textAlign?, color?, fill?, strokeWidth?, strokeStyle?:solid|dashed, roughness?:0|1|2, roundness?}]} (y grows down; max 500 shapes); ' +
+      'comic {panels:[{id, width?=400, height?=300, border?, items:[...]}], layout?:row|grid}; items use panel coordinates: character {id,x,y (floor under hips), pose:stand|sit|type|wave, facing:left|right, scale?, offPanel? (draws nothing; x,y = head position off-panel)}, ' +
+      'speech {id,text,x,y (text centre),speaker:characterId|{x,y}, tail?:line|bubble}, prop {id, kind:desk|monitor|chair|laptop|bed|door|table, x,y (bottom centre: floor; monitor/laptop sit on the desk top at floor y-70), scale?, facing?}, caption {id,text}, shape {id, shape:<freeform type>, ...freeform fields}. ' +
+      'Comic example: {panels:[{id:"p1",items:[{type:"prop",id:"desk",kind:"desk",x:250,y:270},{type:"prop",id:"pc",kind:"monitor",x:270,y:200,facing:"left"},{type:"prop",id:"chair",kind:"chair",x:170,y:270},{type:"character",id:"me",x:170,y:270,pose:"type"},{type:"character",id:"off",x:420,y:40,offPanel:true},{type:"speech",id:"s1",text:"Are you coming to bed?",x:270,y:40,speaker:"off"},{type:"speech",id:"s2",text:"I can\'t. Someone is wrong on the internet.",x:140,y:90,speaker:"me"}]}]}. ' +
       'Ids are ASCII only (letters, digits, _ . -). Keep labels short (a few words); long labels wrap at ~30 characters. ' +
-      'Returns diagramId and elementIds: semantic ids such as "node:ceo", "edge:ceo->cto", "pt:peak", "curve:main" to use with updateDiagramElement.',
+      'Returns diagramId and elementIds: semantic ids such as "node:ceo", "edge:ceo->cto", "pt:peak", "curve:main", freeform shape ids, or comic ids like "panel:p1", "char:me:head", "speech:s1", "speech:s1:tail", "prop:desk" to use with updateDiagramElement.',
     inputSchema: z
       .object({
-        kind: z.enum(['orgchart', 'flow', 'curve']).describe('Diagram kind; selects the spec shape.'),
+        kind: z.enum(['orgchart', 'flow', 'curve', 'freeform', 'comic']).describe('Diagram kind; selects the spec shape.'),
         title: z.string().min(1).max(120).optional().describe('Optional diagram title shown on the canvas card.'),
         position: z.object({ x: z.number(), y: z.number() }).optional().describe('Optional canvas position; defaults to free space on the right.'),
         // Validated per kind below, so errors name the exact field (e.g. spec.nodes.0.label).
