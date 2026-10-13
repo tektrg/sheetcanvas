@@ -117,6 +117,10 @@ export function patchElement(elements: DiagramElement[], semanticId: string, pat
       ? { ...next, backgroundColor: resolveColor(patch.color) }
       : { ...next, strokeColor: resolveStrokeColor(patch.color) };
   }
+  if (patch.roughness !== undefined) {
+    if (target.type === 'text') return { ok: false, error: 'roughness applies to shapes and lines, not text' };
+    next = { ...next, roughness: patch.roughness };
+  }
   if (patch.revealAt !== undefined || patch.draw !== undefined) {
     next = {
       ...next,

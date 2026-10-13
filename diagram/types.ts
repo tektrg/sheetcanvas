@@ -165,5 +165,6 @@ export interface DiagramElementPatch {
   color?: string;
   revealAt?: number;
   draw?: [number, number];
+  roughness?: 0 | 1 | 2;
   remove?: boolean;
 }

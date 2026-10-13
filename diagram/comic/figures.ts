@@ -2,7 +2,7 @@
 // sitting figure placed at a chair's (x,y) lands on its seat.
 import type { ComicFacing, ComicPose } from '../types';
 import type { SceneShape } from '../freeform';
-import { circle, placer, polyline, type Offset, type Pt } from './draw';
+import { placer, polyline, wobble, type Offset, type Pt } from './draw';
 
 const HEAD_R = 12;
 
@@ -51,14 +51,16 @@ export function stickFigure(input: FigureInput): Figure {
   const pose = POSES[input.pose ?? 'stand'];
   const base = `char:${input.id}`;
   const group = { group: base };
+  // Wobbly limbs and a slightly lopsided head read hand-made at any roughness.
+  const limb = (part: string, pts: Pt[]) => polyline(`${base}:${part}`, wobble(pts, `${base}:${part}`), { ...group, roundness: true });
   const head = { ...at(pose.head), r: HEAD_R * scale };
   return {
     head,
     shapes: [
-      circle(`${base}:head`, head, head.r, group),
-      polyline(`${base}:body`, [at(pose.neck), at(pose.hip)], group),
-      polyline(`${base}:arms`, pose.arms.map(at), group),
-      polyline(`${base}:legs`, pose.legs.map(at), group),
+      { id: `${base}:head`, type: 'ellipse', x: head.x - head.r * 1.04, y: head.y - head.r * 0.97, width: head.r * 2.08, height: head.r * 1.94, ...group },
+      limb('body', [at(pose.neck), at(pose.hip)]),
+      limb('arms', pose.arms.map(at)),
+      limb('legs', pose.legs.map(at)),
     ],
   };
 }

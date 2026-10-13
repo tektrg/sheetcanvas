@@ -1,6 +1,7 @@
 // Lightweight SVG preview of an Excalidraw scene (no Excalidraw runtime).
 // Draws clean (non-sketchy) shapes so canvas previews stay cheap.
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { loadRoughGenerator, roughGenerator, roughPaths } from './roughPaths';
 import type { DiagramElement } from './types';
 
 const PADDING = 16;
@@ -86,7 +87,19 @@ function renderText(el: DiagramElement, byId: Map<string, DiagramElement>) {
   );
 }
 
-function renderElement(el: DiagramElement, byId: Map<string, DiagramElement>) {
+type Generator = NonNullable<ReturnType<typeof roughGenerator>>;
+
+function renderElement(el: DiagramElement, byId: Map<string, DiagramElement>, gen: Generator | null) {
+  const rough = gen ? roughPaths(gen, el) : null;
+  if (rough) {
+    return (
+      <g key={el.id} opacity={el.opacity / 100}>
+        {rough.map((p, i) => (
+          <path key={i} d={p.d} stroke={p.stroke} strokeWidth={p.strokeWidth} fill={p.fill ?? 'none'} strokeLinecap="round" strokeLinejoin="round" />
+        ))}
+      </g>
+    );
+  }
   const common = {
     stroke: el.strokeColor,
     strokeWidth: el.strokeWidth,
@@ -138,7 +151,22 @@ interface DiagramSvgProps {
   className?: string;
 }
 
+/** The rough generator once loaded (synchronously if already loaded), else null. */
+function useRoughGenerator(): Generator | null {
+  const [gen, setGen] = useState<Generator | null>(roughGenerator);
+  useEffect(() => {
+    if (gen) return;
+    let alive = true;
+    loadRoughGenerator().then((g) => alive && setGen(g)).catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [gen]);
+  return gen;
+}
+
 export const DiagramSvg: React.FC<DiagramSvgProps> = ({ elements, background, className }) => {
+  const gen = useRoughGenerator();
   const live = elements.filter((el) => !el.isDeleted);
   const byId = new Map<string, DiagramElement>(live.map((el) => [el.id, el]));
   const bounds = sceneBounds(live);
@@ -155,7 +183,7 @@ export const DiagramSvg: React.FC<DiagramSvgProps> = ({ elements, background, cl
       {background && background !== 'transparent' && (
         <rect x={bounds.x - PADDING} y={bounds.y - PADDING} width={bounds.width + PADDING * 2} height={bounds.height + PADDING * 2} fill={background} />
       )}
-      {live.map((el) => renderElement(el, byId))}
+      {live.map((el) => renderElement(el, byId, gen))}
     </svg>
   );
 };

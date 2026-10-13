@@ -24,12 +24,13 @@ const semanticIds = (elements: DiagramData['elements']) =>
   elements.map((el) => el.customData?.id).filter((id): id is string => !!id);
 
 // Lazy: the converter bundles the dagre layout engine, kept out of the main chunk.
-const loadSpecToScene = () => import('../../diagram/specToElements').then((m) => m.specToScene);
+const loadConverter = () => import('../../diagram/specToElements');
 
 export async function handleCreateDiagram(input: {
   kind: DiagramSpec['kind'];
   title?: string;
   position?: { x: number; y: number };
+  style?: 'clean' | 'sketchy' | 'rough';
   spec: unknown;
 }): Promise<ToolResult> {
   const parsedSpec = DIAGRAM_SPEC_SCHEMAS[input.kind]?.safeParse(input.spec);
@@ -38,11 +39,12 @@ export async function handleCreateDiagram(input: {
     return { ok: false, error: issue ? `spec.${issue.path.join('.')}: ${issue.message}` : `Unknown kind: ${input.kind}` };
   }
   const spec = { kind: input.kind, spec: parsedSpec.data } as DiagramSpec;
-  const specToScene = await loadSpecToScene();
+  const { specToScene, applyStyle, defaultStyle } = await loadConverter();
   let elements: DiagramData['elements'];
   let warnings: string[];
   try {
     ({ elements, warnings } = specToScene(spec));
+    elements = applyStyle(elements, input.style ?? defaultStyle(input.kind));
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }

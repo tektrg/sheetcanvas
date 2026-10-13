@@ -688,6 +688,7 @@ export const toolDefs = {
       .object({
         kind: z.enum(['orgchart', 'flow', 'curve', 'freeform', 'comic']).describe('Diagram kind; selects the spec shape.'),
         title: z.string().min(1).max(120).optional().describe('Optional diagram title shown on the canvas card.'),
+        style: z.enum(['clean', 'sketchy', 'rough']).optional().describe('Line style: clean, sketchy (hand-drawn) or rough (xkcd). Default: rough for comic, the kind\'s own look otherwise.'),
         position: z.object({ x: z.number(), y: z.number() }).optional().describe('Optional canvas position; defaults to free space on the right.'),
         // Validated per kind below, so errors name the exact field (e.g. spec.nodes.0.label).
         spec: z.record(z.string(), z.unknown()).describe('Spec object matching kind (see tool description).'),
@@ -705,7 +706,7 @@ export const toolDefs = {
   updateDiagramElement: {
     description:
       'Use this to change one element of an existing diagram by its semantic id (from createDiagram or readDiagram), e.g. relabel "node:cto", recolor it, or remove it. Only the fields you pass change; the user\'s own position, size and style edits are kept. ' +
-      'patch fields: label, color, revealAt (0..1 scroll-reveal point), draw ([from,to] progress range, lines/arrows only), remove (true deletes the element plus its label and attached arrows). Fails while the user has the diagram open in the editor.',
+      'patch fields: label, color, revealAt (0..1 scroll-reveal point), draw ([from,to] progress range, lines/arrows only), roughness (0 clean, 1 sketchy, 2 rough; not text), remove (true deletes the element plus its label and attached arrows). Fails while the user has the diagram open in the editor.',
     inputSchema: z.object({
       diagramId: z.string().min(1).describe('Diagram id from createDiagram or listDiagrams.'),
       id: z.string().min(1).max(200).describe('Semantic element id, e.g. "node:ceo" or "edge:ceo->cto".'),
@@ -715,6 +716,7 @@ export const toolDefs = {
           color: DiagramColor.optional(),
           revealAt: z.number().min(0).max(1).optional(),
           draw: z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)]).optional(),
+          roughness: z.union([z.literal(0), z.literal(1), z.literal(2)]).optional(),
           remove: z.boolean().optional(),
         })
         .refine((v) => Object.keys(v).length > 0, { message: 'patch must set at least one field' }),

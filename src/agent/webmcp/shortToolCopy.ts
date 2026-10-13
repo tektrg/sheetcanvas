@@ -225,7 +225,7 @@ export const SHORT_TOOL_COPY: Record<ToolName, ShortToolCopy> = {
   updateDiagramElement: {
     title: 'Update Diagram Element',
     description:
-      "Changes one diagram element by semantic id (from createDiagram/readDiagram). patch: label, color, revealAt (0..1), draw ([from,to], lines only), remove. Only these fields change; the user's own layout and style edits are kept. Fails while the user has the diagram open in the editor.",
+      "Changes one diagram element by semantic id (from createDiagram/readDiagram). patch: label, color, revealAt (0..1), draw ([from,to], lines only), roughness (0-2), remove. Only these fields change; the user's own layout and style edits are kept. Fails while the user has the diagram open in the editor.",
   },
 
   readDiagram: {
