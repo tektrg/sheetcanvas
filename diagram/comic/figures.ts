@@ -27,8 +27,9 @@ const SIT_LEGS: Offset[] = [[0, SIT_HIP], [32, SIT_HIP], [34, 0]];
 const POSES: Record<ComicPose, PoseGeometry> = {
   stand: { head: [0, -92], neck: [0, -80], hip: [0, -40], arms: [[-14, -48], [0, -72], [14, -48]], legs: STAND_LEGS },
   wave: { head: [0, -92], neck: [0, -80], hip: [0, -40], arms: [[-14, -48], [0, -72], [18, -86], [22, -108]], legs: STAND_LEGS },
-  sit: { head: [0, -97], neck: [0, -85], hip: [0, SIT_HIP], arms: [[24, -60], [10, -58], [0, -77], [12, -56], [26, -62]], legs: SIT_LEGS },
-  type: { head: [10, -96], neck: [6, -84], hip: [0, SIT_HIP], arms: [[44, -72], [22, -60], [4, -76], [24, -58], [46, -70]], legs: SIT_LEGS },
+  // Seated poses are drawn in profile: one visible arm (shoulder -> elbow -> hand).
+  sit: { head: [0, -97], neck: [0, -85], hip: [0, SIT_HIP], arms: [[0, -77], [12, -58], [26, -62]], legs: SIT_LEGS },
+  type: { head: [10, -96], neck: [6, -84], hip: [0, SIT_HIP], arms: [[4, -76], [22, -60], [46, -70]], legs: SIT_LEGS },
 };
 
 export interface FigureInput {

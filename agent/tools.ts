@@ -688,7 +688,7 @@ export const toolDefs = {
       .object({
         kind: z.enum(['orgchart', 'flow', 'curve', 'freeform', 'comic']).describe('Diagram kind; selects the spec shape.'),
         title: z.string().min(1).max(120).optional().describe('Optional diagram title shown on the canvas card.'),
-        style: z.enum(['clean', 'sketchy', 'rough']).optional().describe('Line style: clean, sketchy (hand-drawn) or rough (xkcd). Default: rough for comic, the kind\'s own look otherwise.'),
+        style: z.enum(['clean', 'sketchy', 'rough']).optional().describe('Line style: clean, sketchy (one wobbly hand-drawn line, xkcd) or rough (double sketch strokes). Default: sketchy for comic, the kind\'s own look otherwise.'),
         position: z.object({ x: z.number(), y: z.number() }).optional().describe('Optional canvas position; defaults to free space on the right.'),
         // Validated per kind below, so errors name the exact field (e.g. spec.nodes.0.label).
         spec: z.record(z.string(), z.unknown()).describe('Spec object matching kind (see tool description).'),

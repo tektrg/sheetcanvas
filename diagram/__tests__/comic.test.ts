@@ -276,7 +276,7 @@ describe('hand-drawn style', () => {
   it('applyStyle maps style to roughness, varies width for rough, leaves text alone', async () => {
     const { applyStyle, defaultStyle } = await import('../style');
     const els = specToScene({ kind: 'comic', spec: XKCD }).elements;
-    expect(defaultStyle('comic')).toBe('rough');
+    expect(defaultStyle('comic')).toBe('sketchy');
     expect(defaultStyle('flow')).toBeUndefined();
     const clean = applyStyle(els, 'clean');
     expect(byId(clean, 'char:me:arms').roughness).toBe(0);
@@ -308,5 +308,47 @@ describe('hand-drawn style', () => {
     const svg = renderToStaticMarkup(React.createElement(DiagramSvg, { elements: els }));
     expect(svg).toContain('<g opacity="1"><path d="M');
     expect(svg).toContain('ARE YOU COMING');
+  });
+});
+
+describe('sketchy style (single wobbly stroke baked into geometry)', () => {
+  const load = () => import('../style');
+
+  it('turns comic strokes into roughness-0 curved lines, closed outlines for heads/props', async () => {
+    const { applyStyle } = await load();
+    const els = applyStyle(specToScene({ kind: 'comic', spec: XKCD }).elements, 'sketchy');
+    for (const el of els.filter((e) => e.type !== 'text')) expect(el.roughness).toBe(0);
+    const head = byId(els, 'char:me:head');
+    expect(head).toMatchObject({ type: 'line', roundness: { type: 2 } });
+    expect(head.points!.at(-1)).toEqual(head.points![0]); // closes exactly, no overlap loop
+    const panel = byId(els, 'panel:p1');
+    expect(panel.type).toBe('line');
+    expect(panel.points!.length).toBeGreaterThan(5); // subdivided edges
+    const arms = byId(els, 'char:me:arms');
+    expect(arms.points!.length).toBeGreaterThanOrEqual(byId(specToScene({ kind: 'comic', spec: XKCD }).elements, 'char:me:arms').points!.length);
+    expect(applyStyle(specToScene({ kind: 'comic', spec: XKCD }).elements, 'sketchy')).toEqual(els); // deterministic
+  });
+
+  it('wobble scales with length and keeps vertices exact', async () => {
+    const { wobblePoints } = await import('../sketch');
+    const long = wobblePoints([[0, 0], [400, 0]], 'k');
+    const short = wobblePoints([[0, 0], [30, 0]], 'k');
+    const maxOff = (pts: [number, number][]) => Math.max(...pts.map((p) => Math.abs(p[1])));
+    expect(long[0]).toEqual([0, 0]);
+    expect(long.at(-1)).toEqual([400, 0]);
+    expect(maxOff(long)).toBeLessThanOrEqual(1.5);
+    expect(maxOff(long)).toBeGreaterThan(maxOff(short));
+  });
+
+  it('keeps labelled / arrow-bound shapes as real shapes so text and bindings survive', async () => {
+    const { applyStyle } = await load();
+    const els = applyStyle(specToScene({ kind: 'flow', spec: { nodes: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], edges: [{ from: 'a', to: 'b' }] } }).elements, 'sketchy');
+    expect(byId(els, 'node:a')).toMatchObject({ type: 'rectangle', roughness: 0 });
+    expect(byId(els, 'edge:a->b')).toMatchObject({ type: 'arrow', roughness: 0 });
+  });
+
+  it('seated profile: one arm stroke and one leg stroke', () => {
+    const els = specToScene({ kind: 'comic', spec: XKCD }).elements;
+    expect(byId(els, 'char:me:arms').points).toHaveLength(7); // shoulder -> elbow -> hand, + wobble
   });
 });
