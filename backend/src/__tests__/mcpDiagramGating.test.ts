@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mcpApp } from '../mcp/route';
 import type { Env } from '../env';
 
-const DIAGRAM_TOOLS = ['createDiagram', 'updateDiagramElement', 'readDiagram', 'listDiagrams'];
+const DIAGRAM_TOOLS = ['createDiagram', 'updateDiagramElement', 'addToDiagram', 'readDiagram', 'listDiagrams'];
 // scripts/mcp-production-preflight.mjs expects this many public tools (incl. the launcher).
 const PUBLIC_TOOL_COUNT = 19;
 const TOKEN = 'b'.repeat(48);

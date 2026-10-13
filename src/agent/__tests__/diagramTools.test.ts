@@ -30,6 +30,49 @@ describe('diagram tools', () => {
     expect(useStore.getState().diagramIds).toEqual([result.diagramId]);
   });
 
+  const CURVE_INPUT = {
+    kind: 'curve',
+    title: 'AI adoption mountains in enterprise',
+    spec: { points: [{ x: 0, y: 0 }, { x: 2, y: 8 }, { x: 5, y: 3 }], annotations: [{ id: 'peak', at: 2, label: 'Peak' }] },
+  };
+
+  it('createDiagram draws extras and a visible title in one call', async () => {
+    const result = await run('createDiagram', {
+      ...CURVE_INPUT,
+      showTitle: true,
+      extras: [{ type: 'character', id: 'me', anchor: 'pt:peak' }, { type: 'speech', id: 'omg', text: 'OMG', speaker: 'me' }],
+    });
+    expect(result.ok).toBe(true);
+    expect(result.elementIds).toEqual(expect.arrayContaining(['curve:main', 'char:me:head', 'speech:omg', 'title:main']));
+  });
+
+  it('addToDiagram adds items to an existing diagram (undoable) and returns only new ids', async () => {
+    const { diagramId } = await run('createDiagram', CURVE_INPUT);
+    const result = await run('addToDiagram', { diagramId, items: [{ type: 'character', id: 'me', anchor: 'pt:peak' }, { type: 'speech', id: 'omg', text: 'OMG', speaker: 'me' }] });
+    expect(result.ok).toBe(true);
+    expect(result.elementIds).toEqual(expect.arrayContaining(['char:me:head', 'speech:omg']));
+    expect(result.elementIds).not.toContain('curve:main');
+    const ids = () => useStore.getState().diagrams[diagramId].elements.map((el) => el.customData?.id);
+    expect(ids()).toContain('speech:omg');
+    useStore.getState().undo();
+    expect(ids()).not.toContain('speech:omg');
+  });
+
+  it('addToDiagram reports bad anchors, unknown diagrams and the edit lock', async () => {
+    const { diagramId } = await run('createDiagram', CURVE_INPUT);
+    expect(await run('addToDiagram', { diagramId, items: [{ type: 'character', id: 'x', anchor: 'pt:zz' }] })).toMatchObject({ ok: false, error: expect.stringMatching(/anchor "pt:zz"/) });
+    expect(await run('addToDiagram', { diagramId: 'nope', items: [{ type: 'title', id: 't', text: 'T' }] })).toMatchObject({ ok: false });
+    useStore.setState({ editingDiagramId: diagramId });
+    expect(await run('addToDiagram', { diagramId, items: [{ type: 'title', id: 't', text: 'T' }] })).toEqual({ ok: false, error: 'diagram is being edited' });
+  });
+
+  it('addToDiagram schema rejects unknown item types and fields', () => {
+    const schema = toolDefs.addToDiagram.inputSchema;
+    expect(schema.safeParse({ diagramId: 'd', items: [{ type: 'title', id: 't', text: 'x' }] }).success).toBe(true);
+    expect(schema.safeParse({ diagramId: 'd', items: [{ type: 'robot', id: 't' }] }).success).toBe(false);
+    expect(schema.safeParse({ diagramId: 'd', items: [{ type: 'character', id: 'a', anchor: 'pt:p', bogus: 1 }] }).success).toBe(false);
+  });
+
   it('createDiagram reports invalid specs as ok:false', async () => {
     const result = await run('createDiagram', { kind: 'flow', spec: { nodes: [{ id: 'a', label: 'A' }], edges: [{ from: 'a', to: 'zz' }] } });
     expect(result).toEqual({ ok: false, error: 'edge.to refers to unknown node id: zz' });

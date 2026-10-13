@@ -240,8 +240,7 @@ const FreeformSpecSchema = z.object({
   shapes: z.array(z.object({ id: DiagramIdPart, type: z.enum(FREEFORM_TYPES), ...FreeformShapeFields }).strict()).min(1).max(500),
 }).strict();
 
-const ComicItemSchema = z.discriminatedUnion('type', [
-  z.object({
+const ComicCharacter = z.object({
     type: z.literal('character'),
     id: DiagramIdPart,
     x: Coord.optional(),
@@ -252,8 +251,8 @@ const ComicItemSchema = z.discriminatedUnion('type', [
     scale: Scale.optional(),
     offPanel: z.boolean().optional(),
     side: z.enum(['left', 'right', 'top']).optional(),
-  }).strict(),
-  z.object({
+  }).strict();
+const ComicSpeech = z.object({
     type: z.literal('speech'),
     id: DiagramIdPart,
     text: z.string().min(1).max(300),
@@ -261,8 +260,8 @@ const ComicItemSchema = z.discriminatedUnion('type', [
     y: Coord.optional(),
     speaker: z.union([DiagramIdPart, z.object({ x: Coord, y: Coord }).strict()]),
     tail: z.enum(['line', 'bubble']).optional(),
-  }).strict(),
-  z.object({
+  }).strict();
+const ComicProp = z.object({
     type: z.literal('prop'),
     id: DiagramIdPart,
     kind: z.enum(['desk', 'monitor', 'chair', 'laptop', 'bed', 'door', 'table']),
@@ -271,10 +270,25 @@ const ComicItemSchema = z.discriminatedUnion('type', [
     on: DiagramIdPart.optional(),
     scale: Scale.optional(),
     facing: Facing.optional(),
-  }).strict(),
-  z.object({ type: z.literal('caption'), id: DiagramIdPart, text: z.string().min(1).max(200) }).strict(),
-  z.object({ type: z.literal('shape'), id: DiagramIdPart, shape: z.enum(FREEFORM_TYPES), ...FreeformShapeFields }).strict(),
-]);
+  }).strict();
+const ComicCaption = z.object({ type: z.literal('caption'), id: DiagramIdPart, text: z.string().min(1).max(200) }).strict();
+const ComicShape = z.object({ type: z.literal('shape'), id: DiagramIdPart, shape: z.enum(FREEFORM_TYPES), ...FreeformShapeFields }).strict();
+const COMIC_ITEMS = [ComicCharacter, ComicSpeech, ComicProp, ComicCaption, ComicShape] as const;
+const ComicItemSchema = z.discriminatedUnion('type', [...COMIC_ITEMS]);
+
+// Items addable to any diagram (createDiagram extras / addToDiagram): comic items
+// plus a title, each optionally placed relative to an existing element.
+const AnchorFields = {
+  anchor: z.string().min(1).max(200).optional(),
+  placement: z.enum(['above', 'below', 'left', 'right', 'on']).optional(),
+  offset: z.object({ x: Coord.optional(), y: Coord.optional() }).strict().optional(),
+};
+const DiagramExtraItemSchema = z.discriminatedUnion('type', [
+  ...COMIC_ITEMS.map((item) => item.extend(AnchorFields)),
+  z.object({ type: z.literal('title'), id: DiagramIdPart, text: z.string().min(1).max(200) }).strict(),
+] as unknown as [typeof ComicCharacter, typeof ComicCharacter]);
+const DiagramExtrasSchema = z.array(DiagramExtraItemSchema).min(1).max(100);
+
 
 const ComicSpecSchema = z.object({
   panels: z
@@ -683,11 +697,14 @@ export const toolDefs = {
       'comic {panels:[{id, width?=400, height?=300, border?, items:[...]}], layout?:row|grid}: coordinates are optional (panel-relative, y down) — auto-layout puts the floor at 85% height, scales figures to the panel, snaps monitor/laptop onto a desk/table, seats sit/type characters on a chair facing the desk, stacks speech above its speaker, keeps text inside the panel, routes tails around text/figures/props, grows the panel when speech needs headroom (adjustments come back as warnings). ' +
       'Items: character {id, pose?:stand|sit|type|wave, facing?, x?, y? (floor under hips), on?:chairId, scale?, offPanel? (draws nothing; tail points off-panel, side?:left|right|top, default behind the on-panel character)}; speech {id, text, speaker:characterId|{x,y}, x?,y? (text centre), tail?:line|bubble}; prop {id, kind:desk|monitor|chair|laptop|bed|door|table, on?:deskId, x?,y?, scale?, facing?}; caption {id,text}; shape {id, shape:<freeform type>, ...freeform fields}. List speech in reading order. ' +
       'Comic example: {panels:[{id:"p1",items:[{type:"prop",id:"desk",kind:"desk"},{type:"prop",id:"pc",kind:"monitor",on:"desk"},{type:"prop",id:"chair",kind:"chair"},{type:"character",id:"me",pose:"type",on:"chair"},{type:"character",id:"wife",offPanel:true},{type:"speech",id:"s1",text:"Are you coming to bed?",speaker:"wife"},{type:"speech",id:"s2",text:"I can\'t. Someone is wrong on the internet.",speaker:"me"}]}]}. ' +
+      'Stick figures and speech can be added to ANY kind: pass extras (same items as addToDiagram, e.g. curve + extras:[{type:"character",id:"me",anchor:"pt:peak"},{type:"speech",id:"omg",text:"OMG",speaker:"me"}]) or call addToDiagram later; showTitle:true draws the title on the drawing. ' +
       'Returns diagramId and elementIds: semantic ids such as "node:ceo", "edge:ceo->cto", "pt:peak", "curve:main", freeform shape ids, or comic ids like "panel:p1", "char:me:head", "speech:s1", "speech:s1:tail", "prop:desk" to use with updateDiagramElement.',
     inputSchema: z
       .object({
         kind: z.enum(['orgchart', 'flow', 'curve', 'freeform', 'comic']).describe('Diagram kind; selects the spec shape.'),
         title: z.string().min(1).max(120).optional().describe('Optional diagram title shown on the canvas card.'),
+        showTitle: z.boolean().optional().describe('Draw the title as hand-drawn text above the drawing (default false).'),
+        extras: DiagramExtrasSchema.optional().describe('Comic items (character, speech, prop, caption, shape, title) drawn on top of any kind; see addToDiagram.'),
         style: z.enum(['clean', 'sketchy', 'rough']).optional().describe('Line style: clean, sketchy (one wobbly hand-drawn line, xkcd) or rough (double sketch strokes). Default: sketchy for comic, the kind\'s own look otherwise.'),
         position: z.object({ x: z.number(), y: z.number() }).optional().describe('Optional canvas position; defaults to free space on the right.'),
         // Validated per kind below, so errors name the exact field (e.g. spec.nodes.0.label).
@@ -729,6 +746,17 @@ export const toolDefs = {
     inputSchema: z.object({
       diagramId: z.string().min(1).describe('Diagram id from createDiagram or listDiagrams.'),
       includeGeometry: z.boolean().optional().describe('Include x/y/width/height per element. Default false.'),
+    }),
+  },
+
+  addToDiagram: {
+    description:
+      'Use this to add stick figures, speech, props, captions, shapes or a title to ANY existing diagram (org chart, flow, curve, freeform or comic), e.g. a stick man on a curve\'s peak shouting "OMG". ' +
+      'items: same as comic items (character, speech, prop, caption, shape) plus title {id,text}. Place each by scene x/y or by anchor: an existing semantic element id (from createDiagram/readDiagram) with placement above|below|left|right|on (default: figures/props stand on it, speech goes above) and optional offset {x,y}. ' +
+      'Speech is placed clear of existing text/shapes and the drawing grows if needed. Example: items:[{type:"character",id:"me",anchor:"pt:peak"},{type:"speech",id:"omg",text:"OMG",speaker:"me"}]. Returns the new elementIds. Fails while the user has the diagram open in the editor.',
+    inputSchema: z.object({
+      diagramId: z.string().min(1).describe('Diagram id from createDiagram or listDiagrams.'),
+      items: DiagramExtrasSchema,
     }),
   },
 

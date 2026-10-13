@@ -44,6 +44,7 @@ export const TOOL_ANNOTATIONS: Record<ToolName, SharedToolAnnotations> = {
   createGaTrendBySource: { untrustedContentHint: true },
   createDiagram: {},
   updateDiagramElement: {},
+  addToDiagram: {},
   readDiagram: { readOnlyHint: true, untrustedContentHint: true },
   listDiagrams: { readOnlyHint: true, untrustedContentHint: true },
 };
@@ -81,6 +82,7 @@ export const MCP_TOOL_ANNOTATIONS: Record<ToolName, McpToolAnnotations> = {
   createGaTrendBySource: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
   createDiagram: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   updateDiagramElement: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+  addToDiagram: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   readDiagram: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   listDiagrams: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
 };

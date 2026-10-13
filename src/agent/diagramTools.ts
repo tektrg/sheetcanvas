@@ -1,4 +1,4 @@
-// Agent tool handlers for diagrams (createDiagram, updateDiagramElement,
+// Agent tool handlers for diagrams (createDiagram, updateDiagramElement, addToDiagram,
 // readDiagram, listDiagrams). Diagram logic lives in the shared `diagram/`
 // module; this file only bridges it to the canvas store.
 import { useStore } from '../../store';
@@ -9,6 +9,7 @@ import {
   patchElement,
   summarizeElements,
   type DiagramElementPatch,
+  type DiagramExtraItem,
   type DiagramSpec,
 } from '../../diagram';
 import { placeNote } from '../../utils/canvasLayout';
@@ -31,6 +32,8 @@ export async function handleCreateDiagram(input: {
   title?: string;
   position?: { x: number; y: number };
   style?: 'clean' | 'sketchy' | 'rough';
+  showTitle?: boolean;
+  extras?: DiagramExtraItem[];
   spec: unknown;
 }): Promise<ToolResult> {
   const parsedSpec = DIAGRAM_SPEC_SCHEMAS[input.kind]?.safeParse(input.spec);
@@ -39,12 +42,15 @@ export async function handleCreateDiagram(input: {
     return { ok: false, error: issue ? `spec.${issue.path.join('.')}: ${issue.message}` : `Unknown kind: ${input.kind}` };
   }
   const spec = { kind: input.kind, spec: parsedSpec.data } as DiagramSpec;
-  const { specToScene, applyStyle, defaultStyle } = await loadConverter();
+  const { specToScene, applyStyle, defaultStyle, addItems } = await loadConverter();
   let elements: DiagramData['elements'];
   let warnings: string[];
   try {
     ({ elements, warnings } = specToScene(spec));
     elements = applyStyle(elements, input.style ?? defaultStyle(input.kind));
+    const titleItem: DiagramExtraItem[] = input.showTitle && input.title ? [{ type: 'title', id: 'main', text: input.title }] : [];
+    const extras = [...(input.extras ?? []), ...titleItem];
+    if (extras.length) elements = addItems(elements, extras, warnings);
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
@@ -79,6 +85,30 @@ export function handleUpdateDiagramElement(input: { diagramId: string; id: strin
   const elements = ensureSemanticIds(result.elements);
   store.updateDiagram(diagram.id, { elements, size: cardSizeFor(elements) });
   return { ok: true, diagramId: diagram.id, id: input.id };
+}
+
+export async function handleAddToDiagram(input: { diagramId: string; items: DiagramExtraItem[] }): Promise<ToolResult> {
+  const store = useStore.getState();
+  const diagram = store.diagrams[input.diagramId];
+  if (!diagram) return { ok: false, error: `Unknown diagramId: ${input.diagramId}` };
+  if (store.editingDiagramId === diagram.id) return { ok: false, error: DIAGRAM_BEING_EDITED };
+  const { addItems } = await loadConverter();
+  const warnings: string[] = [];
+  let elements: DiagramData['elements'];
+  try {
+    elements = ensureSemanticIds(addItems(diagram.elements, input.items, warnings));
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+  const before = new Set(semanticIds(diagram.elements));
+  store.saveSnapshot();
+  store.updateDiagram(diagram.id, { elements, size: cardSizeFor(elements) });
+  return {
+    ok: true,
+    diagramId: diagram.id,
+    elementIds: semanticIds(elements).filter((id) => !before.has(id)),
+    ...(warnings.length > 0 ? { warnings } : {}),
+  };
 }
 
 export function handleReadDiagram(input: { diagramId: string; includeGeometry?: boolean }): ToolResult {

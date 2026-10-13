@@ -219,13 +219,19 @@ export const SHORT_TOOL_COPY: Record<ToolName, ShortToolCopy> = {
   createDiagram: {
     title: 'Create Diagram',
     description:
-      'Draws an editable hand-drawn diagram: orgchart {nodes:[{id,label,parentId?}]}, flow {nodes,edges:[{from,to,label?}]}, curve {points:[{x,y}],annotations}, freeform {shapes:[{id,type:rect|ellipse|line|arrow|text|freedraw,x,y,...}]}, or xkcd-style comic {panels:[{id,items:[character|speech|prop|caption|shape]}]}. ASCII ids. Returns diagramId and semantic elementIds ("node:ceo", "char:me:head") for updateDiagramElement.',
+      'Draws an editable hand-drawn diagram: orgchart, flow {nodes,edges}, curve {points,annotations}, freeform {shapes}, or xkcd comic {panels:[{id,items}]}. extras:[...] adds stick figures/speech to ANY kind (e.g. curve + stick man at "pt:peak" saying "OMG"); showTitle draws the title. Returns diagramId and semantic elementIds for updateDiagramElement/addToDiagram.',
   },
 
   updateDiagramElement: {
     title: 'Update Diagram Element',
     description:
       "Changes one diagram element by semantic id (from createDiagram/readDiagram). patch: label, color, revealAt (0..1), draw ([from,to], lines only), roughness (0-2), remove. Only these fields change; the user's own layout and style edits are kept. Fails while the user has the diagram open in the editor.",
+  },
+
+  addToDiagram: {
+    title: 'Add To Diagram',
+    description:
+      'Adds stick figures, speech, props, captions, shapes or a title to ANY diagram (curve, flow, org chart, comic...). Place items by x/y or anchor:<element id> + placement above|below|left|right|on. Example: [{type:"character",id:"me",anchor:"pt:peak"},{type:"speech",id:"omg",text:"OMG",speaker:"me"}]. Speech avoids existing text.',
   },
 
   readDiagram: {

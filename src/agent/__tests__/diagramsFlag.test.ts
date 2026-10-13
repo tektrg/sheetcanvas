@@ -26,7 +26,7 @@ describe('browser diagrams flag', () => {
   it('when off: WebMCP hides every diagram tool and the executor refuses them', async () => {
     flag.enabled = false;
     const desired = gating(['d1']);
-    for (const tool of ['createDiagram', 'listDiagrams', 'readDiagram', 'updateDiagramElement'] as const) {
+    for (const tool of ['createDiagram', 'listDiagrams', 'readDiagram', 'updateDiagramElement', 'addToDiagram'] as const) {
       expect(desired.has(tool)).toBe(false);
     }
     expect(await executeClientTool('createDiagram', { kind: 'orgchart', spec: { nodes: [{ id: 'a', label: 'A' }] } }, resolver))

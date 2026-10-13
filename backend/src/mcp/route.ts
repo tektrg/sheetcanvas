@@ -61,6 +61,7 @@ function toMcpTool(name: ToolName) {
 const PRIVATE_ONLY_TOOL_NAMES = new Set<ToolName>([
   'createDiagram',
   'updateDiagramElement',
+  'addToDiagram',
   'readDiagram',
   'listDiagrams',
 ]);

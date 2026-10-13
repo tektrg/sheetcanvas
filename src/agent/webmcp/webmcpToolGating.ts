@@ -56,7 +56,7 @@ const SHEET_GATED: readonly ToolName[] = [
 
 const NOTE_GATED: readonly ToolName[] = ['readNote', 'updateNote', 'deleteNote'];
 
-const DIAGRAM_GATED: readonly ToolName[] = ['listDiagrams', 'readDiagram', 'updateDiagramElement'];
+const DIAGRAM_GATED: readonly ToolName[] = ['listDiagrams', 'readDiagram', 'updateDiagramElement', 'addToDiagram'];
 
 // Their failure message literally says "run describeConnection first and
 // pass its schemaToken" — gating turns a guaranteed wasted round trip into a

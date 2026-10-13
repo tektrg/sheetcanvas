@@ -43,7 +43,7 @@ const NEVER_GATED: ToolName[] = [
 
 describe('computeDesiredTools', () => {
   it('offers createDiagram always, and list/read/update diagram only once a diagram exists', () => {
-    const diagramTools: ToolName[] = ['listDiagrams', 'readDiagram', 'updateDiagramElement'];
+    const diagramTools: ToolName[] = ['listDiagrams', 'readDiagram', 'updateDiagramElement', 'addToDiagram'];
     const empty = computeDesiredTools(readGatingState(makeState()));
     expect(empty.has('createDiagram')).toBe(true);
     for (const tool of diagramTools) expect(empty.has(tool)).toBe(false);

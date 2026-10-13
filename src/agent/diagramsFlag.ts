@@ -4,4 +4,4 @@ export function diagramsEnabled(env: { DEV?: boolean; VITE_DIAGRAMS_ENABLED?: st
   return env.DEV === true || env.VITE_DIAGRAMS_ENABLED === 'true';
 }
 
-export const DIAGRAM_TOOL_NAMES = ['createDiagram', 'updateDiagramElement', 'readDiagram', 'listDiagrams'] as const;
+export const DIAGRAM_TOOL_NAMES = ['createDiagram', 'updateDiagramElement', 'addToDiagram', 'readDiagram', 'listDiagrams'] as const;

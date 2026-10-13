@@ -34,6 +34,7 @@ import {
   handleListDiagrams,
   handleReadDiagram,
   handleUpdateDiagramElement,
+  handleAddToDiagram,
 } from './diagramTools';
 import { DIAGRAM_TOOL_NAMES, diagramsEnabled } from './diagramsFlag';
 import {
@@ -1106,6 +1107,9 @@ export async function executeClientTool(
 
       case 'updateDiagramElement':
         return handleUpdateDiagramElement(input);
+
+      case 'addToDiagram':
+        return handleAddToDiagram(input);
 
       case 'readDiagram':
         return handleReadDiagram(input);
