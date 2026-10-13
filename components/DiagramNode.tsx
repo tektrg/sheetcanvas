@@ -12,6 +12,9 @@ interface DiagramNodeProps {
 
 // Canvas card for a diagram: cheap SVG preview; double-click (or the pencil)
 // opens the full Excalidraw editor, which is loaded only then.
+// Mirrors Excalidraw's own dark theme rendering.
+const EXCALIDRAW_DARK_FILTER = 'invert(93%) hue-rotate(180deg)';
+
 const DiagramNodeComponent: React.FC<DiagramNodeProps> = ({ id, darkMode, isPendingDelete, onMouseDown }) => {
   const diagram = useStore(state => state.diagrams[id]);
   const selected = useStore(state => state.selectedIds.has(id));
@@ -63,8 +66,12 @@ const DiagramNodeComponent: React.FC<DiagramNodeProps> = ({ id, darkMode, isPend
             <Trash2 size={14} />
           </button>
         </div>
-        {/* Preview keeps a light paper background so default dark strokes stay readable in dark mode. */}
-        <div className="flex-1 min-h-0 p-2 cursor-default" style={{ backgroundColor: background ?? '#ffffff' }} onMouseDown={onMouseDown}>
+        {/* Dark mode uses the same filter as the Excalidraw editor, so preview colors match the editor. */}
+        <div
+          className="flex-1 min-h-0 p-2 cursor-default"
+          style={{ backgroundColor: background ?? '#ffffff', filter: darkMode ? EXCALIDRAW_DARK_FILTER : undefined }}
+          onMouseDown={onMouseDown}
+        >
           <DiagramSvg elements={diagram.elements} />
         </div>
       </div>
