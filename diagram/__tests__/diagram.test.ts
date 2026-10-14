@@ -1,11 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { renderToStaticMarkup } from 'react-dom/server';
-import React from 'react';
 import { specToElements } from '../specToElements';
 import { patchElement, findBySemanticId } from '../patch';
 import { ensureSemanticIds } from '../ensureIds';
 import { summarizeElements } from '../summarize';
-import { DiagramSvg } from '../renderSvg';
 import type { DiagramElement, DiagramSpec } from '../types';
 
 const ORG: DiagramSpec = {
@@ -177,16 +174,6 @@ describe('summarizeElements', () => {
     expect(summary.some((s) => s.id.endsWith(':label'))).toBe(false);
     expect(summary.some((s) => s.geometry)).toBe(false);
     expect(summarizeElements(specToElements(FLOW), true).every((s) => s.geometry)).toBe(true);
-  });
-});
-
-describe('DiagramSvg', () => {
-  it('renders shapes, arrows and labels', () => {
-    const markup = renderToStaticMarkup(React.createElement(DiagramSvg, { elements: specToElements(FLOW) }));
-    expect(markup).toContain('<ellipse');
-    expect(markup).toContain('<polygon');
-    expect(markup).toContain('marker-end');
-    expect(markup).toContain('OK?');
   });
 });
 

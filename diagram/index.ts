@@ -6,5 +6,5 @@ export { resolveColor } from './colors';
 export { patchElement, findBySemanticId, type PatchResult } from './patch';
 export { ensureSemanticIds } from './ensureIds';
 export { summarizeElements, type DiagramElementSummary } from './summarize';
-export { sceneBounds } from './renderSvg';
-export { cardSizeFor, sameElements } from './scene';
+export { cardSizeFor, sameElements, sceneBounds } from './scene';
+export { previewKey, previewSrc, type DiagramPreview } from './preview';

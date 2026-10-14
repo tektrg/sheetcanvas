@@ -1,6 +1,29 @@
 // Scene-level helpers shared by the agent tools and the editor.
 import type { DiagramElement } from './types';
-import { sceneBounds } from './renderSvg';
+
+type Point = { x: number; y: number };
+
+const absolutePoints = (el: DiagramElement): Point[] =>
+  (el.points ?? [[0, 0]]).map(([px, py]) => ({ x: el.x + px, y: el.y + py }));
+
+export function sceneBounds(elements: DiagramElement[]) {
+  const live = elements.filter((el) => !el.isDeleted);
+  if (live.length === 0) return { x: 0, y: 0, width: 1, height: 1 };
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const el of live) {
+    const pts = el.points ? absolutePoints(el) : [{ x: el.x, y: el.y }, { x: el.x + el.width, y: el.y + el.height }];
+    for (const p of pts) {
+      minX = Math.min(minX, p.x);
+      minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x);
+      maxY = Math.max(maxY, p.y);
+    }
+  }
+  return { x: minX, y: minY, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY) };
+}
 
 const CARD_PADDING = 40;
 const CARD_MIN = { width: 320, height: 220 };

@@ -2,6 +2,7 @@
 
 import React from 'react';
 import type { DiagramElement, DiagramSpec } from './diagram/types';
+import type { DiagramPreview } from './diagram/preview';
 
 export interface Position {
   x: number;
@@ -327,6 +328,9 @@ export interface DiagramData {
   appState?: { viewBackgroundColor?: string };
   // The spec the agent created it from (reference only; elements are the truth).
   spec?: DiagramSpec;
+  // Excalidraw's own SVG export of the scene (fonts embedded); the canvas card
+  // shows this so it matches the editor exactly. Regenerated when `key` goes stale.
+  preview?: DiagramPreview;
   version: 1;
 }
 

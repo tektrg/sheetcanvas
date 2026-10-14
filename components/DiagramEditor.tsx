@@ -1,10 +1,13 @@
-import React, { Suspense, useRef } from 'react';
+import React, { Suspense, useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 import { useStore } from '../store';
 import { ensureSemanticIds } from '../diagram/ensureIds';
 import { cardSizeFor, sameElements } from '../diagram/scene';
 import type { DiagramSceneApi } from './DiagramExcalidraw';
 import { EXCALIDRAW_ASSET_PATH } from '../diagram/excalidrawAssets';
+import { previewKey, type DiagramPreview } from '../diagram/preview';
+import { exportDiagramSvg } from './diagramExport';
+import { PREVIEW_DEBOUNCE_MS } from '../hooks/useDiagramPreviews';
 
 const DEFAULT_BACKGROUND = '#ffffff'; // Excalidraw's default canvas color
 
@@ -25,6 +28,29 @@ export const DiagramEditor: React.FC<DiagramEditorProps> = ({ id, darkMode }) =>
   const setEditingDiagramId = useStore(state => state.setEditingDiagramId);
   const sceneApi = useRef<DiagramSceneApi | null>(null);
   const close = () => setEditingDiagramId(null);
+  // Picture of the scene as edited, exported ~500ms after edits pause, so the
+  // card is already up to date when Save lands.
+  const draftPreview = useRef<DiagramPreview | null>(null);
+  const exportTimer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => clearTimeout(exportTimer.current), []);
+
+  const exportDraft = async () => {
+    const api = sceneApi.current;
+    if (!api) return;
+    const elements = ensureSemanticIds(api.getElements());
+    const background = api.getBackground();
+    const key = previewKey(elements, background);
+    if (draftPreview.current?.key === key) return;
+    try {
+      draftPreview.current = { svg: await exportDiagramSvg(elements, background), key };
+    } catch (error) {
+      console.warn('[diagrams] editor preview export failed', error);
+    }
+  };
+  const onSceneChange = () => {
+    clearTimeout(exportTimer.current);
+    exportTimer.current = setTimeout(() => void exportDraft(), PREVIEW_DEBOUNCE_MS);
+  };
 
   const save = () => {
     const api = sceneApi.current;
@@ -40,6 +66,8 @@ export const DiagramEditor: React.FC<DiagramEditorProps> = ({ id, darkMode }) =>
           elements,
           size: cardSizeFor(elements),
           appState: { viewBackgroundColor: background },
+          // Fresh draft export if it matches what is saved; otherwise the preview watcher re-exports.
+          ...(draftPreview.current?.key === previewKey(elements, background) ? { preview: draftPreview.current } : {}),
         });
       }
     }
@@ -75,6 +103,7 @@ export const DiagramEditor: React.FC<DiagramEditorProps> = ({ id, darkMode }) =>
               background={diagram.appState?.viewBackgroundColor}
               darkMode={darkMode}
               onReady={(api) => { sceneApi.current = api; }}
+              onChange={onSceneChange}
             />
           </Suspense>
         </div>

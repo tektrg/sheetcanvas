@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { renderToStaticMarkup } from 'react-dom/server';
-import React from 'react';
 import { specToScene } from '../specToElements';
 import { patchElement, findBySemanticId } from '../patch';
 import { summarizeElements } from '../summarize';
-import { DiagramSvg } from '../renderSvg';
 import type { ComicSpec, DiagramElement, FreeformSpec } from '../types';
 
 const ids = (els: DiagramElement[]) => els.map((el) => el.customData?.id);
@@ -128,16 +125,12 @@ describe('comic kind', () => {
     expect(() => specToScene({ kind: 'comic', spec: twice })).toThrow(/Duplicate character id "me"/);
   });
 
-  it('works with patch, summary and SVG preview unchanged', () => {
+  it('works with patch and summary', () => {
     const elements = scene();
     const patched = patchElement(elements, 'speech:s2', { label: 'FINE.', color: 'red' });
     expect(patched.ok).toBe(true);
     if (patched.ok) expect(byId(patched.elements, 'speech:s2')).toMatchObject({ text: 'FINE.', strokeColor: '#e03131' });
     expect(summarizeElements(elements, false).some((s) => s.id === 'speech:s1')).toBe(true);
-    const svg = renderToStaticMarkup(React.createElement(DiagramSvg, { elements: [...elements, ...specToScene({ kind: 'freeform', spec: { shapes: [{ id: 'f', type: 'freedraw', x: 0, y: 0, points: [[0, 0], [5, 5], [9, 2]] }] } }).elements] }));
-    expect(svg).toContain('<ellipse');
-    expect(svg).toContain('ARE YOU COMING');
-    expect(svg).toMatch(/<path d="M0 0 C/);
   });
 
 
@@ -295,38 +288,6 @@ describe('hand-drawn style', () => {
     expect(patchElement(els, 'speech:s1', { roughness: 2 })).toMatchObject({ ok: false });
   });
 
-  it('preview renders seeded rough strokes once roughjs is loaded', async () => {
-    const { loadRoughGenerator, roughPaths } = await import('../roughPaths');
-    const gen = await loadRoughGenerator();
-    const els = specToScene({ kind: 'comic', spec: XKCD }).elements;
-    const arms = byId(els, 'char:me:arms');
-    const first = roughPaths(gen, arms)!;
-    expect(first.length).toBeGreaterThan(0);
-    expect(roughPaths(gen, arms)).toEqual(first); // same seed, same strokes
-    expect(roughPaths(gen, byId(els, 'speech:s1'))).toBeNull(); // text is not a rough shape
-    const svg = renderToStaticMarkup(React.createElement(DiagramSvg, { elements: els }));
-    expect(svg).toMatch(/<g opacity="1" transform="translate\([-\d.]+ [-\d.]+\)"><path d="M/);
-    expect(svg).toContain('ARE YOU COMING');
-  });
-
-  it('preview draws every shape the way the Excalidraw editor does', async () => {
-    const { loadRoughGenerator, roughPaths, adjustRoughness } = await import('../roughPaths');
-    const gen = await loadRoughGenerator();
-    const els = specToScene({ kind: 'comic', spec: XKCD }).elements;
-    const arms = byId(els, 'char:me:arms');
-    // roughness 0 still goes through roughjs (Excalidraw never draws clean SVG primitives)
-    expect(roughPaths(gen, { ...arms, roughness: 0 })?.length).toBeGreaterThan(0);
-    // small shapes are calmed like Excalidraw's adjustRoughness
-    const head = els.find((el) => el.type === 'ellipse' && el.width < 50)!;
-    expect(adjustRoughness({ ...head, roughness: 2 })).toBeLessThan(2);
-    // closed, filled line = filled polygon, like the editor
-    const loop = { ...arms, roundness: null, backgroundColor: '#ffc9c9', points: [[0, 0], [40, 0], [40, 40], [0, 0]] as [number, number][] };
-    expect(roughPaths(gen, loop)!.some((p) => p.fill === '#ffc9c9')).toBe(true);
-    // text in the editor's font, not a stand-in
-    const svg = renderToStaticMarkup(React.createElement(DiagramSvg, { elements: els }));
-    expect(svg).toContain('font-family="Excalifont, Virgil');
-    expect(svg).toContain('@font-face{font-family:Excalifont');
-  });
 });
 
 describe('sketchy style (single wobbly stroke baked into geometry)', () => {

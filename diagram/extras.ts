@@ -7,7 +7,7 @@ import { growPanel, shift, type LayoutOptions } from './comic/compile';
 import type { Box } from './comic/geometry';
 import { shapesToElements } from './freeform';
 import { sketchify } from './sketch';
-import { sceneBounds } from './renderSvg';
+import { sceneBounds } from './scene';
 import { findBySemanticId, semanticIdOf } from './patch';
 
 const MARGIN = 24;

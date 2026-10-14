@@ -24,6 +24,7 @@ import { Upload, Moon, Sun, Table, StickyNote, Undo2, Redo2, Grid3X3, BarChart3,
 import { useStore, AppState } from './store';
 import { useChartPalette } from './hooks/useChartPalette';
 import { useFrameRateLogger } from './hooks/useFrameRateLogger';
+import { useDiagramPreviews } from './hooks/useDiagramPreviews';
 import { getChartPalette } from './utils/chartColorSchemes';
 import { buildChartSeriesDisplayNames } from './utils/chartDisplay';
 import AgentChatPanel from './src/components/AgentChatPanel';
@@ -60,6 +61,7 @@ const findCanvasItemElement = (id: string): HTMLElement | null =>
 
 const App: React.FC = () => {
   useFrameRateLogger();
+  useDiagramPreviews();
 
   const [isEphemeralPluginSession] = useState(() =>
     typeof window !== 'undefined' && readPluginMcpConfig(window.location.href)?.ephemeral === true

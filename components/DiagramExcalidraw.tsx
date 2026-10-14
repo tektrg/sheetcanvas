@@ -15,9 +15,11 @@ interface DiagramExcalidrawProps {
   background?: string;
   darkMode?: boolean;
   onReady: (api: DiagramSceneApi) => void;
+  /** Fires on every scene edit (Excalidraw onChange). */
+  onChange?: () => void;
 }
 
-const DiagramExcalidraw: React.FC<DiagramExcalidrawProps> = ({ elements, background, darkMode, onReady }) => (
+const DiagramExcalidraw: React.FC<DiagramExcalidrawProps> = ({ elements, background, darkMode, onReady, onChange }) => (
   <Excalidraw
     initialData={{
       elements: elements as never,
@@ -25,6 +27,7 @@ const DiagramExcalidraw: React.FC<DiagramExcalidrawProps> = ({ elements, backgro
       scrollToContent: true,
     }}
     theme={darkMode ? 'dark' : 'light'}
+    onChange={onChange}
     excalidrawAPI={(api) =>
       onReady({
         // Plain JSON copies: Excalidraw elements are frozen/readonly.

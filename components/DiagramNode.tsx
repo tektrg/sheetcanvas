@@ -1,7 +1,7 @@
 import React from 'react';
 import { GripVertical, PencilLine, Trash2, Workflow } from 'lucide-react';
 import { useStore } from '../store';
-import { DiagramSvg } from '../diagram/renderSvg';
+import { previewSrc } from '../diagram/preview';
 
 interface DiagramNodeProps {
   id: string;
@@ -10,7 +10,8 @@ interface DiagramNodeProps {
   onMouseDown: (e: React.MouseEvent) => void;
 }
 
-// Canvas card for a diagram: cheap SVG preview; double-click (or the pencil)
+// Canvas card for a diagram: shows the stored Excalidraw SVG export
+// (hooks/useDiagramPreviews.ts keeps it fresh) as an <img>; double-click (or the pencil)
 // opens the full Excalidraw editor, which is loaded only then.
 // Mirrors Excalidraw's own dark theme rendering.
 const EXCALIDRAW_DARK_FILTER = 'invert(93%) hue-rotate(180deg)';
@@ -72,7 +73,11 @@ const DiagramNodeComponent: React.FC<DiagramNodeProps> = ({ id, darkMode, isPend
           style={{ backgroundColor: background ?? '#ffffff', filter: darkMode ? EXCALIDRAW_DARK_FILTER : undefined }}
           onMouseDown={onMouseDown}
         >
-          <DiagramSvg elements={diagram.elements} />
+          {diagram.preview ? (
+            <img src={previewSrc(diagram.preview.svg)} alt={diagram.title ?? 'Diagram'} draggable={false} className="w-full h-full object-contain" />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-xs text-neutral-400">Drawing…</div>
+          )}
         </div>
       </div>
     </div>
