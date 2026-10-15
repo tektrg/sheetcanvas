@@ -38,6 +38,7 @@ export const SHEETCANVAS_APP_TOOL = {
 
 export const SHEETCANVAS_PUBLIC_APP_TOOL = {
   ...SHEETCANVAS_APP_TOOL,
+  description: 'Open the interactive SheetCanvas workspace before calling canvas tools. ready=false means the workspace is opening; subsequent tools wait briefly for it to connect. Keep the workspace visible while working.',
   _meta: {
     ...SHEETCANVAS_APP_TOOL._meta,
     ui: {

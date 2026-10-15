@@ -9,6 +9,7 @@ import { promisify } from 'node:util';
 const execFileAsync = promisify(execFile);
 const ORIGIN = 'https://sheetcanvas.com';
 const MCP_URL = `${ORIGIN}/mcp`;
+const PLUGIN_VERSION = '1.0.1';
 const PACKAGE_DIR = path.join(homedir(), 'plugins', 'sheetcanvas-public');
 const ZIP_PATH = path.join(homedir(), 'plugins', 'sheetcanvas-public-plugin.zip');
 const DEMO_PATH = new URL('../public/plugin-review/demo.webm', import.meta.url);
@@ -42,30 +43,30 @@ const review = {
         description: 'Open the interactive spreadsheet canvas',
         prompt: 'Open SheetCanvas so I can work on a spreadsheet canvas.',
         tools_triggered: 'openSheetCanvas',
-        expected_behavior: 'Open the fullscreen SheetCanvas workspace and report that it is ready.',
+        expected_behavior: 'Display the SheetCanvas workspace. While the browser connects, report that it is opening rather than claiming it is ready. After connection, canvas tools can read the workspace.',
       },
       {
         description: 'Create and populate a small sheet',
         prompt: 'In SheetCanvas, create a sheet named Quarterly Plan with headers Quarter and Target, then add Q1 120 and Q2 150.',
-        tools_triggered: 'createSheet',
+        tools_triggered: 'openSheetCanvas, createSheet, getRange',
         expected_behavior: 'Create one sheet with the requested title and exactly six populated cells: two headers plus Q1, 120, Q2, and 150.',
       },
       {
         description: 'Calculate an exact change from a fresh fixture',
         prompt: 'In a fresh SheetCanvas workspace, create a sheet named Growth Check with Month and Revenue headers, Jan 100 and Feb 130. Read A1:B3 and tell me exactly how much revenue increased.',
-        tools_triggered: 'createSheet, getRange',
+        tools_triggered: 'openSheetCanvas, createSheet, getRange',
         expected_behavior: 'Create the fixture, read its exact range, and report that revenue increased by 30 from Jan to Feb.',
       },
       {
         description: 'Create a chart from a fresh fixture',
         prompt: 'In a fresh SheetCanvas workspace, create a sheet named Chart Fixture with Quarter and Target headers, Q1 120 and Q2 150. Then create a bar chart titled Target by Quarter using Quarter as labels and Target as values.',
-        tools_triggered: 'createSheet, createChart',
+        tools_triggered: 'openSheetCanvas, createSheet, createChart',
         expected_behavior: 'Create the two-row fixture and one bar chart titled Target by Quarter using the fixture columns.',
       },
       {
         description: 'Add a note with an exact sourced calculation',
         prompt: 'In a fresh SheetCanvas workspace, create a sheet named Note Fixture with Quarter and Target headers, Q1 120 and Q2 150. Read A1:B3, then add a note titled Plan takeaway saying Q2 exceeds Q1 by 30, including both values.',
-        tools_triggered: 'createSheet, getRange, createNote',
+        tools_triggered: 'openSheetCanvas, createSheet, getRange, createNote',
         expected_behavior: 'Create the fixture and one note titled Plan takeaway that includes 120, 150, and the exact difference of 30.',
       },
     ],
@@ -90,14 +91,14 @@ const review = {
 
 const publication = {
   release_notes:
-    'Initial public release. Adds a fullscreen SheetCanvas workspace, session-isolated MCP access, spreadsheet read/write tools, charts, pivots, sparklines, and notes.',
+    'Review remediation: reports actual workspace readiness, waits for browser connection and restoration before canvas tools, and recovers an isolated temporary canvas when the workspace reloads within its two-hour session.',
 };
 
 function portableManifest() {
   return {
     $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
     name: 'sheetcanvas',
-    version: '1.0.0',
+    version: PLUGIN_VERSION,
     description: 'Build and refine spreadsheet analysis on a visual canvas.',
     author: {
       name: 'The Indie App',
@@ -121,7 +122,7 @@ function portableManifest() {
 function compatibilityManifest() {
   return {
     name: 'sheetcanvas',
-    version: '1.0.0',
+    version: PLUGIN_VERSION,
     description: 'Build and refine spreadsheet analysis on a visual canvas.',
     author: {
       name: 'The Indie App',

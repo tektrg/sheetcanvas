@@ -27,7 +27,8 @@ import { buildChartSeriesDisplayNames } from './utils/chartDisplay';
 import AgentChatPanel from './src/components/AgentChatPanel';
 import { AgentEvalBridge } from './src/agent/AgentEvalBridge';
 import { useMcpBridge } from './src/agent/useMcpBridge';
-import { readPluginMcpConfig } from './src/agent/mcpPluginBootstrap';
+import { isPublicPluginLaunch } from './src/agent/mcpPluginBootstrap';
+import { isPublicCanvasReady } from './src/agent/publicCanvasSession';
 import { useWebMcpBridge } from './src/agent/webmcp/useWebMcpBridge';
 import { AgentActivityPanel } from './src/components/AgentActivityPanel';
 import { installTrailObserver } from './src/agent/activityTrail';
@@ -52,7 +53,7 @@ const App: React.FC = () => {
   useFrameRateLogger();
 
   const [isEphemeralPluginSession] = useState(() =>
-    typeof window !== 'undefined' && readPluginMcpConfig(window.location.href)?.ephemeral === true
+    typeof window !== 'undefined' && isPublicPluginLaunch(window.location.href, window.history.state)
   );
 
   const [darkMode, setDarkMode] = useState(() =>
@@ -93,7 +94,7 @@ const App: React.FC = () => {
   
   const [isCommandBarOpen, setIsCommandBarOpen] = useState(false);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(() =>
-    typeof window !== 'undefined' && window.localStorage.getItem(ONBOARDING_DISMISSED_KEY) !== 'true'
+    !isEphemeralPluginSession && typeof window !== 'undefined' && window.localStorage.getItem(ONBOARDING_DISMISSED_KEY) !== 'true'
   );
   const [dataConnectorState, setDataConnectorState] = useState<{ isOpen: boolean; initialType?: ConnectorType }>({ isOpen: false });
 
@@ -141,7 +142,8 @@ const App: React.FC = () => {
   const [agentPanelOpen, setAgentPanelOpen] = useState(false);
   const [connectAgentOpen, setConnectAgentOpen] = useState(false);
   const mcpBridge = useMcpBridge({ getSelection: () => activeSelectionRef.current });
-  const webmcpBridge = useWebMcpBridge({ getSelection: () => activeSelectionRef.current });
+  const publicCanvasPending = isEphemeralPluginSession && mcpBridge.connectionStatus !== 'connected';
+  const webmcpBridge = useWebMcpBridge({ getSelection: () => activeSelectionRef.current, ready: !publicCanvasPending });
   const openConnectAgent = useCallback(() => {
     setAgentPanelOpen(false);
     setConnectAgentOpen(true);
@@ -182,6 +184,7 @@ const App: React.FC = () => {
   }, [initStore, isEphemeralPluginSession]);
 
   useEffect(() => {
+    if (isEphemeralPluginSession) return;
     const params = new URLSearchParams(window.location.search);
     if (params.get('code') || params.get('error')) {
       const callbackState = params.get('state');
@@ -283,6 +286,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isEphemeralPluginSession && !isPublicCanvasReady()) return;
       const target = e.target as HTMLElement;
 
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -1053,6 +1057,7 @@ const App: React.FC = () => {
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setIsDraggingFile(false);
+    if (isEphemeralPluginSession && !isPublicCanvasReady()) return;
     const files: File[] = Array.from(e.dataTransfer.files);
     if (files.length === 0) return;
     const x = (e.clientX - transform.offset.x) / transform.scale;
@@ -1060,6 +1065,7 @@ const App: React.FC = () => {
     await processImportedFiles(files, { x, y });
   };
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (isEphemeralPluginSession && !isPublicCanvasReady()) return;
       if (e.target.files && e.target.files.length > 0) {
           await processImportedFiles(Array.from(e.target.files));
       }
@@ -1068,6 +1074,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const handleGlobalPaste = (e: ClipboardEvent) => {
+        if (isEphemeralPluginSession && !isPublicCanvasReady()) return;
         const target = e.target as HTMLElement;
         if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
         
@@ -1211,7 +1218,7 @@ const App: React.FC = () => {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div className="w-full h-full bg-neutral-100 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 relative">
+      <div inert={publicCanvasPending ? true : undefined} className="w-full h-full bg-neutral-100 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 relative">
         <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileSelect} multiple accept=".csv,.xlsx,.xls"/>
         {isDraggingFile && (
             <div className="absolute inset-0 z-[100] bg-teal-500/10 backdrop-blur-sm m-4 rounded-xl border-4 border-dashed border-teal-500 flex flex-col items-center justify-center text-teal-600 dark:text-teal-400 pointer-events-none">
@@ -1234,6 +1241,11 @@ const App: React.FC = () => {
         )}
 
         <Toast message={toast.message} isVisible={toast.visible} onClose={() => setToast({ ...toast, visible: false })} />
+        {isEphemeralPluginSession && mcpBridge.recoveryError && (
+            <div role="alert" className="fixed top-4 left-4 right-4 z-[1000] mx-auto max-w-2xl rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 shadow-lg dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
+                {mcpBridge.recoveryError}
+            </div>
+        )}
 
         {/* Agent controls — same pill style as the Toolbar nav bar */}
         <div
@@ -1288,7 +1300,7 @@ const App: React.FC = () => {
             onAddTable={addTable}
             onAddNote={handleAddNote}
             onImport={() => fileInputRef.current?.click()}
-            onConnectData={() => setDataConnectorState({ isOpen: true })}
+            onConnectData={isEphemeralPluginSession ? undefined : () => setDataConnectorState({ isOpen: true })}
             onConnectAgent={openConnectAgent}
             onCopyImage={handleCopySelectionAsImage}
             onInitChart={handleInitChart}
@@ -1296,7 +1308,7 @@ const App: React.FC = () => {
             onInitSparkline={handleInitSparkline}
         />
         
-        {dataConnectorState.isOpen && (
+        {!isEphemeralPluginSession && dataConnectorState.isOpen && (
             <DataConnectorDialog
                 onClose={() => setDataConnectorState({ isOpen: false })}
                 onImport={handleDataConnectImport}
@@ -1368,7 +1380,7 @@ const App: React.FC = () => {
             onAddTable={addTable}
             onAddNote={handleAddNote}
             onImport={() => fileInputRef.current?.click()}
-            onConnectData={() => setDataConnectorState({ isOpen: true })}
+            onConnectData={isEphemeralPluginSession ? undefined : () => setDataConnectorState({ isOpen: true })}
             darkMode={darkMode}
             toggleDarkMode={() => setDarkMode(!darkMode)}
             onOpenCommandBar={() => setIsCommandBarOpen(true)}
@@ -1376,6 +1388,14 @@ const App: React.FC = () => {
             hidden={isCommandBarOpen || isOnboardingOpen}
         />
       </div>
+      {publicCanvasPending && (
+        <div role="status" aria-live="polite" className="fixed inset-0 z-[1100] flex items-center justify-center bg-neutral-100/90 p-6 text-neutral-900 backdrop-blur-sm dark:bg-neutral-900/90 dark:text-neutral-100">
+          <div className="max-w-md rounded-xl border border-neutral-200 bg-white p-5 text-center shadow-lg dark:border-neutral-700 dark:bg-neutral-800">
+            <p className="font-medium">{mcpBridge.connectionStatus === 'replaced' ? 'This canvas is open in another view.' : 'Connecting and restoring your temporary canvas…'}</p>
+            <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-300">Keep this canvas open. If it stays disconnected or the session has expired, ask ChatGPT to open SheetCanvas again.</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

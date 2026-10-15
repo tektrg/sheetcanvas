@@ -384,7 +384,7 @@
         <h2 id="plugin-title">Plugin actions are limited to the open SheetCanvas workspace.</h2>
         <p class="lede">The public plugin uses an anonymous, short-lived session to relay approved tool calls between ChatGPT and the SheetCanvas workspace you open. You remain responsible for reviewing requested changes, maintaining backups, and deciding which data is appropriate to share with an AI service.</p>
         <ul class="list">
-          <li><strong>No account promise:</strong> the anonymous plugin session is not a user account, durable storage service, or recovery mechanism.</li>
+          <li><strong>No account promise:</strong> the anonymous plugin session is not a user account or lasting storage service. A temporary snapshot can restore the canvas during its two-hour session, but it is not a backup guarantee.</li>
           <li><strong>Ephemeral workspace:</strong> a public plugin session starts empty and does not load or save the browser's normal SheetCanvas workspace. Export anything you need before closing it.</li>
           <li><strong>Connector boundary:</strong> anonymous public plugin sessions cannot list or query configured Google Analytics, Google Sheets, or ClickHouse connections.</li>
           <li><strong>Third-party terms:</strong> your use of ChatGPT, Cloudflare-hosted services, and connected data sources is also subject to those providers' terms and permissions.</li>

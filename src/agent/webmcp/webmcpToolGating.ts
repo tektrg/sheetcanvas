@@ -14,6 +14,7 @@
 // exist, does a note exist, ...), not on conversational history.
 import type { AppState } from '../../../store';
 import { TOOL_NAMES, type ToolName } from '../../../agent/tools';
+import { isPublicCanvasTool } from '../../../agent/publicToolPolicy';
 
 export interface GatingState {
   hasSheet: boolean;
@@ -93,13 +94,14 @@ export function readGatingState(state: AppState): GatingState {
   };
 }
 
-export function computeDesiredTools(gating: GatingState): Set<ToolName> {
+export function computeDesiredTools(gating: GatingState, publicCanvas = false): Set<ToolName> {
   const desired = new Set<ToolName>(NEVER_GATED);
   if (gating.hasSheet) SHEET_GATED.forEach((name) => desired.add(name));
   if (gating.hasNote) NOTE_GATED.forEach((name) => desired.add(name));
   if (gating.hasSchemaToken) SCHEMA_TOKEN_GATED.forEach((name) => desired.add(name));
   if (gating.hasPrivateResult) PRIVATE_RESULT_GATED.forEach((name) => desired.add(name));
   if (gating.hasConnectorSheet) CONNECTOR_SHEET_GATED.forEach((name) => desired.add(name));
+  if (publicCanvas) for (const name of desired) if (!isPublicCanvasTool(name)) desired.delete(name);
   return desired;
 }
 

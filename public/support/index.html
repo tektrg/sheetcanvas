@@ -117,7 +117,7 @@
           <p>The public plugin opens SheetCanvas in a fullscreen workspace and uses an anonymous session that expires after two hours.</p>
           <ul>
             <li>Open the workspace before asking ChatGPT to read or change canvas data.</li>
-            <li>Each public plugin workspace starts empty and is not saved into your normal browser workspace.</li>
+            <li>Each new public session starts empty. A temporary snapshot restores the same session after a workspace reload; it is not saved into your normal browser workspace.</li>
             <li>Connected-source tools are not available in the anonymous public plugin.</li>
             <li>If a session expires, close the workspace and open SheetCanvas again.</li>
             <li>Keep only one active plugin workspace per ChatGPT session.</li>
@@ -125,7 +125,7 @@
         </article>
         <article class="card">
           <h2>Files and canvas data</h2>
-          <p>Local CSV and XLSX imports stay in the browser workspace unless you explicitly use a connected data source.</p>
+          <p>In the normal app, local CSV and XLSX imports stay in the browser workspace unless you use a connected source. In the public ChatGPT plugin, canvas data is also saved in a temporary session snapshot for reload recovery.</p>
           <ul>
             <li>Confirm the correct sheet and range before destructive edits.</li>
             <li>Export important work; the plugin session is not a cloud backup.</li>

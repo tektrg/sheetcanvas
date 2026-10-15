@@ -34,9 +34,10 @@ async function rpc(method: string, params?: Record<string, unknown>) {
   return { response, body: await response.json() as Record<string, any> };
 }
 
-function createPublicEnv() {
+function createPublicEnv(browserConnected = false) {
   let active = false;
   const stub = {
+    getStatus: async () => ({ browserConnected }),
     initializePublicSession: async () => { active = true; },
     isPublicSessionActive: async () => active,
     terminatePublicSession: async () => { active = false; },
@@ -74,6 +75,13 @@ async function publicRpc(
 }
 
 describe('ChatGPT MCP extension routes', () => {
+  it('reports ready only once the public workspace has connected', async () => {
+    const { env } = createPublicEnv(true);
+    const initialized = await publicRpc(env, 'initialize');
+    const session = initialized.response.headers.get('Mcp-Session-Id')!;
+    const opened = await publicRpc(env, 'tools/call', { name: SHEETCANVAS_APP_TOOL_NAME, arguments: {} }, session);
+    expect(opened.body.result.structuredContent).toEqual({ ready: true });
+  });
   it('advertises tools and UI resources during initialization', async () => {
     const { response, body } = await rpc('initialize', { protocolVersion: '2025-06-18' });
 
@@ -152,7 +160,8 @@ describe('ChatGPT MCP extension routes', () => {
       { name: SHEETCANVAS_APP_TOOL_NAME, arguments: {} },
       session,
     );
-    expect(opened.body.result.structuredContent).toEqual({ ready: true });
+    expect(opened.body.result.structuredContent).toEqual({ ready: false });
+    expect(opened.body.result.content[0].text).toContain('opening');
     expect(opened.body.result._meta).toEqual({ bridgeSession: session });
 
     for (const blockedTool of PUBLIC_BLOCKED_CONNECTOR_TOOLS) {
