@@ -21,6 +21,8 @@ DEFAULT_TIMEOUT_MS = "15000"
 MAX_ROWS = "5000"
 AGENT_MODEL = "gemini-2.5-flash"
 AGENT_DAILY_LIMIT = "50"
+# Agent diagrams/comics: private canvases only (never the public plugin).
+DIAGRAMS_ENABLED = "true"
 # Set ENVIRONMENT="development" in backend/.dev.vars for local agent testing
 # without an AGENT_QUOTA KV binding. Production requires KV.
 # OAuth client settings for Google Analytics (GA4).
