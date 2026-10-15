@@ -69,7 +69,7 @@ export function buildSheetCanvasAppResource(token: string) {
     </style>
   </head>
   <body>
-    <iframe src="${canvasUrl}" title="SheetCanvas workspace" allow="clipboard-read; clipboard-write" />
+    <iframe src="${canvasUrl}" title="SheetCanvas workspace" allow="clipboard-read; clipboard-write"></iframe>
   </body>
 </html>`;
 
@@ -110,16 +110,32 @@ export function buildPublicSheetCanvasAppResource() {
     </style>
   </head>
   <body>
-    <iframe id="sheetcanvas" title="SheetCanvas workspace" allow="clipboard-read; clipboard-write" />
+    <iframe id="sheetcanvas" title="SheetCanvas workspace" allow="clipboard-read; clipboard-write"></iframe>
     <script>
       (function () {
         var sessionPattern = /^p_[a-f0-9]{64}$/;
         var iframe = document.getElementById('sheetcanvas');
         var currentSession = '';
 
+        function readBridgeSession(metadata) {
+          if (!metadata || typeof metadata !== 'object') return '';
+          // Accept only widget metadata and the documented tool-result envelopes.
+          // Never search structuredContent/toolOutput or arbitrary nested objects.
+          var callResult = metadata.call_tool_result;
+          var mcpResult = metadata.mcp_tool_result;
+          var nestedMcpResult = callResult && callResult.mcp_tool_result;
+          var candidates = [metadata, metadata._meta, callResult && callResult._meta,
+            mcpResult && mcpResult._meta, nestedMcpResult && nestedMcpResult._meta];
+          for (var index = 0; index < candidates.length; index += 1) {
+            var session = candidates[index] && candidates[index].bridgeSession;
+            if (typeof session === 'string' && sessionPattern.test(session)) return session;
+          }
+          return '';
+        }
+
         function render(metadata) {
-          var bridgeSession = metadata && metadata.bridgeSession;
-          if (typeof bridgeSession !== 'string' || !sessionPattern.test(bridgeSession)) return;
+          var bridgeSession = readBridgeSession(metadata);
+          if (!bridgeSession) return;
           if (bridgeSession === currentSession) return;
           currentSession = bridgeSession;
           var url = new URL('https://sheetcanvas.com/');
