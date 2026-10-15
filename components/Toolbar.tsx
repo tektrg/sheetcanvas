@@ -8,7 +8,7 @@ interface ToolbarProps {
   onAddTable: () => void;
   onAddNote: () => void;
   onImport: () => void;
-  onConnectData: () => void;
+  onConnectData?: () => void;
   darkMode: boolean;
   toggleDarkMode: () => void;
   onOpenCommandBar: () => void;
@@ -120,7 +120,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         
         {/* Creation Tools */}
         <ToolbarButton onClick={onAddTable} icon={Grid3X3} tooltip="Add Table" />
-        <ToolbarButton onClick={onConnectData} icon={Database} tooltip="Connect Data (Google Sheets/Analytics)" />
+        {onConnectData && <ToolbarButton onClick={onConnectData} icon={Database} tooltip="Connect Data (Google Sheets/Analytics)" />}
         <ToolbarButton onClick={onImport} icon={Upload} tooltip="Import File" />
         <ToolbarButton onClick={onAddNote} icon={StickyNote} tooltip="Add Note" />
 

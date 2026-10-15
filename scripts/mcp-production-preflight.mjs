@@ -331,13 +331,13 @@ async function checkLiveMcpRoutes() {
         arguments: {},
       });
       if (
-        opened.body?.result?.structuredContent?.ready !== true ||
+        opened.body?.result?.structuredContent?.ready !== false ||
         opened.body?.result?._meta?.bridgeSession !== session ||
         'bridgeSession' in (opened.body?.result?.structuredContent ?? {})
       ) {
-        recordFailure('/mcp launcher did not keep the bridge session in widget-only metadata.');
+        recordFailure('/mcp launcher falsely reported readiness or failed widget-only session isolation.');
       } else {
-        recordPass('/mcp launcher keeps the bridge session in widget-only metadata.');
+        recordPass('/mcp launcher reports opening until connected and keeps the session in widget-only metadata.');
       }
 
       const resourceUri = 'ui://sheetcanvas/workspace-public-v1.html';

@@ -2,12 +2,39 @@ import { describe, expect, it } from 'vitest';
 import {
   readPluginMcpConfig,
   stripPluginCredentialsFromUrl,
+  isPublicPluginLaunch,
+  sanitizePluginLaunchUrl,
+  pluginHistoryState,
 } from '../mcpPluginBootstrap';
 
 const TOKEN = 'b'.repeat(48);
 const PUBLIC_SESSION = `p_${'c'.repeat(64)}`;
 
 describe('ChatGPT plugin MCP bootstrap', () => {
+  it('preserves the public capability for iframe reload without accepting a private fallback', () => {
+    const launch = `https://sheetcanvas.com/?chatgpt_plugin=1#mcp_session=${PUBLIC_SESSION}`;
+    const cleaned = sanitizePluginLaunchUrl(launch);
+    const state = pluginHistoryState(launch, { other: 1 });
+    expect(cleaned).not.toContain(PUBLIC_SESSION);
+    expect(readPluginMcpConfig(cleaned, state)?.token).toBe(PUBLIC_SESSION);
+    expect(readPluginMcpConfig(cleaned)).toBeNull();
+    expect(readPluginMcpConfig(cleaned.replace('sheetcanvas.com', 'other.example'), state)).toBeNull();
+    expect(readPluginMcpConfig('https://sheetcanvas.com/', state)).toBeNull();
+    expect(readPluginMcpConfig(`https://sheetcanvas.com/?chatgpt_plugin=1#mcp_session=bad&mcp_token=${TOKEN}`)).toBeNull();
+    expect(isPublicPluginLaunch('https://sheetcanvas.com/?chatgpt_plugin=1')).toBe(true);
+    expect(isPublicPluginLaunch('https://sheetcanvas.com/?chatgpt_plugin=1#mcp_session=bad')).toBe(true);
+    expect(isPublicPluginLaunch(`https://sheetcanvas.com/?chatgpt_plugin=1#mcp_token=${TOKEN}`)).toBe(false);
+  });
+  it('recovers a private plugin capability only from the validated private history entry', () => {
+    const launch = `https://sheetcanvas.com/?chatgpt_plugin=1#mcp_token=${TOKEN}`;
+    const cleaned = sanitizePluginLaunchUrl(launch);
+    const state = pluginHistoryState(launch, null);
+    expect(cleaned).not.toContain(TOKEN);
+    expect(readPluginMcpConfig(cleaned, state)?.token).toBe(TOKEN);
+    expect(isPublicPluginLaunch(cleaned, state)).toBe(false);
+    expect(isPublicPluginLaunch(cleaned)).toBe(true);
+    expect(readPluginMcpConfig(cleaned.replace('sheetcanvas.com', 'other.example'), state)).toBeNull();
+  });
   it('turns a valid plugin token into an enabled same-origin bridge config', () => {
     expect(
       readPluginMcpConfig(`https://sheetcanvas.com/?chatgpt_plugin=1#mcp_token=${TOKEN}`),

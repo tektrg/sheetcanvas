@@ -386,7 +386,7 @@
         <ul class="list">
           <li><strong>Tool data:</strong> prompts and tool inputs selected by ChatGPT, plus requested sheet cells, chart settings, and note content, pass between ChatGPT, the SheetCanvas Worker, and the browser workspace to perform the requested action.</li>
           <li><strong>Session metadata:</strong> the service processes a random session identifier, tool names, success or error status, and timestamps for operation and abuse prevention. The identifier expires after two hours and can be ended earlier by the MCP client.</li>
-          <li><strong>Workspace storage:</strong> the public bridge relays tool calls to an empty, ephemeral browser workspace. It does not load or save the browser's normal SheetCanvas workspace, and the relay is not a cloud backup.</li>
+          <li><strong>Workspace storage:</strong> each public session starts with an empty canvas. Sheets, charts, notes, and the canvas view are temporarily stored in a Cloudflare-hosted session object so the workspace can recover after a reload. The snapshot is limited to 1 MB and is deleted when the two-hour session expires or the MCP client ends it. It does not load or save the browser's normal SheetCanvas workspace and is not a lasting cloud backup.</li>
           <li><strong>Connector boundary:</strong> the anonymous public plugin does not expose Google Analytics, Google Sheets, or ClickHouse connector tools. Connector setup and queries remain outside this public session.</li>
           <li><strong>Service providers:</strong> OpenAI processes plugin prompts and responses under its own terms, while Cloudflare hosts the SheetCanvas Worker, session objects, and public site.</li>
         </ul>

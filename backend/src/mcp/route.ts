@@ -6,6 +6,7 @@ import type { BridgeCallResult, BridgeStatus } from './bridge';
 import { requireBearerToken } from '../auth';
 import { ANALYSIS_PLAYBOOK, PUBLIC_ANALYSIS_PLAYBOOK } from '../agent/analysisPlaybook';
 import { MCP_TOOL_ANNOTATIONS } from '../../../agent/toolAnnotations';
+import { PUBLIC_CONNECTOR_TOOL_NAMES } from '../../../agent/publicToolPolicy';
 import {
   SHEETCANVAS_APP_RESOURCE_URI,
   SHEETCANVAS_APP_TOOL,
@@ -31,7 +32,7 @@ import {
 // Only 2025-06-18: older revisions permit JSON-RPC batching, which this
 // endpoint intentionally does not implement.
 const SUPPORTED_PROTOCOL_VERSIONS = ['2025-06-18'];
-const SERVER_INFO = { name: 'sheetcanvas', version: '1.0.0' };
+const SERVER_INFO = { name: 'sheetcanvas', version: '1.0.1' };
 const TOKEN_PATTERN = /^[a-f0-9]{48}$/;
 const PUBLIC_SESSION_PATTERN = /^p_[a-f0-9]{64}$/;
 const PUBLIC_SESSION_TTL_MS = 2 * 60 * 60 * 1_000;
@@ -75,16 +76,6 @@ const diagramsEnabled = (env: Env) => env.DIAGRAMS_ENABLED?.trim() === 'true';
 function privateToolNames(env: Env): readonly ToolName[] {
   return diagramsEnabled(env) ? TOOL_NAMES : ALWAYS_PRIVATE_TOOL_NAMES;
 }
-const PUBLIC_CONNECTOR_TOOL_NAMES = new Set<ToolName>([
-  'listConnections',
-  'listConnectionProperties',
-  'describeConnection',
-  'createQuerySheet',
-  'queryConnection',
-  'createQuerySheetFromResult',
-  'updateQuerySheet',
-  'createGaTrendBySource',
-]);
 const PUBLIC_TOOL_NAMES = TOOL_NAMES.filter(
   (name) => !PUBLIC_CONNECTOR_TOOL_NAMES.has(name) && !PRIVATE_ONLY_TOOL_NAMES.has(name),
 );
@@ -214,9 +205,12 @@ async function handleToolsCall(env: Env, connection: McpConnection, request: Jso
     if (!args || Array.isArray(args) || typeof args !== 'object' || Object.keys(args).length > 0) {
       return rpcError(id, -32602, `${SHEETCANVAS_APP_TOOL_NAME} does not accept arguments`);
     }
+    const ready = connection.mode === 'private' ||
+      (await bridgeStubForToken(env, connection.bridgeKey).getStatus()).browserConnected;
     return rpcResult(id, {
-      content: [{ type: 'text', text: 'SheetCanvas is ready in the interactive workspace.' }],
-      structuredContent: { ready: true },
+      content: [{ type: 'text', text: ready ? 'SheetCanvas is ready in the interactive workspace.' :
+        'SheetCanvas is opening in the interactive workspace. Canvas tools wait briefly for it to connect; keep the workspace visible.' }],
+      structuredContent: { ready },
       ...(connection.mode === 'public'
         ? { _meta: { bridgeSession: connection.publicSession } }
         : {}),

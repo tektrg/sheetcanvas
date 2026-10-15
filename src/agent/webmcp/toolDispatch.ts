@@ -11,6 +11,9 @@
 // want the full result) are unaffected.
 import type { SelectionContext } from '../../../types';
 import { executeClientTool, type SelectionResolver, type ToolResult } from '../clientToolExecutor';
+import { isPublicCanvasTool } from '../../../agent/publicToolPolicy';
+import { isPublicCanvasEnvironment } from '../mcpPluginBootstrap';
+import { isPublicCanvasReady } from '../publicCanvasSession';
 
 export type ToolDoor = 'copilot' | 'chatgpt' | 'remote-mcp' | 'eval';
 
@@ -40,6 +43,12 @@ export async function dispatchTool(
   input: unknown,
   opts: DispatchToolOptions,
 ): Promise<ToolResult> {
+  if (isPublicCanvasEnvironment() && !isPublicCanvasTool(name)) {
+    return { ok: false, error: 'Account-backed connectors are not available in this temporary canvas.' };
+  }
+  if (isPublicCanvasEnvironment() && !isPublicCanvasReady()) {
+    return { ok: false, error: 'Temporary canvas is connecting or restoring. Keep it open and retry when connected.' };
+  }
   let entryId: string | null = null;
   if (observer) {
     try {

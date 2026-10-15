@@ -15,6 +15,7 @@
 import type { AppState } from '../../../store';
 import { TOOL_NAMES, type ToolName } from '../../../agent/tools';
 import { DIAGRAM_TOOL_NAMES, diagramsEnabled } from '../diagramsFlag';
+import { isPublicCanvasTool } from '../../../agent/publicToolPolicy';
 
 export interface GatingState {
   hasSheet: boolean;
@@ -99,7 +100,7 @@ export function readGatingState(state: AppState): GatingState {
   };
 }
 
-export function computeDesiredTools(gating: GatingState): Set<ToolName> {
+export function computeDesiredTools(gating: GatingState, publicCanvas = false): Set<ToolName> {
   const desired = new Set<ToolName>(NEVER_GATED);
   if (gating.hasSheet) SHEET_GATED.forEach((name) => desired.add(name));
   if (gating.hasNote) NOTE_GATED.forEach((name) => desired.add(name));
@@ -108,6 +109,7 @@ export function computeDesiredTools(gating: GatingState): Set<ToolName> {
   if (gating.hasPrivateResult) PRIVATE_RESULT_GATED.forEach((name) => desired.add(name));
   if (gating.hasConnectorSheet) CONNECTOR_SHEET_GATED.forEach((name) => desired.add(name));
   if (!diagramsEnabled()) DIAGRAM_TOOL_NAMES.forEach((name) => desired.delete(name));
+  if (publicCanvas) for (const name of desired) if (!isPublicCanvasTool(name)) desired.delete(name);
   return desired;
 }
 

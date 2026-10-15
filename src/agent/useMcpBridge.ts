@@ -3,7 +3,9 @@ import type { SelectionContext } from '../../types';
 import { TOOL_NAMES, type ToolName } from '../../agent/tools';
 import { requestJson } from '../../utils/backendApi';
 import { flushAgentFocus } from './agentFocusAccumulator';
-import { readPluginMcpConfig, stripPluginCredentialsFromUrl } from './mcpPluginBootstrap';
+import { isPublicPluginLaunch, pluginHistoryState, readPluginMcpConfig, sanitizePluginLaunchUrl } from './mcpPluginBootstrap';
+import { capturePublicCanvasSnapshot, restorePublicCanvasSnapshot, setPublicCanvasReady, type PublicCanvasSnapshot } from './publicCanvasSession';
+import { useStore } from '../../store';
 import { dispatchTool } from './webmcp/toolDispatch';
 
 /**
@@ -89,12 +91,13 @@ export interface UseMcpBridgeOptions {
 
 export function useMcpBridge({ getSelection }: UseMcpBridgeOptions) {
   const [pluginLaunchConfig] = useState(() =>
-    typeof window === 'undefined' ? null : readPluginMcpConfig(window.location.href),
+    typeof window === 'undefined' ? null : readPluginMcpConfig(window.location.href, window.history.state),
   );
   const [config, setConfig] = useState<StoredMcpConfig | null>(
-    () => pluginLaunchConfig ?? readStoredConfig(),
+    () => pluginLaunchConfig ?? (typeof window !== 'undefined' && isPublicPluginLaunch(window.location.href) ? null : readStoredConfig()),
   );
   const [connectionStatus, setConnectionStatus] = useState<McpConnectionStatus>('disconnected');
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
   const selectionRef = useRef(getSelection);
   selectionRef.current = getSelection;
 
@@ -102,9 +105,9 @@ export function useMcpBridge({ getSelection }: UseMcpBridgeOptions) {
     if (!pluginLaunchConfig || typeof window === 'undefined') return;
     writeStoredConfig(pluginLaunchConfig);
     window.history.replaceState(
-      window.history.state,
+      pluginHistoryState(window.location.href, window.history.state),
       '',
-      stripPluginCredentialsFromUrl(window.location.href),
+      sanitizePluginLaunchUrl(window.location.href, window.history.state),
     );
   }, [pluginLaunchConfig]);
 
@@ -114,6 +117,9 @@ export function useMcpBridge({ getSelection }: UseMcpBridgeOptions) {
   }, []);
 
   const createToken = useCallback(async (force = false) => {
+    if (typeof window !== 'undefined' && isPublicPluginLaunch(window.location.href, window.history.state)) {
+      throw new Error('Temporary plugin canvases cannot connect to a private workspace.');
+    }
     const clientId = getOrCreateClientId();
     const minted = await requestJson<MintTokenResponse>('/api/mcp/token', {
       method: 'POST',
@@ -151,6 +157,22 @@ export function useMcpBridge({ getSelection }: UseMcpBridgeOptions) {
     // because cleanup detaches onclose before closing.
     let stopCurrentHeartbeat: () => void = () => {};
     let focusFlushTimer: ReturnType<typeof setTimeout> | null = null;
+    let snapshotTimer: ReturnType<typeof setTimeout> | null = null;
+    let publicReady = false;
+    const unsubscribeSnapshot = config.ephemeral ? useStore.subscribe((state, previous) => {
+      if (!publicReady || (state.sheets === previous.sheets && state.charts === previous.charts && state.notes === previous.notes && state.transform === previous.transform)) return;
+      if (snapshotTimer) clearTimeout(snapshotTimer);
+      snapshotTimer = setTimeout(() => {
+        if (socket?.readyState !== WebSocket.OPEN || !publicReady) return;
+        try {
+          socket.send(JSON.stringify({ type: 'session_snapshot', snapshot: capturePublicCanvasSnapshot() }));
+          setRecoveryError(null);
+        } catch (error) {
+          setRecoveryError('Latest changes cannot be saved for recovery because this temporary canvas is too large. Export important sheets before closing or reloading, or remove data to resume saving.');
+          console.error('Temporary canvas recovery snapshot failed:', error);
+        }
+      }, 150);
+    }) : () => {};
 
     const scheduleFocusFlush = () => {
       if (focusFlushTimer) clearTimeout(focusFlushTimer);
@@ -160,6 +182,8 @@ export function useMcpBridge({ getSelection }: UseMcpBridgeOptions) {
     const connect = () => {
       if (disposed) return;
       setConnectionStatus('connecting');
+      publicReady = false;
+      if (config.ephemeral) setPublicCanvasReady(false);
       // Capture locally so handlers never act on a newer socket after reconnect.
       const ws = new WebSocket(config.bridgeWsUrl);
       socket = ws;
@@ -176,7 +200,7 @@ export function useMcpBridge({ getSelection }: UseMcpBridgeOptions) {
 
       ws.onopen = () => {
         reconnectAttempt = 0;
-        setConnectionStatus('connected');
+        if (!config.ephemeral) setConnectionStatus('connected');
         heartbeatTimer = setInterval(() => {
           if (ws.readyState !== WebSocket.OPEN) return;
           ws.send('ping');
@@ -191,27 +215,57 @@ export function useMcpBridge({ getSelection }: UseMcpBridgeOptions) {
           pongDeadline = null;
           return;
         }
-        let call: { id?: string; name?: string; input?: unknown };
+        let call: { type?: string; snapshot?: unknown; id?: string; name?: string; input?: unknown };
         try {
           call = JSON.parse(data);
         } catch {
           return;
         }
+        if (config.ephemeral && call.type === 'session_error') {
+          setRecoveryError('The latest canvas changes could not be saved for recovery. Keep this view open and export important sheets before closing or reloading.');
+          return;
+        }
+        if (config.ephemeral && call.type === 'session_restore') {
+          try {
+            restorePublicCanvasSnapshot(call.snapshot);
+            publicReady = true;
+            setPublicCanvasReady(true);
+            ws.send(JSON.stringify({ type: 'canvas_ready' }));
+            setConnectionStatus('connected');
+          } catch (error) {
+            console.error('Temporary canvas recovery failed:', error);
+            ws.close(4001, 'Canvas recovery failed');
+          }
+          return;
+        }
+        if (config.ephemeral && !publicReady) return;
         if (typeof call.id !== 'string' || typeof call.name !== 'string') return;
 
-        let reply: { id: string; ok: boolean; result?: unknown; error?: string };
+        let reply: { id: string; ok: boolean; result?: unknown; error?: string; snapshot?: PublicCanvasSnapshot };
         if (!TOOL_NAMES.includes(call.name as ToolName)) {
           reply = { id: call.id, ok: false, error: `Unknown tool: ${call.name}` };
         } else {
           try {
+            const beforeTool = config.ephemeral ? capturePublicCanvasSnapshot() : null;
             const result = await dispatchTool(call.name, call.input, {
               getSelection: () => selectionRef.current(),
               door: 'remote-mcp',
             });
+            let snapshot: PublicCanvasSnapshot | undefined;
+            if (config.ephemeral && result.ok) {
+              try {
+                snapshot = capturePublicCanvasSnapshot();
+              } catch (error) {
+                // Do not report a failed recovery-limited write while leaving
+                // its mutation visible; keep the last recoverable canvas.
+                restorePublicCanvasSnapshot(beforeTool);
+                throw error;
+              }
+            }
             // executeClientTool reports failures via { ok: false, error } —
             // propagate them so MCP clients see isError, not a fake success.
             reply = result.ok
-              ? { id: call.id, ok: true, result }
+              ? { id: call.id, ok: true, result, ...(snapshot ? { snapshot } : {}) }
               : { id: call.id, ok: false, error: String((result as { error?: unknown }).error ?? 'Tool failed') };
             // Arm the debounced viewport flush. The accumulator is a no-op for
             // read-only tools, so the camera only moves when writes accumulated.
@@ -224,6 +278,8 @@ export function useMcpBridge({ getSelection }: UseMcpBridgeOptions) {
       };
 
       ws.onclose = (event) => {
+        publicReady = false;
+        if (config.ephemeral) setPublicCanvasReady(false);
         stopHeartbeat();
         if (disposed) return;
         if (event.code === WS_CLOSE_REPLACED) {
@@ -245,6 +301,10 @@ export function useMcpBridge({ getSelection }: UseMcpBridgeOptions) {
 
     return () => {
       disposed = true;
+      publicReady = false;
+      if (config.ephemeral) setPublicCanvasReady(false);
+      unsubscribeSnapshot();
+      if (snapshotTimer) clearTimeout(snapshotTimer);
       stopCurrentHeartbeat();
       if (reconnectTimer) clearTimeout(reconnectTimer);
       if (focusFlushTimer) clearTimeout(focusFlushTimer);
@@ -261,6 +321,7 @@ export function useMcpBridge({ getSelection }: UseMcpBridgeOptions) {
     enabled: active,
     setEnabled,
     connectionStatus,
+    recoveryError,
     token: config?.token ?? null,
     mcpUrl: config?.mcpUrl ?? null,
     createToken,
