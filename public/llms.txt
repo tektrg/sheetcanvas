@@ -9,6 +9,7 @@
 - SheetCanvas Docs: https://sheetcanvas.com/docs/
 - SheetCanvas Blog: https://sheetcanvas.com/blog/
 - RSS feed: https://sheetcanvas.com/rss.xml
+- Pages published by SheetCanvas users: https://sheetcanvas.com/llms-pages.txt
 
 ## Product-specific guides
 

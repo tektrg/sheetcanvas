@@ -4,6 +4,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import {
   EXCLUDED_PUBLIC_DIRS,
+  PUBLISHED_PAGES_SITEMAP_URL,
   ROUTE_ORDER,
   SITE_ORIGIN,
   metadataForRoute,
@@ -481,6 +482,10 @@ function auditSitemap(rootPath, pages) {
 
   if (!sitemapIndex.includes(`<loc>${SITE_ORIGIN}/sitemap.xml</loc>`)) {
     reportError(label, 'sitemap-index.xml must include sitemap.xml.');
+  }
+
+  if (!sitemapIndex.includes(`<loc>${PUBLISHED_PAGES_SITEMAP_URL}</loc>`)) {
+    reportError(label, 'sitemap-index.xml must include the dynamic published-pages sitemap.');
   }
 
   const latestSitemapLastmod = [...sitemapEntriesByPath.values()]

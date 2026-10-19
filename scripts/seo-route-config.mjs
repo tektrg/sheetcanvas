@@ -44,3 +44,8 @@ export function metadataForRoute(routePath) {
   }
   return ROUTE_METADATA[routePath] ?? DEFAULT_ROUTE_METADATA;
 }
+
+// Served dynamically by the backend Worker (backend/src/publish.ts), not by Pages:
+// user-published pages at /p/<slug>-<id>.
+export const PUBLISHED_PAGES_SITEMAP_URL = `${SITE_ORIGIN}/sitemap-pages.xml`;
+export const PUBLISHED_PAGES_LLMS_URL = `${SITE_ORIGIN}/llms-pages.txt`;
