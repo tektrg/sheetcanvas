@@ -1,11 +1,11 @@
 # Continuity Ledger
 
-- Goal (incl. success criteria): Pages + Library steps 1-2 (branch `feat/pages-library`): notes become organizable pages (title, tags, createdAt/updatedAt, reserved `publish`), backward-compatible load migration, and a top-level Library tab (search, tag filter, sort, open on canvas, add/remove tags) built on `@tektrg/table-core`.
-- Constraints/Assumptions: Local-only (IndexedDB), no accounts/server storage. table-core is consumed as a dependency, never copied in.
-- Key decisions: Page = NoteData (no parallel entity). Page fields optional on the type, filled by `normalizeNotePage` on load (`migrateLoadedNote` in store.ts) and on `addNote`. Content/title/tags/format edits bump `updatedAt`; move/resize does not. Empty title = first line of the note. Library = full-screen view above the canvas (canvas stays mounted). "Open" = switch to Canvas, center on the note, select it. table-core dep is `file:../../table-core` (local clone of `tektrg/table-core` at tag v1.2.0, built `dist/`) because this Mac's gh token lacks `read:packages` for GitHub Packages.
-- State: Done on branch; not pushed.
-- Done: utils/pages.ts, utils/libraryQuery.ts, components/library/{LibraryView,ViewTabs}.tsx, store/App/types wiring, __tests__/pages.test.ts. npm test, tsc, build green; browser-verified (screenshots /tmp/sheetcanvas-library/).
+- Goal (incl. success criteria): Anonymous publish (branch `feat/publish`): a note/page publishes to a public, crawlable `/p/<slug>-<id>` page with server-rendered SVG charts + capped data tables, auto-republishes on edit, can be paused/unpublished.
+- Constraints/Assumptions: No accounts. Edit key = capability (only SHA-256 stored server-side; browser keeps it in IndexedDB db `sheetcanvas-publish-keys`, outside workspace export). Public pages never touch connectors; scheduled refresh runs only while the app is open. Not deployed; remote D1 untouched.
+- Key decisions: Wire contract `shared/publishSnapshot.ts` (compiled by frontend + backend). Backend `backend/src/publish.ts` (routes) + `pagesRepo.ts` (D1/in-memory) + `render/*` (d3 → SVG strings, allowlist sanitizer, marked). OG via resvg-wasm (no fonts → shapes only), fallback redirect to brand OG png. Cache API keyed by page id, purged on PUT/DELETE, 60s TTL. Unpublish keeps row (410), wipes snapshot. Sitemap/llms list only pages >= 150 words.
+- State: All 5 slices committed on `feat/publish`; not pushed.
+- Done: backend API + renderer + routes + tests; SEO scripts; frontend menu/sync/tests; local e2e (publish → public page → hideData edit republished after 30s debounce → pause blocks republish → unpublish 410). Screenshots /tmp/sheetcanvas-publish/.
 - Now: Hand off.
-- Next: Switch the dep to registry `@tektrg/table-core@1.2.0` + `.npmrc` once `gh auth refresh -h github.com -u tektrg -s read:packages` is done. Possible later: page editor view, publishing.
-- Open questions (UNCONFIRMED if needed): Should tag edits be undoable (updateNote takes no snapshot today)?
-- Working set (files/ids/commands): worktree /Users/wifey/01_Project/SheetCanvas/flexsheet-pages-library; table-core clone /Users/wifey/01_Project/table-core.
+- Next (deploy): remote D1 `wrangler d1 execute DB --remote --file ./schema.sql`, `wrangler deploy` (adds /p, /og, sitemap-pages.xml, llms-pages.txt zone routes), then Pages deploy. Later: /e/* embeds (reuse `renderChartFigure`/`PAGE_STYLES`), OG text via bundled font, moderation view for `page_reports`.
+- Open questions (UNCONFIRMED if needed): Canvas note publish button is in the hover-only top bar (Live badge visible on hover; always visible in Library).
+- Working set (files/ids/commands): worktree /Users/wifey/01_Project/SheetCanvas/flexsheet-publish; local dev used ports 5174/8788 (5173/8787 belong to another session).
