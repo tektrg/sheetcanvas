@@ -9,6 +9,8 @@ import { Toast } from './components/Toast';
 import { GlobalCommandBar } from './components/GlobalCommandBar';
 import { DataConnectorDialog } from './components/DataConnectorDialog';
 import { OnboardingGuide } from './components/OnboardingGuide';
+import { LibraryView } from './components/library/LibraryView';
+import { ViewTabs, TopLevelView } from './components/library/ViewTabs';
 import { SheetData, ChartData, NoteData, CanvasTransform, Position, CellData, ChartConfig, PivotConfig, ToolMode, SparklineConfig, Command, SelectionContext, CellFormat, ConnectorConfig, ConnectorType, TimeGranularity, ChartType } from './types';
 import { INITIAL_COLS, INITIAL_ROWS, CELL_WIDTH, CELL_HEIGHT, HEADER_COL_WIDTH, HEADER_ROW_HEIGHT, DEFAULT_CHART_SIZE, MAX_IMPORT_ROWS, MAX_IMPORT_COLS, MAX_CONNECTED_IMPORT_COLS, MAX_INITIAL_VIEWPORT_COVERAGE } from './constants';
 import { parseClipboardData } from './utils/clipboard';
@@ -102,6 +104,7 @@ const App: React.FC = () => {
 
   // Track ID of note that should start in edit mode
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [activeView, setActiveView] = useState<TopLevelView>('canvas');
   const [viewportSize, setViewportSize] = useState(() => ({
     width: typeof window === 'undefined' ? 1280 : window.innerWidth,
     height: typeof window === 'undefined' ? 720 : window.innerHeight,
@@ -287,6 +290,8 @@ const App: React.FC = () => {
       }
       
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+      // Canvas shortcuts (delete, undo, tool mode) must not act on hidden canvas items from the Library.
+      if (activeView === 'library') return;
 
       if (e.metaKey || e.ctrlKey) {
         const key = e.key.toLowerCase();
@@ -328,7 +333,7 @@ const App: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo, selectedIds, deleteConfirmPending, deleteSelectedItems, setToolMode]);
+  }, [undo, redo, selectedIds, deleteConfirmPending, deleteSelectedItems, setToolMode, activeView]);
 
   // Helper to calculate position for new content (Bottom Edge Strategy)
   // Viewport-center position used as the empty-canvas fallback so the first
@@ -629,6 +634,15 @@ const App: React.FC = () => {
           height: (newSheetSize.height * CELL_HEIGHT) + HEADER_ROW_HEIGHT
       });
   }, [addSheet, ensureVisible]);
+
+  // Library "open page": back to the canvas, centered on the note, selected.
+  const handleOpenPage = useCallback((noteId: string) => {
+    const note = useStore.getState().notes[noteId];
+    if (!note) return;
+    setActiveView('canvas');
+    useStore.setState({ selectedIds: new Set([noteId]) });
+    centerViewOn(note.position.x, note.position.y, note.size.width, note.size.height);
+  }, [centerViewOn]);
 
   const handleCanvasDoubleClick = (e: React.MouseEvent) => {
     const x = (e.clientX - transform.offset.x) / transform.scale;
@@ -1065,7 +1079,8 @@ const App: React.FC = () => {
     const handleGlobalPaste = (e: ClipboardEvent) => {
         const target = e.target as HTMLElement;
         if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
-        
+        if (activeView === 'library') return;
+
         const text = e.clipboardData?.getData('text');
         if (!text) return;
 
@@ -1114,7 +1129,7 @@ const App: React.FC = () => {
 
     window.addEventListener('paste', handleGlobalPaste);
     return () => window.removeEventListener('paste', handleGlobalPaste);
-  }, [getNextPosition, addSheet, centerViewOn]);
+  }, [getNextPosition, addSheet, centerViewOn, activeView]);
 
   // Capture one selected node without its teal selection highlight. Temporarily
   // strips the selection classes on the live element (snapDOM captures the live
@@ -1227,6 +1242,9 @@ const App: React.FC = () => {
                 }}
             />
         )}
+
+        <ViewTabs activeView={activeView} onChange={setActiveView} />
+        {activeView === 'library' && <LibraryView onOpenPage={handleOpenPage} />}
 
         <Toast message={toast.message} isVisible={toast.visible} onClose={() => setToast({ ...toast, visible: false })} />
 
@@ -1368,7 +1386,7 @@ const App: React.FC = () => {
             toggleDarkMode={() => setDarkMode(!darkMode)}
             onOpenCommandBar={() => setIsCommandBarOpen(true)}
             onOpenLearn={() => setIsOnboardingOpen(true)}
-            hidden={isCommandBarOpen || isOnboardingOpen}
+            hidden={isCommandBarOpen || isOnboardingOpen || activeView === 'library'}
         />
       </div>
     </div>

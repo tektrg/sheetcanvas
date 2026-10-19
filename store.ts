@@ -8,6 +8,7 @@ import { saveFullState, saveIncrementalState, loadAppState } from './utils/persi
 import { initSheetCalculation, updateSheetCalculation, deleteSheetCalculation } from './utils/calculationEngine';
 import { htmlToMarkdown } from './utils/htmlToMarkdown';
 import { placeOriginal } from './utils/canvasLayout';
+import { normalizeNotePage, touchesPageContent } from './utils/pages';
 
 export interface AppState {
   sheets: Record<string, SheetData>;
@@ -190,6 +191,14 @@ const migrateNoteToMarkdown = (note: NoteData): { note: NoteData; changed: boole
     };
 };
 
+// Every load: legacy HTML -> markdown, then fill missing page fields
+// (title/tags/timestamps). `changed` = must be re-saved so defaults stick.
+export const migrateLoadedNote = (rawNote: NoteData, nowMs: number = Date.now()): { note: NoteData; changed: boolean } => {
+    const { note: markdownNote, changed: formatChanged } = migrateNoteToMarkdown(rawNote);
+    const pageNote = normalizeNotePage(markdownNote, nowMs);
+    return { note: pageNote, changed: formatChanged || pageNote !== markdownNote };
+};
+
 export const useStore = create<AppState>((set, get) => ({
   sheets: {},
   charts: {},
@@ -238,7 +247,7 @@ export const useStore = create<AppState>((set, get) => ({
           const notes: Record<string, NoteData> = {};
           const noteIds: string[] = [];
           loaded.notes.forEach(n => {
-              const { note: migratedNote, changed } = migrateNoteToMarkdown(n as NoteData);
+              const { note: migratedNote, changed } = migrateLoadedNote(n as NoteData);
               notes[migratedNote.id] = migratedNote;
               noteIds.push(migratedNote.id);
               if (changed) markDirty('note', migratedNote.id);
@@ -314,7 +323,7 @@ export const useStore = create<AppState>((set, get) => ({
           set({
               sheets: { [computed.id]: computed },
               sheetIds: [computed.id],
-              notes: { [initialNote.id]: initialNote },
+              notes: { [initialNote.id]: normalizeNotePage(initialNote) },
               noteIds: [initialNote.id]
           });
           
@@ -584,9 +593,10 @@ export const useStore = create<AppState>((set, get) => ({
 
   addNote: (note) => {
       get().saveSnapshot();
+      const pageNote = normalizeNotePage(note);
       markDirty('note', note.id);
       set(state => ({
-          notes: { ...state.notes, [note.id]: note },
+          notes: { ...state.notes, [note.id]: pageNote },
           noteIds: [...state.noteIds, note.id],
           selectedIds: new Set([note.id])
       }));
@@ -595,7 +605,14 @@ export const useStore = create<AppState>((set, get) => ({
   updateNote: (id, updates) => {
       markDirty('note', id);
       set(state => ({
-          notes: { ...state.notes, [id]: { ...state.notes[id], ...updates } }
+          notes: {
+              ...state.notes,
+              [id]: {
+                  ...state.notes[id],
+                  ...updates,
+                  ...(touchesPageContent(updates) && updates.updatedAt === undefined ? { updatedAt: Date.now() } : {}),
+              },
+          }
       }));
   },
 

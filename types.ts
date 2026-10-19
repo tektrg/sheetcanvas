@@ -313,6 +313,21 @@ export interface NoteData {
   // Original HTML preserved when a legacy note is migrated to markdown, so a
   // bad conversion can be recovered / rendered as a fallback.
   legacyHtml?: string;
+  // --- Page fields: every note is a page the Library can organize. ---
+  // Optional on the type so legacy saved notes and older call sites stay valid;
+  // `normalizeNotePage` (utils/pages.ts) fills them on load and on add.
+  // Empty title = display falls back to the note's first line.
+  title?: string;
+  tags?: string[];
+  createdAt?: number; // epoch ms
+  updatedAt?: number; // epoch ms
+  // Reserved for later publishing; nothing reads it yet.
+  publish?: NotePublishSettings;
+}
+
+export interface NotePublishSettings {
+  slug?: string;
+  publishedAt?: number;
 }
 
 export interface SelectionContext {
