@@ -523,7 +523,7 @@ export const toolDefs = {
   createNote: {
     description:
       'Use this to deliver a formatted analytical write-up — narrative + live numbers + charts — as one editable object. Creates a live report note on the canvas: Markdown text with optional inline, data-bound components that stay current as the underlying sheets change.\n\n' +
-      "Pass `content` as Markdown. Standard Markdown works (headings, **bold**, lists, tables, links). You may embed exactly these THREE live components as self-closing tags; no user code ever runs and any other component-like tag renders as inert text:\n" +
+      "Pass `content` as Markdown. Standard Markdown works (headings, **bold**, lists, tables, links). Fenced ```mermaid code blocks render as diagrams (flowchart, sequence, gantt, pie, etc.); call validateDiagram on the block source first and fix any errors before writing it (listDiagramTypes shows supported types). You may embed exactly these THREE live components as self-closing tags; no user code ever runs and any other component-like tag renders as inert text:\n" +
       '- <CellValue sheet="SHEET_ID" cell="B4" format="currency"/> — one live value from a cell. `format` is optional, one of: currency | percent | number | date | text (defaults to the cell\'s own format).\n' +
       '- <CanvasChart id="CHART_ID" height="240"/> — renders an existing canvas chart inline (create it first with createChart).\n' +
       '- <Sparkline sheet="SHEET_ID" range="B2:B12"/> — a tiny inline trend line over a range.\n\n' +
@@ -561,7 +561,7 @@ export const toolDefs = {
 
   updateNote: {
     description:
-      'Use this to revise wording, add/remove a section, or swap a chart in a note you already created — it updates an existing report note in place. Provide `noteId` plus at least one of `content` or `color`. `content` REPLACES the entire Markdown body (read the note first with readNote, edit the whole text, then send it back — there is no append/patch mode). The same three live components are supported: <CellValue>, <CanvasChart>, <Sparkline>; unknown ids render inert. Errors if the noteId does not exist.',
+      'Use this to revise wording, add/remove a section, or swap a chart in a note you already created — it updates an existing report note in place. Provide `noteId` plus at least one of `content` or `color`. `content` REPLACES the entire Markdown body (read the note first with readNote, edit the whole text, then send it back — there is no append/patch mode). The same three live components are supported: <CellValue>, <CanvasChart>, <Sparkline>; unknown ids render inert. ```mermaid blocks render as diagrams — call validateDiagram on each before writing. Errors if the noteId does not exist.',
     inputSchema: z
       .object({
         noteId: z.string().min(1).describe('Id of the note to update.'),
@@ -763,6 +763,23 @@ export const toolDefs = {
   listDiagrams: {
     description:
       'Use this to discover diagram ids on the canvas. Returns each diagramId, title, kind and element count. Returns an empty list if there are none.',
+    inputSchema: z.object({}),
+  },
+
+  // ── Mermaid (note) diagrams — executed in the browser via @tektrg/diagram-kit
+  // (src/agent/diagramKitTools.ts). Read-only; schemas mirror the kit's agentTools.
+  validateDiagram: {
+    description:
+      'Check Mermaid diagram source before putting it in a note. ALWAYS call this before writing a ```mermaid block with createNote/updateNote. ' +
+      'Returns {valid:true,type} or {valid:false,errors:[{message,line,column,hint}]}; fix the source using the hint and call again until valid. Pass only the text inside the fence.',
+    inputSchema: z.object({
+      source: z.string().describe('Mermaid source, without the ```mermaid fence.'),
+    }),
+  },
+
+  listDiagramTypes: {
+    description:
+      'List the Mermaid diagram types notes can render, each with a description and a minimal example that renders. Use it to pick a type and copy its syntax; then call validateDiagram on your source.',
     inputSchema: z.object({}),
   },
 } as const;

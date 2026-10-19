@@ -34,6 +34,8 @@ const BASE_TOOL_NAMES = [
   'readNote',
   'updateNote',
   'deleteNote',
+  'validateDiagram',
+  'listDiagramTypes',
   'listConnections',
   'createQuerySheetFromResult',
   'updateQuerySheet',

@@ -244,6 +244,18 @@ export const SHORT_TOOL_COPY: Record<ToolName, ShortToolCopy> = {
     title: 'List Diagrams',
     description: 'Lists diagrams on the canvas with diagramId, title, kind and element count.',
   },
+
+  // ── Mermaid diagrams in notes ───────────────────────────────────────────
+  validateDiagram: {
+    title: 'Validate Mermaid Diagram',
+    description:
+      'Checks Mermaid source before you put it in a note as a ```mermaid block. ALWAYS call before createNote/updateNote with mermaid. Returns {valid,type} or {valid:false,errors:[{message,line,column,hint}]}; fix using hint and retry until valid. Pass only the text inside the fence.',
+  },
+
+  listDiagramTypes: {
+    title: 'List Mermaid Diagram Types',
+    description: 'Lists Mermaid diagram types notes can render, each with a description and a working example. Then call validateDiagram.',
+  },
 };
 
 // Safety hints live in the shared agent/toolAnnotations.ts module so WebMCP

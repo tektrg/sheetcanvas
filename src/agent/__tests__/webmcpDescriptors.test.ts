@@ -20,6 +20,8 @@ const READ_ONLY_TOOL_NAMES: ToolName[] = [
   'listConnectionProperties',
   'listDiagrams',
   'readDiagram',
+  'validateDiagram',
+  'listDiagramTypes',
 ];
 
 // z.record(...) nodes: {type:'object', propertyNames, additionalProperties}
@@ -143,7 +145,7 @@ describe('buildDescriptorMeta', () => {
 });
 
 describe('TOOL_ANNOTATIONS readOnlyHint', () => {
-  it('is set on exactly the 11 tools with no observable canvas side effect', () => {
+  it('is set on exactly the 13 tools with no observable canvas side effect', () => {
     const actualReadOnly = TOOL_NAMES.filter((name) => TOOL_ANNOTATIONS[name].readOnlyHint === true);
     expect(actualReadOnly.sort()).toEqual([...READ_ONLY_TOOL_NAMES].sort());
   });
@@ -158,7 +160,7 @@ describe('TOOL_ANNOTATIONS readOnlyHint', () => {
 
 describe('TOOL_ANNOTATIONS untrustedContentHint', () => {
   const UNTRUSTED_TOOL_NAMES: ToolName[] = [
-    ...READ_ONLY_TOOL_NAMES,
+    ...READ_ONLY_TOOL_NAMES.filter((n) => n !== 'validateDiagram' && n !== 'listDiagramTypes'),
     'describeConnection',
     'queryConnection',
     'createQuerySheet',
