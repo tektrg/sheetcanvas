@@ -9,7 +9,17 @@ routes = [
   { pattern = "sheetcanvas.com/api/*", zone_name = "sheetcanvas.com" },
   { pattern = "sheetcanvas.com/mcp/*", zone_name = "sheetcanvas.com" },
   { pattern = "www.sheetcanvas.com/api/*", zone_name = "sheetcanvas.com" },
-  { pattern = "www.sheetcanvas.com/mcp/*", zone_name = "sheetcanvas.com" }
+  { pattern = "www.sheetcanvas.com/mcp/*", zone_name = "sheetcanvas.com" },
+  # Anonymous published pages (backend/src/publish.ts): public HTML, dynamic
+  # sitemap/llms listings and OG images. Everything else stays on Pages.
+  { pattern = "sheetcanvas.com/p/*", zone_name = "sheetcanvas.com" },
+  { pattern = "sheetcanvas.com/og/*", zone_name = "sheetcanvas.com" },
+  { pattern = "sheetcanvas.com/sitemap-pages.xml", zone_name = "sheetcanvas.com" },
+  { pattern = "sheetcanvas.com/llms-pages.txt", zone_name = "sheetcanvas.com" },
+  { pattern = "www.sheetcanvas.com/p/*", zone_name = "sheetcanvas.com" },
+  { pattern = "www.sheetcanvas.com/og/*", zone_name = "sheetcanvas.com" },
+  { pattern = "www.sheetcanvas.com/sitemap-pages.xml", zone_name = "sheetcanvas.com" },
+  { pattern = "www.sheetcanvas.com/llms-pages.txt", zone_name = "sheetcanvas.com" }
 ]
 
 [vars]

@@ -47,6 +47,7 @@ import {
 } from "./validation";
 import { handleAgentRequest, handleQuotaRead } from "./agent/route";
 import { mcpApp } from "./mcp/route";
+import { publishApp } from "./publish";
 
 export { CanvasBridge } from "./mcp/bridge";
 
@@ -164,9 +165,9 @@ app.use(
       if (!origin) return allowed[0] ?? "http://localhost:5173";
       return allowed.includes(origin) ? origin : "";
     },
-    allowHeaders: ["Content-Type", "Authorization", "x-session-id"],
+    allowHeaders: ["Content-Type", "Authorization", "x-session-id", "x-edit-key"],
     exposeHeaders: ["x-agent-quota-used", "x-agent-quota-limit"],
-    allowMethods: ["GET", "POST", "OPTIONS"],
+    allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     maxAge: 86400
   })
 );
@@ -174,6 +175,7 @@ app.use(
 app.options("*", (c) => c.body(null, 204));
 
 app.route("/", mcpApp);
+app.route("/", publishApp);
 
 app.onError((err, c) => {
   const { status, body } = toJsonError(err);
