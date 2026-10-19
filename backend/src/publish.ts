@@ -22,6 +22,7 @@ import { escapeHtml } from './render/escape';
 export const PUBLISH_LIMITS = {
   publishesPerHour: 10,
   republishesPerHour: 120,
+  reportsPerHour: 20,
   pageCacheSeconds: 60,
   sitemapMaxPages: 5000,
 } as const;
@@ -83,9 +84,9 @@ const readSnapshot = async (c: AppContext): Promise<PublishSnapshot> => {
 };
 
 const enforceRateLimit = async (repo: PagesRepo, ipHash: string, kind: PublishEventKind, now: number) => {
-  const limit = kind === 'publish' ? PUBLISH_LIMITS.publishesPerHour : PUBLISH_LIMITS.republishesPerHour;
+  const limit = { publish: PUBLISH_LIMITS.publishesPerHour, republish: PUBLISH_LIMITS.republishesPerHour, report: PUBLISH_LIMITS.reportsPerHour }[kind];
   if ((await repo.countEvents(ipHash, kind, now - HOUR_MS)) >= limit) {
-    throw new HttpError(429, 'rate_limited', `Too many ${kind}es from this network. Try again within the hour.`);
+    throw new HttpError(429, 'rate_limited', `Too many ${kind === 'report' ? 'reports' : `${kind}es`} from this network. Try again within the hour.`);
   }
   await repo.recordEvent(ipHash, kind, now);
 };
@@ -211,6 +212,7 @@ export const createPublishApp = (getRepo: (env: Env) => PagesRepo, now: () => nu
     const parsed = reportSchema.safeParse(raw);
     if (!parsed.success) throw new HttpError(400, 'invalid_report', 'reason is required');
     const ipHash = await clientIpHash(c);
+    await enforceRateLimit(repo, ipHash, 'report', now());
     await repo.insertReport({ id: crypto.randomUUID(), page_id: id, ip_hash: ipHash, created_at: now(), ...parsed.data });
     return isForm ? htmlResponse(reportFormHtml(id, true), 200, 0) : c.json({ ok: true }, 201);
   });

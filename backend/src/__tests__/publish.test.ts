@@ -164,4 +164,43 @@ describe('renderers', () => {
       expect(svg).not.toContain('NaN');
     }
   });
+  it('escapes hostile title/tags/labels across meta, SVG, table and JSON-LD', async () => {
+    const t = setup();
+    const evil = '</script><b>INJECTED</b><img src=x onerror=alert("INJECTED")>';
+    const base = snapshot().charts[0];
+    const created = await (await t.publish(snapshot({
+      title: `T ${evil}`, tags: ["</script><b>INJECTED</b>"], description: evil,
+      content: `${words(200)}\n\n<script>alert("INJECTED")</script><img src=x onerror=alert("INJECTED")>\n\n<a href="java&#115;cript:alert(1)">x</a>\n\n<CanvasChart id="c1" />`,
+      charts: [{ ...base, title: evil, series: [{ ...base.series[0], label: evil }], rows: [{ label: evil, values: [1] }] }],
+    }))).json() as { id: string; slug: string };
+    expect(created.id, JSON.stringify(created)).toBeTruthy();
+    const res = await t.send(`/p/${created.slug}-${created.id}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).not.toContain('<b>INJECTED');
+    expect(html).not.toMatch(/<img[^>]*onerror/i);
+    expect(html).not.toContain('<script>alert');
+    expect(html).not.toMatch(/href="java/i);
+    expect(html.match(/<\/script>/g)?.length).toBe(1);
+  });
+
+  it('rate-limits reports per network', async () => {
+    const t = setup();
+    const { id } = await (await t.publish()).json() as { id: string };
+    const report = () => t.send(`/api/pages/${id}/report`, { method: 'POST', body: JSON.stringify({ reason: 'spam' }), ip: '9.9.9.9' });
+    for (let i = 0; i < PUBLISH_LIMITS.reportsPerHour; i++) expect((await report()).status).toBe(201);
+    expect((await report()).status).toBe(429);
+  });
+
+  it('PUT is rate-limited and never echoes the edit key', async () => {
+    const t = setup();
+    const created = await (await t.publish()).json() as { id: string; editKey: string };
+    const put = () => t.send(`/api/pages/${created.id}`, { method: 'PUT', body: JSON.stringify(snapshot()), headers: { 'x-edit-key': created.editKey } });
+    for (let i = 0; i < PUBLISH_LIMITS.republishesPerHour; i++) {
+      const res = await put();
+      expect(res.status).toBe(200);
+      if (i === 0) expect(await res.text()).not.toContain(created.editKey);
+    }
+    expect((await put()).status).toBe(429);
+  });
 });
