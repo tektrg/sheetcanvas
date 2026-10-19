@@ -290,9 +290,6 @@ const App: React.FC = () => {
       }
       
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
-      // Canvas shortcuts (delete, undo, tool mode) must not act on hidden canvas items from the Library.
-      if (activeView === 'library') return;
-
       if (e.metaKey || e.ctrlKey) {
         const key = e.key.toLowerCase();
         if (key === 'z') {
@@ -302,7 +299,10 @@ const App: React.FC = () => {
           e.preventDefault();
           redo();
         } 
-      } else {
+      }
+      // Undo/redo above also covers Library tag edits; canvas-only shortcuts (tool mode, delete) stop here.
+      if (activeView === 'library') return;
+      if (!(e.metaKey || e.ctrlKey)) {
         const key = e.key.toLowerCase();
         if (key === 'v') setToolMode(ToolMode.SELECT);
         if (key === 'h' || key === ' ') setToolMode(ToolMode.PAN);

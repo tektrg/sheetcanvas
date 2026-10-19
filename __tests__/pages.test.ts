@@ -122,3 +122,29 @@ describe('library query (table-core)', () => {
     expect(queryLibraryPageIds(pages, { ...DEFAULT_LIBRARY_VIEW, tag: 'nope' })).toEqual([]);
   });
 });
+
+describe('QA pass 2 fixes', () => {
+  it('normalizes tags on load even when every page field is present', () => {
+    const note = legacyNote({ title: 't', tags: [' Ideas', 'ideas', '#Q2', ''], createdAt: 1, updatedAt: 2 });
+    const { note: loaded, changed } = migrateLoadedNote(note, NOW_MS);
+    expect(loaded.tags).toEqual(['ideas', 'q2']);
+    expect(changed).toBe(true);
+    const clean = legacyNote({ title: 't', tags: ['ideas'], createdAt: 1, updatedAt: 2 });
+    expect(normalizeNotePage(clean, NOW_MS)).toBe(clean);
+  });
+
+  it('decodes HTML entities in derived titles', () => {
+    expect(pageDisplayTitle({ title: '', content: '<p>R&amp;D &lt;Q2&gt; &#39;plan&#x27;</p>' })).toBe("R&D <Q2> 'plan'");
+    expect(pageDisplayTitle({ title: '', content: 'Tom &bogus; Jerry' })).toBe('Tom &bogus; Jerry');
+  });
+
+  it('tag edits from the Library are undoable via the store snapshot', () => {
+    const note = normalizeNotePage(legacyNote({ id: 'undo-1', tags: ['a'] }), NOW_MS);
+    useStore.setState({ notes: { [note.id]: note }, noteIds: [note.id], history: [], future: [] });
+    useStore.getState().saveSnapshot();
+    useStore.getState().updateNote(note.id, { tags: ['a', 'b'] });
+    expect(useStore.getState().notes[note.id].tags).toEqual(['a', 'b']);
+    useStore.getState().undo();
+    expect(useStore.getState().notes[note.id].tags).toEqual(['a']);
+  });
+});

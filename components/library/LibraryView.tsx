@@ -12,16 +12,16 @@ const formatUpdatedDate = (epochMs: number | undefined): string =>
   epochMs ? new Date(epochMs).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—';
 
 const TagChip: React.FC<{ tag: string; active?: boolean; onClick?: () => void; onRemove?: () => void }> = ({ tag, active, onClick, onRemove }) => (
-  <span
-    onClick={onClick}
-    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium border transition-colors
+  React.createElement(onClick ? 'button' : 'span', {
+    ...(onClick ? { type: 'button', onClick, 'aria-pressed': !!active } : {}),
+    className: `inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium border transition-colors
       ${onClick ? 'cursor-pointer' : ''}
       ${active
         ? 'bg-teal-50 dark:bg-teal-900/30 border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-300'
-        : 'bg-neutral-100 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'}`}
-  >
-    #{tag}
-    {onRemove && (
+        : 'bg-neutral-100 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'}`,
+  },
+    <span className="max-w-[16rem] truncate">#{tag}</span>,
+    onRemove && (
       <button
         type="button"
         aria-label={`Remove tag ${tag}`}
@@ -30,8 +30,8 @@ const TagChip: React.FC<{ tag: string; active?: boolean; onClick?: () => void; o
       >
         <X size={10} />
       </button>
-    )}
-  </span>
+    ),
+  )
 );
 
 const AddTagInput: React.FC<{ onAdd: (tag: string) => void }> = ({ onAdd }) => {
@@ -60,19 +60,24 @@ const AddTagInput: React.FC<{ onAdd: (tag: string) => void }> = ({ onAdd }) => {
 export const LibraryView: React.FC<LibraryViewProps> = ({ onOpenPage }) => {
   const notesById = useStore(state => state.notes);
   const updateNote = useStore(state => state.updateNote);
+  const saveSnapshot = useStore(state => state.saveSnapshot);
   const [view, setView] = useState<LibraryViewState>(DEFAULT_LIBRARY_VIEW);
 
   const notes = useMemo(() => Object.values(notesById), [notesById]);
   const allTags = useMemo(() => collectAllTags(notes), [notes]);
   const visiblePageIds = useMemo(() => queryLibraryPageIds(notes, view), [notes, view]);
 
-  const setTags = (noteId: string, tags: string[]) => updateNote(noteId, { tags });
+  // Tag edits are user edits like note text edits: snapshot first so Cmd+Z restores them.
+  const setTags = (noteId: string, tags: string[]) => {
+    saveSnapshot();
+    updateNote(noteId, { tags });
+  };
 
   return (
     <div className="absolute inset-0 z-40 overflow-y-auto bg-neutral-100 dark:bg-neutral-900">
-      <div className="mx-auto max-w-4xl px-6 pt-20 pb-32">
+      <div className="mx-auto max-w-4xl px-4 sm:px-6 pt-20 pb-32">
         <div className="mb-6 flex items-baseline justify-between">
-          <h1 className="text-2xl font-semibold tracking-tight">Library</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">Library</h1>
           <span className="text-xs text-neutral-500 tabular-nums">{visiblePageIds.length} of {notes.length} pages</span>
         </div>
 
@@ -127,7 +132,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ onOpenPage }) => {
                   <button type="button" onClick={() => onOpenPage(noteId)} className="flex min-w-0 flex-1 items-start gap-2 text-left">
                     <FileText size={16} className="mt-0.5 shrink-0 text-neutral-400" />
                     <span className="min-w-0">
-                      <span className="block truncate text-sm font-medium">{pageDisplayTitle(note)}</span>
+                      <span className="block truncate text-sm font-medium text-neutral-900 dark:text-neutral-100" title={pageDisplayTitle(note)}>{pageDisplayTitle(note)}</span>
                       <span className="block truncate text-xs text-neutral-500">{notePlainText(note) || 'Empty page'}</span>
                     </span>
                   </button>
@@ -135,7 +140,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ onOpenPage }) => {
                     {chartCount > 0 && (
                       <span className="inline-flex items-center gap-1" title="Embedded charts"><BarChart3 size={12} />{chartCount}</span>
                     )}
-                    <span className="tabular-nums">{formatUpdatedDate(note.updatedAt)}</span>
+                    <span className="hidden sm:inline tabular-nums">{formatUpdatedDate(note.updatedAt)}</span>
                     <button
                       type="button"
                       onClick={() => onOpenPage(noteId)}

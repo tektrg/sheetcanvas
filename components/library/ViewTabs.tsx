@@ -9,7 +9,7 @@ const TABS: Array<{ id: TopLevelView; label: string; icon: React.ElementType }> 
 ];
 
 export const ViewTabs: React.FC<{ activeView: TopLevelView; onChange: (view: TopLevelView) => void }> = ({ activeView, onChange }) => (
-  <div className="fixed top-4 left-4 z-50 flex items-center gap-1 p-1 bg-white/90 dark:bg-neutral-900/90 backdrop-blur-xl shadow-xl border border-neutral-200/50 dark:border-neutral-700/50 rounded-full">
+  <div role="tablist" aria-label="View" className="fixed top-4 left-4 z-50 flex items-center gap-1 p-1 bg-white/90 dark:bg-neutral-900/90 backdrop-blur-xl shadow-xl border border-neutral-200/50 dark:border-neutral-700/50 rounded-full">
     {TABS.map(({ id, label, icon: Icon }) => (
       <button
         key={id}

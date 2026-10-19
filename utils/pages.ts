@@ -8,6 +8,18 @@ export const UNTITLED_PAGE_TITLE = 'Untitled';
 const MAX_DERIVED_TITLE_LENGTH = 80;
 const EMBEDDED_CHART_PATTERN = /<CanvasChart\b[^>]*\bid=["']([^"']+)["']/g;
 
+const NAMED_HTML_ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+const HTML_ENTITY_PATTERN = /&(#x[0-9a-f]+|#\d+|[a-z]+);/gi;
+
+/** Decode one HTML entity match; unknown names are left as written. */
+const decodeHtmlEntity = (entity: string, body: string): string => {
+  if (body[0] === '#') {
+    const codePoint = body[1].toLowerCase() === 'x' ? parseInt(body.slice(2), 16) : parseInt(body.slice(1), 10);
+    return Number.isFinite(codePoint) && codePoint <= 0x10ffff ? String.fromCodePoint(codePoint) : entity;
+  }
+  return NAMED_HTML_ENTITIES[body.toLowerCase()] ?? entity;
+};
+
 /** Fill page fields missing from a legacy note. Returns the same object when nothing was missing. */
 export const normalizeNotePage = (note: NoteData, nowMs: number = Date.now()): NoteData => {
   const hasAllFields =
@@ -15,7 +27,11 @@ export const normalizeNotePage = (note: NoteData, nowMs: number = Date.now()): N
     Array.isArray(note.tags) &&
     typeof note.createdAt === 'number' &&
     typeof note.updatedAt === 'number';
-  if (hasAllFields) return note;
+  if (hasAllFields) {
+    const tags = normalizeTagList(note.tags as string[]);
+    const tagsUnchanged = tags.length === note.tags!.length && tags.every((tag, index) => tag === note.tags![index]);
+    return tagsUnchanged ? note : { ...note, tags };
+  }
   const createdAt = typeof note.createdAt === 'number' ? note.createdAt : nowMs;
   return {
     ...note,
@@ -30,8 +46,8 @@ export const normalizeNotePage = (note: NoteData, nowMs: number = Date.now()): N
 export const notePlainText = (note: Pick<NoteData, 'content'>): string =>
   (note.content ?? '')
     .replace(/<[^>]*>/g, ' ')
-    .replace(/[#*_`>~[\]()!|-]+/g, ' ')
-    .replace(/&nbsp;/g, ' ')
+    .replace(/(?<!&)[#*_`>~[\]()!|-]+/g, ' ') // `&#39;` keeps its # for entity decoding
+    .replace(HTML_ENTITY_PATTERN, decodeHtmlEntity)
     .replace(/\s+/g, ' ')
     .trim();
 
