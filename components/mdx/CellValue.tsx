@@ -1,17 +1,6 @@
 import React from 'react';
 import { useStore } from '../../store';
-import { formatValue } from '../../utils/formatting';
-import { CellFormat } from '../../types';
-
-// Maps the simple string prop authors write (format="currency") to the app's
-// richer CellFormat. Anything unknown falls back to the cell's own stored format.
-const FORMAT_ALIASES: Record<string, CellFormat> = {
-  currency: { type: 'currency' },
-  percent: { type: 'percent' },
-  number: { type: 'number' },
-  date: { type: 'date' },
-  text: { type: 'text' },
-};
+import { FORMAT_ALIASES, formatValue } from '../../utils/formatting';
 
 const InertChip: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <span className="mdx-inert font-mono text-xs text-red-500">{children}</span>

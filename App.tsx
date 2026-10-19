@@ -29,6 +29,7 @@ import { buildChartSeriesDisplayNames } from './utils/chartDisplay';
 import AgentChatPanel from './src/components/AgentChatPanel';
 import { AgentEvalBridge } from './src/agent/AgentEvalBridge';
 import { useMcpBridge } from './src/agent/useMcpBridge';
+import { usePublishSync } from './hooks/usePublishSync';
 import { useWebMcpBridge } from './src/agent/webmcp/useWebMcpBridge';
 import { AgentActivityPanel } from './src/components/AgentActivityPanel';
 import { installTrailObserver } from './src/agent/activityTrail';
@@ -140,6 +141,7 @@ const App: React.FC = () => {
   const [connectAgentOpen, setConnectAgentOpen] = useState(false);
   const mcpBridge = useMcpBridge({ getSelection: () => activeSelectionRef.current });
   const webmcpBridge = useWebMcpBridge({ getSelection: () => activeSelectionRef.current });
+  usePublishSync();
   const openConnectAgent = useCallback(() => {
     setAgentPanelOpen(false);
     setConnectAgentOpen(true);

@@ -3,6 +3,17 @@
 import { CellFormat } from '../types';
 import { format as d3Format } from 'd3-format';
 
+// Maps the simple string prop authors write (format="currency") to the app's
+// richer CellFormat. Anything unknown falls back to the cell's own stored format.
+export const FORMAT_ALIASES: Record<string, CellFormat> = {
+  currency: { type: 'currency' },
+  percent: { type: 'percent' },
+  number: { type: 'number' },
+  date: { type: 'date' },
+  text: { type: 'text' },
+};
+
+
 export const formatValue = (value: string | number | null, format?: CellFormat): string => {
   if (value === null || value === undefined) return '';
   

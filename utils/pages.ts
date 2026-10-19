@@ -65,15 +65,8 @@ export const pageDisplayTitle = (note: Pick<NoteData, 'title' | 'content'>): str
   return firstLine.length > MAX_DERIVED_TITLE_LENGTH ? `${firstLine.slice(0, MAX_DERIVED_TITLE_LENGTH)}…` : firstLine;
 };
 
-/** URL-safe slug for future publishing: "Q2 Đơn hàng!" -> "q2-don-hang". */
-export const slugifyTitle = (title: string): string =>
-  title
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[đĐ]/g, 'd')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+// URL slug used by published page URLs; one definition shared with the backend.
+export { slugifyTitle } from '../shared/publishSnapshot';
 
 /** Tags are trimmed, lowercased, de-duplicated; empty tags dropped. */
 export const normalizeTag = (rawTag: string): string => rawTag.trim().replace(/^#/, '').toLowerCase();

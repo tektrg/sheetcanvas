@@ -59,11 +59,12 @@ export interface PublishUpdatedResponse {
   url: string;
 }
 
-/** URL slug from a title: lowercase ascii words joined by '-', max 60 chars. */
+/** URL slug from a title: "Q2 Đơn hàng!" → "q2-don-hang"; max 60 chars, "page" when nothing is left. */
 export const slugifyTitle = (title: string): string =>
   title
     .normalize('NFKD')
     .replace(/[̀-ͯ]/g, '')
+    .replace(/[đĐ]/g, 'd')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')

@@ -321,13 +321,24 @@ export interface NoteData {
   tags?: string[];
   createdAt?: number; // epoch ms
   updatedAt?: number; // epoch ms
-  // Reserved for later publishing; nothing reads it yet.
+  // Anonymous public page state (utils/publish.ts). The edit key is NOT here:
+  // it lives in a separate IndexedDB store so exports/shares never carry it.
   publish?: NotePublishSettings;
 }
 
+export type PublishRefreshSchedule = 'off' | 'hourly' | 'daily';
+
 export interface NotePublishSettings {
+  id?: string; // server page id; present = published (or unpublishing)
   slug?: string;
+  url?: string; // canonical https://sheetcanvas.com/p/<slug>-<id>
   publishedAt?: number;
+  lastPublishedAt?: number;
+  lastPublishedHash?: string; // hash of the last snapshot sent; unchanged → skip republish
+  paused?: boolean; // auto-republish off; page stays live with its last snapshot
+  hideData?: Record<string, boolean>; // chart id → omit its data table/Dataset
+  refreshSchedule?: PublishRefreshSchedule; // re-run live connector queries while the app is open
+  lastError?: string;
 }
 
 export interface SelectionContext {

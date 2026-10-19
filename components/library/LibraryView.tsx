@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { ArrowUpRight, BarChart3, FileText, Plus, Search, Tag, X } from 'lucide-react';
 import { useStore } from '../../store';
 import { addTagToList, collectAllTags, extractEmbeddedChartIds, notePlainText, pageDisplayTitle, removeTagFromList } from '../../utils/pages';
+import { PublishMenu } from '../publish/PublishMenu';
 import { DEFAULT_LIBRARY_VIEW, LibrarySortField, LibraryViewState, queryLibraryPageIds } from '../../utils/libraryQuery';
 
 interface LibraryViewProps {
@@ -141,6 +142,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({ onOpenPage }) => {
                       <span className="inline-flex items-center gap-1" title="Embedded charts"><BarChart3 size={12} />{chartCount}</span>
                     )}
                     <span className="hidden sm:inline tabular-nums">{formatUpdatedDate(note.updatedAt)}</span>
+                    <PublishMenu noteId={noteId} />
                     <button
                       type="button"
                       onClick={() => onOpenPage(noteId)}

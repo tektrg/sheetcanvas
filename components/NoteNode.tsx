@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { PublishMenu } from './publish/PublishMenu';
 import { NoteData } from '../types';
 import { GripVertical, Trash2, Bold, Italic, Underline, List, ListOrdered, StickyNote, MoreHorizontal, Copy, Download } from 'lucide-react';
 import { useStore } from '../store';
@@ -358,6 +359,7 @@ const NoteNodeComponent: React.FC<NoteNodeProps> = ({ id, darkMode, initialEditi
 
           {/* Right cluster: options menu + delete */}
           <div className="flex items-center gap-0.5 flex-shrink-0">
+            <PublishMenu noteId={data.id} />
             {/* Options / more menu */}
             <div className="relative" ref={optionsMenuRef}>
               <button
