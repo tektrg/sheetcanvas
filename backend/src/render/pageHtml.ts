@@ -22,14 +22,16 @@ export const canonicalPageUrl = (slug: string, id: string) => `${SITE_ORIGIN}/p/
 export const ogImageUrl = (id: string, updatedAt: number) => `${SITE_ORIGIN}/og/${id}.png?v=${updatedAt}`;
 
 export const PAGE_STYLES = `
-:root{color-scheme:light;--fg:#111827;--muted:#6b7280;--line:#e5e7eb;--accent:#4f46e5}
+:root{color-scheme:light dark;--bg:#fff;--fg:#111827;--muted:#6b7280;--line:#e5e7eb;--accent:#4f46e5;--code:#f9fafb}
+@media (prefers-color-scheme:dark){:root{--bg:#111318;--fg:#e5e7eb;--muted:#9ca3af;--line:#2d3139;--accent:#a5b4fc;--code:#1b1e25}}
 *{box-sizing:border-box}
-body{margin:0;background:#fff;color:var(--fg);font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif}
 main{max-width:760px;margin:0 auto;padding:40px 16px 24px}
 h1{font-size:2rem;line-height:1.2;margin:0 0 8px}
 .meta{color:var(--muted);font-size:.875rem;margin:0 0 32px}
 article img{max-width:100%;height:auto}
-article pre{overflow-x:auto;background:#f9fafb;padding:12px;border-radius:6px}
+article a{color:var(--accent)}
+article pre{overflow-x:auto;background:var(--code);padding:12px;border-radius:6px}
 article table{border-collapse:collapse}
 figure.chart{margin:32px 0}
 figure.chart svg{width:100%;height:auto;display:block;border:1px solid var(--line);border-radius:8px}
@@ -44,6 +46,7 @@ figure.chart figcaption{font-weight:600;margin-top:8px}
 footer{max-width:760px;margin:48px auto 0;padding:24px 16px 40px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;font-size:.875rem}
 footer a{color:var(--accent)}
 .cta{font-weight:600;text-decoration:none}
+.cta:hover{text-decoration:underline}
 .report{color:var(--muted)}
 `;
 
@@ -65,7 +68,9 @@ export const renderArticleBody = (snapshot: PublishSnapshot): string => {
   const chartsById = new Map(snapshot.charts.map(chart => [chart.id, chart]));
   const used = new Set<string>();
   const placeholder = new RegExp(`(?:<p>)?\\s*${CHART_PLACEHOLDER_PREFIX}:([\\w-]+)\\s*(?:</p>)?`, 'g');
-  const body = renderNoteHtml(snapshot.content, snapshot.format).replace(placeholder, (_, id: string) => {
+  // The page title is the only <h1>; headings inside the note drop one level.
+  const noteHtml = renderNoteHtml(snapshot.content, snapshot.format).replace(/<(\/?)h1\b/g, '<$1h2');
+  const body = noteHtml.replace(placeholder, (_, id: string) => {
     const chart = chartsById.get(id);
     if (!chart) return '';
     used.add(id);

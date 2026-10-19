@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { PublishMenu } from './publish/PublishMenu';
+import { LiveBadge, PublishMenu } from './publish/PublishMenu';
+import { isPublished } from '../utils/publish';
 import { NoteData } from '../types';
 import { GripVertical, Trash2, Bold, Italic, Underline, List, ListOrdered, StickyNote, MoreHorizontal, Copy, Download } from 'lucide-react';
 import { useStore } from '../store';
@@ -326,6 +327,12 @@ const NoteNodeComponent: React.FC<NoteNodeProps> = ({ id, darkMode, initialEditi
         `}
         style={{ backgroundColor: darkMode ? '#1e1e1e' : '#ffffff' }}
       >
+        {/* Always-visible published marker; the hover bar carries the full control. */}
+        {!isEditing && isPublished(data.publish ?? {}) && (
+          <div data-export-exclude data-testid="note-live-indicator" className="pointer-events-none absolute top-1.5 right-2 z-10 transition-opacity duration-150 group-hover:opacity-0">
+            <LiveBadge paused={data.publish?.paused} />
+          </div>
+        )}
         {/* ── Top control bar (shown on hover or when editing) ── */}
         <div
           data-export-exclude

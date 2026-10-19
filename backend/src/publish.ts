@@ -11,7 +11,7 @@ import {
   type PublishSnapshot,
   type PublishUpdatedResponse,
 } from '../../shared/publishSnapshot';
-import { canonicalPageUrl, pageDescription, renderGoneHtml, renderPageHtml, SITE_ORIGIN } from './render/pageHtml';
+import { canonicalPageUrl, pageDescription, NOINDEX_WORD_THRESHOLD, renderGoneHtml, renderPageHtml, SITE_ORIGIN } from './render/pageHtml';
 import { countWords, renderNoteHtml } from './render/noteHtml';
 import { escapeHtml } from './render/escape';
 
@@ -245,7 +245,7 @@ export const createPublishApp = (getRepo: (env: Env) => PagesRepo, now: () => nu
   app.get('/sitemap-pages.xml', async c => {
     const pages = await getRepo(c.env).listPublished(PUBLISH_LIMITS.sitemapMaxPages);
     const urls = pages
-      .filter(page => page.word_count >= 150)
+      .filter(page => page.word_count >= NOINDEX_WORD_THRESHOLD)
       .map(page => `<url><loc>${escapeHtml(canonicalPageUrl(page.slug, page.id))}</loc><lastmod>${new Date(page.updated_at).toISOString()}</lastmod></url>`)
       .join('');
     return c.body(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls}</urlset>\n`, 200, {
@@ -257,7 +257,7 @@ export const createPublishApp = (getRepo: (env: Env) => PagesRepo, now: () => nu
   app.get('/llms-pages.txt', async c => {
     const pages = await getRepo(c.env).listPublished(PUBLISH_LIMITS.sitemapMaxPages);
     const lines = pages
-      .filter(page => page.word_count >= 150)
+      .filter(page => page.word_count >= NOINDEX_WORD_THRESHOLD)
       .map(page => `- [${page.title.replace(/[[\]\n]/g, ' ')}](${canonicalPageUrl(page.slug, page.id)}): ${page.description.replace(/\n/g, ' ')}`);
     const text = `# SheetCanvas published pages\n\n> Data stories published by SheetCanvas users. Each page has inline SVG charts with their data tables.\n\n## Pages\n\n${lines.join('\n')}\n`;
     return c.body(text, 200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=300' });

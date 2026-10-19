@@ -21,13 +21,19 @@ type CartesianType = 'line' | 'area' | 'bar';
 const valueAt = (chart: PublishedChart, rowIndex: number, seriesIndex: number): number =>
   chart.rows[rowIndex]?.values[seriesIndex] ?? 0;
 
-const svgOpen = (title: string, width = CHART_WIDTH, height = CHART_HEIGHT) =>
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="${escapeHtml(title)}"><title>${escapeHtml(title)}</title><rect width="100%" height="100%" fill="#ffffff"/>`;
+/** Screen-reader summary: what is plotted, how many points. */
+const chartDescription = (chart: PublishedChart): string => {
+  const series = chart.series.map(s => s.label).filter(Boolean).join(', ');
+  return `${chart.rows.length} data points${series ? ` for ${series}` : ''}.`;
+};
+
+const svgOpen = (chart: PublishedChart, width = CHART_WIDTH, height = CHART_HEIGHT) =>
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="${escapeHtml(chart.title)}"><title>${escapeHtml(chart.title)}</title><desc>${escapeHtml(chartDescription(chart))}</desc><rect width="100%" height="100%" fill="#ffffff"/>`;
 
 const truncateLabel = (label: string, max = 14) => (label.length > max ? `${label.slice(0, max - 1)}…` : label);
 
 const emptyChart = (chart: PublishedChart) =>
-  `${svgOpen(chart.title)}<text x="${CHART_WIDTH / 2}" y="${CHART_HEIGHT / 2}" text-anchor="middle" fill="${TEXT_COLOR}" ${FONT}>No data</text></svg>`;
+  `${svgOpen(chart)}<text x="${CHART_WIDTH / 2}" y="${CHART_HEIGHT / 2}" text-anchor="middle" fill="${TEXT_COLOR}" ${FONT}>No data</text></svg>`;
 
 const seriesType = (chart: PublishedChart, series: PublishedSeries): CartesianType => {
   const type = series.type ?? chart.type;
@@ -60,7 +66,7 @@ const renderCartesian = (chart: PublishedChart): string => {
   const x = scaleBand<number>().domain(chart.rows.map((_, i) => i)).range([0, innerWidth]).padding(0.2);
   const center = (i: number) => (x(i) ?? 0) + x.bandwidth() / 2;
 
-  const parts: string[] = [svgOpen(chart.title), `<g transform="translate(${MARGIN.left},${MARGIN.top})" ${FONT}>`];
+  const parts: string[] = [svgOpen(chart), `<g transform="translate(${MARGIN.left},${MARGIN.top})" ${FONT}>`];
   for (const tick of y.ticks(5)) {
     parts.push(
       `<line x1="0" x2="${innerWidth}" y1="${y(tick)}" y2="${y(tick)}" stroke="#e5e7eb"/>`,
@@ -131,7 +137,7 @@ const renderScatter = (chart: PublishedChart): string => {
   const values = chart.rows.flatMap((row) => row.values.filter((v): v is number => v !== null));
   const x = scaleLinear().domain([Math.min(...xs), Math.max(...xs)]).nice().range([0, innerWidth]);
   const y = scaleLinear().domain([Math.min(0, ...values), Math.max(1, ...values)]).nice().range([innerHeight, 0]);
-  const parts = [svgOpen(chart.title), `<g transform="translate(${MARGIN.left},${MARGIN.top})" ${FONT}>`];
+  const parts = [svgOpen(chart), `<g transform="translate(${MARGIN.left},${MARGIN.top})" ${FONT}>`];
   for (const tick of y.ticks(5)) {
     parts.push(
       `<line x1="0" x2="${innerWidth}" y1="${y(tick)}" y2="${y(tick)}" stroke="#e5e7eb"/>`,
@@ -168,7 +174,7 @@ const renderPie = (chart: PublishedChart): string => {
     chart.rows.map((row) => ({ label: row.label, value: Math.max(0, row.values[0] ?? 0) }))
   );
   const arcPath = arc<(typeof slices)[number]>().innerRadius(0).outerRadius(radius);
-  const parts = [svgOpen(chart.title), `<g transform="translate(${CHART_WIDTH / 2},${CHART_HEIGHT / 2})" ${FONT}>`];
+  const parts = [svgOpen(chart), `<g transform="translate(${CHART_WIDTH / 2},${CHART_HEIGHT / 2})" ${FONT}>`];
   slices.forEach((slice, i) => {
     parts.push(`<path d="${arcPath(slice)}" fill="${palette[i % palette.length]}" stroke="#ffffff"/>`);
     if (slice.endAngle - slice.startAngle > 0.25) {
@@ -189,7 +195,7 @@ const renderTreemap = (chart: PublishedChart): string => {
     .sum(d => d.value ?? 0)
     .sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
   const laidOut = treemap<{ children?: Leaf[] } & Partial<Leaf>>().size([CHART_WIDTH, CHART_HEIGHT]).paddingInner(2)(root);
-  const parts = [svgOpen(chart.title), `<g ${FONT}>`];
+  const parts = [svgOpen(chart), `<g ${FONT}>`];
   laidOut.leaves().forEach((leaf, i) => {
     const width = leaf.x1 - leaf.x0;
     const height = leaf.y1 - leaf.y0;

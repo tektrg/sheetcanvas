@@ -149,6 +149,16 @@ describe('renderers', () => {
     expect(html).toContain('<svg');
   });
 
+  it('keeps one <h1> (note headings demoted), dark-mode styles and an accessible chart', async () => {
+    const { publish, send } = setup();
+    const { id } = await (await publish()).json() as { id: string };
+    const html = await (await send(`/p/revenue-report-q3-${id}`)).text();
+    expect(html.match(/<h1\b/g)).toHaveLength(1);
+    expect(html).toContain('<h2>Intro</h2>');
+    expect(html).toContain('prefers-color-scheme:dark');
+    expect(html).toContain('<desc>150 data points for Revenue.</desc>');
+  });
+
   it('sanitizes scripts, handlers and javascript: links', () => {
     const out = sanitizeHtml('<p onclick="x()">hi<script>alert(1)</script><a href="javascript:alert(1)">l</a><a href="https://ok.com">ok</a><iframe src="x"></iframe></p>');
     expect(out).not.toMatch(/script|onclick|javascript|iframe/);
