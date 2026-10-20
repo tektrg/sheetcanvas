@@ -137,17 +137,6 @@ const NoteNodeComponent: React.FC<NoteNodeProps> = ({ id, darkMode, initialEditi
     };
   }, [resizing, data.id, updateNote]);
 
-  // Scrolling inside the note must not reach the canvas's wheel listener (pan/zoom),
-  // which is bound natively on an ancestor and fires before React's onWheel delegation.
-  useEffect(() => {
-    const stopWheelPropagation = (e: WheelEvent) => e.stopPropagation();
-    const els = [editorRef.current, markdownEditorRef.current, markdownDisplayRef.current].filter(
-      (el): el is HTMLElement => el !== null
-    );
-    els.forEach(el => el.addEventListener('wheel', stopWheelPropagation, { passive: true }));
-    return () => els.forEach(el => el.removeEventListener('wheel', stopWheelPropagation));
-  });
-
   // Close options menu when clicking outside
   useEffect(() => {
     if (!optionsOpen) return;
