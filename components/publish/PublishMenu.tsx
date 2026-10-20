@@ -24,13 +24,36 @@ import { AnswerBoxDialog } from './AnswerBoxDialog';
 
 const PANEL_WIDTH = 288;
 const VIEWPORT_PAD = 8;
+const PANEL_GAP = 4;
 
-/** Fixed position for the panel under the anchor button, kept inside the viewport. */
-export const publishPanelPosition = (rect: Pick<DOMRect, 'left' | 'right' | 'bottom'>, align: 'left' | 'right', viewportWidth: number) => {
+type AnchorRect = Pick<DOMRect, 'left' | 'right' | 'top' | 'bottom'>;
+
+/**
+ * Fixed position for the panel next to the anchor button, kept inside the viewport:
+ * below the button when it fits, else above, else on the roomier side with a
+ * maxHeight (the panel scrolls).
+ */
+export const publishPanelPosition = (
+  rect: AnchorRect,
+  align: 'left' | 'right',
+  viewportWidth: number,
+  viewportHeight = Number.POSITIVE_INFINITY,
+  panelHeight = 0,
+) => {
   const preferred = align === 'right' ? rect.right - PANEL_WIDTH : rect.left;
   const left = Math.min(Math.max(preferred, VIEWPORT_PAD), Math.max(VIEWPORT_PAD, viewportWidth - PANEL_WIDTH - VIEWPORT_PAD));
-  return { top: rect.bottom + 4, left };
+  const roomBelow = viewportHeight - rect.bottom - PANEL_GAP - VIEWPORT_PAD;
+  const roomAbove = rect.top - PANEL_GAP - VIEWPORT_PAD;
+  if (panelHeight <= roomBelow || roomBelow >= roomAbove) {
+    return { top: rect.bottom + PANEL_GAP, left, maxHeight: Math.max(roomBelow, 0) };
+  }
+  const maxHeight = Math.max(roomAbove, 0);
+  return { top: rect.top - PANEL_GAP - Math.min(panelHeight, maxHeight), left, maxHeight };
 };
+
+/** True while any part of the anchor button is on screen; the panel closes once it is not (canvas pan/zoom). */
+export const anchorInViewport = (rect: AnchorRect, viewportWidth: number, viewportHeight: number) =>
+  rect.bottom > 0 && rect.top < viewportHeight && rect.right > 0 && rect.left < viewportWidth;
 
 const SCHEDULE_LABELS: Record<PublishRefreshSchedule, string> = { off: 'Off', hourly: 'Hourly', daily: 'Daily' };
 
@@ -63,19 +86,52 @@ export const PublishMenu: React.FC<{ noteId: string; align?: 'left' | 'right' }>
   const [answerBoxOpen, setAnswerBoxOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [position, setPosition] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
 
+  // The canvas pans/zooms with CSS transforms (no scroll/resize events), so follow
+  // the button every frame while open and close once it leaves the screen.
   useLayoutEffect(() => {
     if (!open) return;
+    let frame = 0;
+    let last = '';
     const update = () => {
       const rect = rootRef.current?.getBoundingClientRect();
-      if (rect) setPosition(publishPanelPosition(rect, align === 'left' ? 'left' : 'right', window.innerWidth));
+      if (!rect || !anchorInViewport(rect, window.innerWidth, window.innerHeight)) { setOpen(false); return; }
+      const next = publishPanelPosition(rect, align === 'left' ? 'left' : 'right', window.innerWidth, window.innerHeight, panelRef.current?.scrollHeight ?? 0);
+      const key = `${next.top}|${next.left}|${next.maxHeight}`;
+      if (key !== last) { last = key; setPosition(next); }
+      frame = requestAnimationFrame(update);
     };
     update();
-    window.addEventListener('resize', update);
-    window.addEventListener('scroll', update, true);
-    return () => { window.removeEventListener('resize', update); window.removeEventListener('scroll', update, true); };
+    return () => cancelAnimationFrame(frame);
   }, [open, align]);
+
+  // Dialogs open from a panel row that unmounts, so hand focus back to the globe button on close.
+  const dialogOpen = answerBoxOpen || embedOpen;
+  const wasDialogOpen = useRef(false);
+  useEffect(() => {
+    if (wasDialogOpen.current && !dialogOpen) buttonRef.current?.focus();
+    wasDialogOpen.current = dialogOpen;
+  }, [dialogOpen]);
+
+  // The panel is portaled to <body>, far from the button in Tab order: move focus into it.
+  const positioned = position !== null;
+  useEffect(() => {
+    if (open && positioned) panelRef.current?.querySelector<HTMLElement>('button:not([disabled]), a[href]')?.focus({ preventScroll: true });
+  }, [open, positioned]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      setOpen(false);
+      buttonRef.current?.focus();
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -83,8 +139,9 @@ export const PublishMenu: React.FC<{ noteId: string; align?: 'left' | 'right' }>
       const target = event.target as Node;
       if (!rootRef.current?.contains(target) && !panelRef.current?.contains(target)) setOpen(false);
     };
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
+    // Capture phase: canvas items stop mousedown propagation, which would otherwise keep the panel open.
+    document.addEventListener('mousedown', close, true);
+    return () => document.removeEventListener('mousedown', close, true);
   }, [open]);
 
   if (!note) return null;
@@ -108,11 +165,12 @@ export const PublishMenu: React.FC<{ noteId: string; align?: 'left' | 'right' }>
   return (
     <div className="relative" ref={rootRef} onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
       <button
+        ref={buttonRef}
         type="button"
         data-testid="publish-menu-button"
         aria-label={live ? 'Published page settings' : 'Publish to web'}
         title={live ? 'Published page' : 'Publish to web'}
-        onClick={e => { e.stopPropagation(); setOpen(v => !v); }}
+        onClick={e => { e.stopPropagation(); setPosition(null); setOpen(v => !v); }}
         className="inline-flex items-center gap-1 p-1 rounded-md text-neutral-400 hover:text-teal-600 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
       >
         <Globe size={14} />
@@ -124,7 +182,7 @@ export const PublishMenu: React.FC<{ noteId: string; align?: 'left' | 'right' }>
         <div
           ref={panelRef}
           data-testid="publish-panel"
-          style={{ position: 'fixed', top: position?.top ?? 0, left: position?.left ?? 0, width: PANEL_WIDTH, visibility: position ? 'visible' : 'hidden' }}
+          style={{ position: 'fixed', top: position?.top ?? 0, left: position?.left ?? 0, width: PANEL_WIDTH, maxHeight: position?.maxHeight, overflowY: 'auto', visibility: position ? 'visible' : 'hidden' }}
           onMouseDown={e => e.stopPropagation()}
           onWheel={e => e.stopPropagation()}
           className={`bg-white dark:bg-neutral-800 rounded-lg shadow-xl border border-neutral-100 dark:border-neutral-700 z-[1000] py-2 text-left`}

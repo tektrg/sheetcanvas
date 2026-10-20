@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, Copy, X } from 'lucide-react';
 import { useStore } from '../../store';
@@ -11,6 +11,7 @@ import {
   type EmbedTheme,
 } from '../../shared/embed';
 import { canonicalPublicUrl, publicHref, publishableCharts } from '../../utils/publish';
+import { useModalFocus } from '../../hooks/useModalFocus';
 
 // Embed dialog for a published page: pick the whole page or one chart, theme and
 // data visibility; live preview + copy an iframe snippet or the plain URL
@@ -31,13 +32,7 @@ export const EmbedDialog: React.FC<{ noteId: string; pageId: string; onClose: ()
   const [copied, setCopied] = useState<CopiedKind>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null;
-    dialogRef.current?.querySelector<HTMLElement>('select')?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', onKey);
-    return () => { document.removeEventListener('keydown', onKey); opener?.focus?.(); };
-  }, [onClose]);
+  useModalFocus(dialogRef, onClose, 'select');
 
   if (!note) return null;
 
@@ -59,7 +54,7 @@ export const EmbedDialog: React.FC<{ noteId: string; pageId: string; onClose: ()
   const copyButton = 'inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium';
 
   return createPortal(
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4" onMouseDown={onClose} data-testid="embed-dialog-backdrop">
+    <div className="fixed inset-0 z-[1001] flex items-center justify-center bg-black/40 p-4" onMouseDown={onClose} data-testid="embed-dialog-backdrop">
       <div
         ref={dialogRef}
         role="dialog"

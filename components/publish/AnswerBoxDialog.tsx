@@ -1,10 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, Sparkles, Trash2, X } from 'lucide-react';
 import { useStore } from '../../store';
 import { ANSWER_BOX_LIMITS } from '../../shared/publishSnapshot';
 import { answerBoxErrorMessage, answerBoxProblems, EMPTY_ANSWER_BOX, toSavedAnswerBox, type AnswerBoxDraft } from '../../utils/answerBox';
 import { draftAnswerBoxForNote, saveAnswerBox } from '../../utils/publishActions';
+import { useModalFocus } from '../../hooks/useModalFocus';
 import { PortalThemeScope } from '../PortalThemeScope';
 
 // "Answer box" editor for a published page: a TL;DR + up to 5 Q&As shown under
@@ -43,13 +44,7 @@ export const AnswerBoxDialog: React.FC<{ noteId: string; onClose: () => void }> 
   const [error, setError] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null;
-    dialogRef.current?.querySelector<HTMLElement>('textarea')?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', onKey);
-    return () => { document.removeEventListener('keydown', onKey); opener?.focus?.(); };
-  }, [onClose]);
+  useModalFocus(dialogRef, onClose, 'textarea');
 
   const problems = answerBoxProblems(box);
   const setFaq = (index: number, patch: Partial<{ q: string; a: string }>) =>
@@ -69,7 +64,7 @@ export const AnswerBoxDialog: React.FC<{ noteId: string; onClose: () => void }> 
 
   return createPortal(
     <PortalThemeScope>
-      <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4" onMouseDown={onClose}>
+      <div className="fixed inset-0 z-[1001] flex items-center justify-center bg-black/40 p-4" onMouseDown={onClose}>
         <div
           ref={dialogRef}
           role="dialog"
