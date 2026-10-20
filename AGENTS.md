@@ -167,3 +167,9 @@ changes or when the user asks.
 - Open questions (UNCONFIRMED if needed):
 - Working set (files/ids/commands):
 
+
+## Marketing / answer-engine pages
+
+- Copy lives in `scripts/marketing/content.mjs` (positioning, homepage FAQ, `/compare/*` pages). Only shipped features; date competitor facts. Bump `REVIEWED_ON` when re-checked.
+- Run `npm run seo:marketing` after editing it: writes `public/compare/<slug>/index.html` and the no-JS homepage block inside `index.html` (`home-content` / `home-faq-jsonld` markers; React replaces it on mount). Then `npm run seo:audit`. New routes also need `ROUTE_ORDER` (`seo-route-config.mjs`) and a `ROUTE_GROUPS` entry in `generate-llms.mjs`.
+- **Testimonials**: never invent. Add real, permitted quotes to `marketing/testimonials.json` as `{ "quote", "name", "role"?, "company"?, "sourceUrl"?, "date", "consent": true }`, then `npm run seo:marketing`. The section renders nothing until at least one entry has `consent: true`.

@@ -29,6 +29,10 @@
 - SheetCanvas vs Excel: https://sheetcanvas.com/alternatives/excel/
 - SheetCanvas vs Google Sheets: https://sheetcanvas.com/alternatives/google-sheets/
 - SheetCanvas vs Airtable: https://sheetcanvas.com/alternatives/airtable/
+- SheetCanvas vs Excel: which is better for data analysis?: https://sheetcanvas.com/compare/sheetcanvas-vs-excel/
+- SheetCanvas vs Google Sheets: which is better for exploring data?: https://sheetcanvas.com/compare/sheetcanvas-vs-google-sheets/
+- SheetCanvas vs Notion: which is better for data-heavy notes and dashboards?: https://sheetcanvas.com/compare/sheetcanvas-vs-notion/
+- SheetCanvas vs Tableau: which is better for dashboards?: https://sheetcanvas.com/compare/sheetcanvas-vs-tableau/
 - SheetCanvas Support: https://sheetcanvas.com/support/
 - SheetCanvas Privacy: https://sheetcanvas.com/privacy/
 - SheetCanvas Terms: https://sheetcanvas.com/terms/

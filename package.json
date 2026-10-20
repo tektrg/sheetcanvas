@@ -21,6 +21,7 @@
     "seo:deploy:smoke": "node scripts/seo-deploy-preflight-smoke.mjs",
     "seo:live:root": "node scripts/seo-live-root-check.mjs",
     "seo:live:support": "node scripts/seo-live-support-check.mjs",
+    "seo:marketing": "node scripts/generate-marketing-pages.mjs",
     "seo:llms": "node scripts/generate-llms.mjs",
     "seo:rss": "node scripts/generate-rss.mjs",
     "seo:sitemap": "node scripts/generate-sitemap.mjs",
