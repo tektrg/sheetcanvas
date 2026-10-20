@@ -28,3 +28,11 @@ export const deleteEditKey = async (pageId: string) => {
   const db = await openKeysDb();
   await db.delete(STORE, pageId);
 };
+
+/** Every (pageId, editKey) pair this browser holds — used to claim pages after sign-in. */
+export const listEditKeys = async (): Promise<Array<{ id: string; editKey: string }>> => {
+  const db = await openKeysDb();
+  const tx = db.transaction(STORE);
+  const [ids, keys] = await Promise.all([tx.store.getAllKeys(), tx.store.getAll()]);
+  return ids.map((id, i) => ({ id: String(id), editKey: String(keys[i]) }));
+};

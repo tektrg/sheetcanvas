@@ -8,7 +8,8 @@ const TABS: Array<{ id: TopLevelView; label: string; icon: React.ElementType }> 
   { id: 'library', label: 'Library', icon: Library },
 ];
 
-export const ViewTabs: React.FC<{ activeView: TopLevelView; onChange: (view: TopLevelView) => void }> = ({ activeView, onChange }) => (
+/** `trailing`: extra controls after the tabs (the account menu). */
+export const ViewTabs: React.FC<{ activeView: TopLevelView; onChange: (view: TopLevelView) => void; trailing?: React.ReactNode }> = ({ activeView, onChange, trailing }) => (
   <div role="tablist" aria-label="View" className="fixed top-4 left-4 z-50 flex items-center gap-1 p-1 bg-white/90 dark:bg-neutral-900/90 backdrop-blur-xl shadow-xl border border-neutral-200/50 dark:border-neutral-700/50 rounded-full">
     {TABS.map(({ id, label, icon: Icon }) => (
       <button
@@ -26,5 +27,7 @@ export const ViewTabs: React.FC<{ activeView: TopLevelView; onChange: (view: Top
         {label}
       </button>
     ))}
+    {trailing && <span aria-hidden="true" className="mx-0.5 h-4 w-px bg-neutral-200 dark:bg-neutral-700" />}
+    {trailing}
   </div>
 );

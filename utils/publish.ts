@@ -187,8 +187,21 @@ const pagesRequest = async <T>(path: string, init: RequestInit): Promise<T> => {
   return json as T;
 };
 
-export const createPublishedPage = (snapshot: PublishSnapshot) =>
-  pagesRequest<PublishCreatedResponse>('/api/pages', { method: 'POST', body: JSON.stringify(snapshot) });
+const bearer = (token?: string | null): Record<string, string> => (token ? { Authorization: `Bearer ${token}` } : {});
+
+/** `sessionToken`: signed-in author → the page is owned by that account from the start. */
+export const createPublishedPage = (snapshot: PublishSnapshot, sessionToken?: string | null) =>
+  pagesRequest<PublishCreatedResponse>('/api/pages', { method: 'POST', headers: bearer(sessionToken), body: JSON.stringify(snapshot) });
+
+export interface ClaimPagesResponse {
+  userId: string;
+  claimed: string[];
+  skipped: Array<{ id: string; reason: 'not_found' | 'forbidden' | 'owned_by_other' }>;
+}
+
+/** Attach anonymously published pages (proved by edit key) to the signed-in account. */
+export const claimPublishedPages = (sessionToken: string, pages: Array<{ id: string; editKey: string }>) =>
+  pagesRequest<ClaimPagesResponse>('/api/pages/claim', { method: 'POST', headers: bearer(sessionToken), body: JSON.stringify({ pages }) });
 
 export const updatePublishedPage = (id: string, editKey: string, snapshot: PublishSnapshot) =>
   pagesRequest<PublishUpdatedResponse>(`/api/pages/${encodeURIComponent(id)}`, {

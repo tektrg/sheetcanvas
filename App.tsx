@@ -10,6 +10,7 @@ import { GlobalCommandBar } from './components/GlobalCommandBar';
 import { DataConnectorDialog } from './components/DataConnectorDialog';
 import { OnboardingGuide } from './components/OnboardingGuide';
 import { LibraryView } from './components/library/LibraryView';
+import { AccountMenu } from './components/account/AccountMenu';
 import { ViewTabs, TopLevelView } from './components/library/ViewTabs';
 import { SheetData, ChartData, NoteData, CanvasTransform, Position, CellData, ChartConfig, PivotConfig, ToolMode, SparklineConfig, Command, SelectionContext, CellFormat, ConnectorConfig, ConnectorType, TimeGranularity, ChartType } from './types';
 import { INITIAL_COLS, INITIAL_ROWS, CELL_WIDTH, CELL_HEIGHT, HEADER_COL_WIDTH, HEADER_ROW_HEIGHT, DEFAULT_CHART_SIZE, MAX_IMPORT_ROWS, MAX_IMPORT_COLS, MAX_CONNECTED_IMPORT_COLS, MAX_INITIAL_VIEWPORT_COVERAGE } from './constants';
@@ -1245,7 +1246,7 @@ const App: React.FC = () => {
             />
         )}
 
-        <ViewTabs activeView={activeView} onChange={setActiveView} />
+        <ViewTabs activeView={activeView} onChange={setActiveView} trailing={<AccountMenu />} />
         {activeView === 'library' && <LibraryView onOpenPage={handleOpenPage} />}
 
         <Toast message={toast.message} isVisible={toast.visible} onClose={() => setToast({ ...toast, visible: false })} />

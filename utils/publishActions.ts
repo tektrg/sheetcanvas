@@ -12,6 +12,9 @@ import {
 import { deleteEditKey, readEditKey, saveEditKey } from './publishKeys';
 import { extractEmbeddedChartIds } from './pages';
 import { readConnectorQuery, refreshConnectedSheetFromQuery } from './connectedSheetQueries';
+import { ApiError } from './backendApi';
+import { getSession, saveSession } from './accountSession';
+import type { PublishSnapshot } from '../shared/publishSnapshot';
 
 // Store-coupled publish actions used by the Publish menu and the auto-republish
 // hook. Writing `publish` on a note never bumps `updatedAt` (not a content field).
@@ -30,13 +33,25 @@ const currentSnapshot = async (noteId: string) => {
   return { note, snapshot, hash: await hashSnapshot(snapshot) };
 };
 
+/** Publish owned by the signed-in account; an expired session signs out and publishes anonymously. */
+const createPublishedPageAsCurrentUser = async (snapshot: PublishSnapshot) => {
+  const token = getSession()?.token;
+  try {
+    return await createPublishedPage(snapshot, token);
+  } catch (err) {
+    if (!token || !(err instanceof ApiError) || err.code !== 'invalid_session') throw err;
+    await saveSession(null);
+    return createPublishedPage(snapshot);
+  }
+};
+
 const errorMessage = (err: unknown) => (err instanceof Error ? err.message : 'Publish failed');
 
 export const publishNote = async (noteId: string) => {
   const current = await currentSnapshot(noteId);
   if (!current) return;
   try {
-    const created = await createPublishedPage(current.snapshot);
+    const created = await createPublishedPageAsCurrentUser(current.snapshot);
     await saveEditKey(created.id, created.editKey);
     const now = Date.now();
     patchPublish(noteId, {
