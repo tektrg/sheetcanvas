@@ -41,7 +41,7 @@ export function auditDeployScript({ readText, reportError }) {
     ['seo:rss', 'node scripts/generate-rss.mjs'],
     [
       'seo:audit',
-      'npm run seo:sitemap && npm run seo:rss && npm run seo:llms && npm run seo:gsc:smoke && npm run seo:root:analytics:smoke && npm run seo:analytics:smoke && npm run seo:deploy:smoke && npm run build && node scripts/seo-audit.mjs',
+      'npm run seo:sitemap && npm run seo:rss && npm run seo:llms && npm run seo:gsc:smoke && npm run seo:root:analytics:smoke && npm run seo:analytics:smoke && npm run seo:deploy:smoke && npm run build && node scripts/seo-audit.mjs && node scripts/seo-link-check.mjs',
     ],
   ]);
 
