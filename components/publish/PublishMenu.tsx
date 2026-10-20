@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Check, Copy, ExternalLink, Globe, Pause, Play, RefreshCw } from 'lucide-react';
+import { Check, Code2, Copy, ExternalLink, Globe, Pause, Play, RefreshCw } from 'lucide-react';
 import { useStore } from '../../store';
 import type { PublishRefreshSchedule } from '../../types';
 import { extractEmbeddedChartIds } from '../../utils/pages';
@@ -12,6 +12,7 @@ import {
   setRefreshSchedule,
   unpublishNote,
 } from '../../utils/publishActions';
+import { EmbedDialog } from './EmbedDialog';
 
 // Publish control for one note/page: a globe button (with a "Live" badge when
 // published) that opens a small panel. Used on the canvas note bar and in Library rows.
@@ -38,6 +39,7 @@ export const PublishMenu: React.FC<{ noteId: string; align?: 'left' | 'right' }>
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [embedOpen, setEmbedOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -99,6 +101,9 @@ export const PublishMenu: React.FC<{ noteId: string; align?: 'left' | 'right' }>
                 </button>
                 <a href={href} target="_blank" rel="noopener" aria-label="Open public page" className="p-0.5 text-neutral-400 hover:text-teal-600"><ExternalLink size={13} /></a>
               </div>
+              <button type="button" className={rowButton} data-testid="publish-embed" onClick={() => { setEmbedOpen(true); setOpen(false); }}>
+                <Code2 size={13} /> Embed…
+              </button>
               <button type="button" className={rowButton} disabled={busy} onClick={() => setPublishPaused(noteId, !settings.paused)} data-testid="publish-pause-toggle">
                 {settings.paused ? <Play size={13} /> : <Pause size={13} />}
                 {settings.paused ? 'Resume auto-update' : 'Pause auto-update'}
@@ -117,6 +122,9 @@ export const PublishMenu: React.FC<{ noteId: string; align?: 'left' | 'right' }>
                 className="w-full rounded-md bg-teal-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-60"
               >
                 {busy ? 'Publishing…' : 'Publish to web'}
+              </button>
+              <button type="button" className={`${rowButton} mt-1 px-0`} disabled title="Publish first to get an embed code" data-testid="publish-embed">
+                <Code2 size={13} /> Embed… <span className="text-[11px] text-neutral-400">(publish first)</span>
               </button>
             </div>
           )}
@@ -172,6 +180,7 @@ export const PublishMenu: React.FC<{ noteId: string; align?: 'left' | 'right' }>
           )}
         </div>
       )}
+      {embedOpen && live && <EmbedDialog noteId={noteId} pageId={settings.id} onClose={() => setEmbedOpen(false)} />}
     </div>
   );
 };

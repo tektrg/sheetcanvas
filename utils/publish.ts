@@ -92,13 +92,17 @@ const inlineCellValues = (content: string, sheets: Record<string, SheetData>) =>
     return cell ? formatValue(cell.value ?? null, (format && FORMAT_ALIASES[format]) || cell.format) : '';
   });
 
+/** Charts that make it into the snapshot, in snapshot order (= the /e/c/:id/:chartIdx index). */
+export const publishableCharts = (note: NoteData, source: PublishSource): ChartData[] =>
+  extractEmbeddedChartIds(note.content ?? '')
+    .map(id => source.charts[id])
+    .filter((chart): chart is ChartData => !!chart && !!source.sheets[chart.sourceSheetId] && !chart.setupRequired)
+    .slice(0, MAX_PUBLISHED_CHARTS);
+
 /** Freeze a note into the publish wire format. Charts whose source sheet is gone are skipped. */
 export const buildPublishSnapshot = (note: NoteData, source: PublishSource, colorSettings: ChartColorSettings): PublishSnapshot => {
   const hideData = note.publish?.hideData ?? {};
-  const charts = extractEmbeddedChartIds(note.content ?? '')
-    .map(id => source.charts[id])
-    .filter((chart): chart is ChartData => !!chart && !!source.sheets[chart.sourceSheetId] && !chart.setupRequired)
-    .slice(0, MAX_PUBLISHED_CHARTS)
+  const charts = publishableCharts(note, source)
     .map(chart => resolveChartForPublish(chart, source.sheets[chart.sourceSheetId], colorSettings, !!hideData[chart.id]));
   const description = notePlainText({ content: inlineCellValues(note.content ?? '', source.sheets) }).slice(0, 300);
   return {
@@ -123,12 +127,20 @@ export const isPublished = (settings: NotePublishSettings | undefined): settings
   !!settings?.id;
 
 /** Where to open the page from this app: the canonical URL in prod, the local backend in dev. */
-export const publicPageHref = (settings: NotePublishSettings): string => {
-  if (!settings.url) return '';
+export const publicPageHref = (settings: NotePublishSettings): string =>
+  settings.url ? publicHref(new URL(settings.url).pathname) : '';
+
+const CANONICAL_ORIGIN = 'https://sheetcanvas.com';
+
+/** A public path (/p/…, /e/…) opened from this app: canonical in prod, the local backend in dev. */
+export const publicHref = (path: string): string => {
   const base = getBackendBaseUrl();
-  if (base.startsWith('https://sheetcanvas.com') || base.startsWith('https://www.sheetcanvas.com')) return settings.url;
-  return `${base}${new URL(settings.url).pathname}`;
+  const isProduction = base.startsWith(CANONICAL_ORIGIN) || base.startsWith('https://www.sheetcanvas.com');
+  return `${isProduction ? CANONICAL_ORIGIN : base}${path}`;
 };
+
+/** Absolute canonical URL for snippets people paste elsewhere (always sheetcanvas.com). */
+export const canonicalPublicUrl = (path: string): string => `${CANONICAL_ORIGIN}${path}`;
 
 /**
  * Per-key debouncer: `schedule(key)` (re)starts a timer; the task runs once the
