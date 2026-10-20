@@ -24,6 +24,7 @@ import {
   schemaUrlMatches,
   schemaUrlValue,
 } from './seo-html.mjs';
+import { auditRobotsTxt } from './seo-ai-crawlers.mjs';
 import { auditLlmsGeneratorScript, auditLlmsText } from './seo-llms-audit.mjs';
 import { auditRssFeed } from './seo-rss-audit.mjs';
 import {
@@ -476,9 +477,7 @@ function auditSitemap(rootPath, pages) {
     }
   }
 
-  if (!robots.includes(`Sitemap: ${SITE_ORIGIN}/sitemap-index.xml`)) {
-    reportError(label, 'robots.txt must point at the sitemap index.');
-  }
+  auditRobotsTxt(robots, SITE_ORIGIN).forEach((problem) => reportError(label, problem));
 
   if (!sitemapIndex.includes(`<loc>${SITE_ORIGIN}/sitemap.xml</loc>`)) {
     reportError(label, 'sitemap-index.xml must include sitemap.xml.');
