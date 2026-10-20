@@ -53,11 +53,12 @@ interface ListingView {
 
 const pageItem = (handle: string, page: OwnedPageListing) => {
   const e = escapeHtml;
+  const published = new Date(page.created_at).toISOString();
   const updated = new Date(page.updated_at).toISOString();
   const chips = page.tags.length
     ? ` · ${page.tags.map(tag => `<a href="${e(tagPath(handle, tag))}">#${e(tag)}</a>`).join(' ')}`
     : '';
-  return `<li><h2><a href="/p/${e(page.slug)}-${e(page.id)}">${e(page.title)}</a></h2>${page.description ? `<p>${e(page.description)}</p>` : ''}<p class="meta">Updated <time datetime="${updated}">${updated.slice(0, 10)}</time>${chips}</p></li>`;
+  return `<li><h2><a href="/p/${e(page.slug)}-${e(page.id)}">${e(page.title)}</a></h2>${page.description ? `<p>${e(page.description)}</p>` : ''}<p class="meta">Published <time datetime="${published}">${published.slice(0, 10)}</time> · Updated <time datetime="${updated}">${updated.slice(0, 10)}</time>${chips}</p></li>`;
 };
 
 export const renderProfileHtml = ({ profile, pages, allTags, tag, truncated = false }: ListingView): string => {

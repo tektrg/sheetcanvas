@@ -11,7 +11,7 @@ import {
   type EmbedOptions,
   type EmbedTarget,
 } from '../../shared/embed';
-import { canonicalPageUrl, renderGoneHtml, SITE_ORIGIN } from './render/pageHtml';
+import { canonicalPageUrl, renderGoneHtml, withChartDataAsOf, SITE_ORIGIN } from './render/pageHtml';
 import { renderChartEmbedHtml, renderPageEmbedHtml } from './render/embedHtml';
 import { EMBED_CSP, htmlResponse } from './htmlResponse';
 
@@ -39,7 +39,7 @@ const loadLivePage = async (repo: PagesRepo, id: string): Promise<PageLookup> =>
   const row = await repo.getPage(id);
   if (!row) return { ok: false, status: 404 };
   if (row.status !== 'published') return { ok: false, status: 410 };
-  return { ok: true, page: { snapshot: publishSnapshotSchema.parse(JSON.parse(row.snapshot_json)), canonicalUrl: canonicalPageUrl(row.slug, row.id) } };
+  return { ok: true, page: { snapshot: withChartDataAsOf(publishSnapshotSchema.parse(JSON.parse(row.snapshot_json)), row.updated_at), canonicalUrl: canonicalPageUrl(row.slug, row.id) } };
 };
 
 const embedHtml = (html: string, status = 200) => htmlResponse(html, status, EMBED_CACHE_SECONDS, EMBED_HEADERS);

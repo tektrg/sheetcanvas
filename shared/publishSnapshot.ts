@@ -26,8 +26,23 @@ export const publishedChartSchema = z.object({
   type: z.enum(PUBLISHED_CHART_TYPES),
   stacked: z.boolean().optional(),
   hideData: z.boolean().optional(),
+  // Epoch ms the data was last fetched (connector refresh). Absent → the page's publish time.
+  dataAsOf: z.number().int().positive().optional(),
   series: z.array(publishedSeriesSchema).min(1).max(50),
   rows: z.array(publishedRowSchema).max(20_000),
+});
+
+// "Answer box": author-reviewed TL;DR + Q&A shown under the title for AI answer engines.
+export const ANSWER_BOX_LIMITS = { summaryChars: 300, faqItems: 5, questionChars: 200, answerChars: 600 } as const;
+
+export const faqItemSchema = z.object({
+  q: z.string().trim().min(1).max(ANSWER_BOX_LIMITS.questionChars),
+  a: z.string().trim().min(1).max(ANSWER_BOX_LIMITS.answerChars),
+});
+
+export const answerBoxSchema = z.object({
+  summary: z.string().trim().max(ANSWER_BOX_LIMITS.summaryChars).optional(),
+  faq: z.array(faqItemSchema).max(ANSWER_BOX_LIMITS.faqItems).optional(),
 });
 
 export const publishSnapshotSchema = z.object({
@@ -39,12 +54,15 @@ export const publishSnapshotSchema = z.object({
   // Note content with <CanvasChart id="..."/> placeholders referencing `charts`.
   content: z.string().max(200_000),
   charts: z.array(publishedChartSchema).max(MAX_PUBLISHED_CHARTS),
+  ...answerBoxSchema.shape,
 });
 
 export type PublishedSeries = z.infer<typeof publishedSeriesSchema>;
 export type PublishedRow = z.infer<typeof publishedRowSchema>;
 export type PublishedChart = z.infer<typeof publishedChartSchema>;
 export type PublishSnapshot = z.infer<typeof publishSnapshotSchema>;
+export type FaqItem = z.infer<typeof faqItemSchema>;
+export type AnswerBox = z.infer<typeof answerBoxSchema>;
 
 export interface PublishCreatedResponse {
   id: string;

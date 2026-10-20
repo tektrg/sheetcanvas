@@ -1,5 +1,6 @@
 import type { ChartColorSettings, ChartData, NoteData, NotePublishSettings, SheetData } from '../types';
 import {
+  ANSWER_BOX_LIMITS,
   MAX_PUBLISHED_CHARTS,
   type PublishCreatedResponse,
   type PublishedChart,
@@ -72,6 +73,8 @@ export const resolveChartForPublish = (
     type: chart.config.type,
     ...(chart.config.stacked ? { stacked: true } : {}),
     ...(hideData ? { hideData: true } : {}),
+    // Connector sheets: when the data was last fetched. Others are "as of" the publish (server side).
+    ...(sheet.connectorConfig?.lastRefreshedAt ? { dataAsOf: sheet.connectorConfig.lastRefreshedAt } : {}),
     series,
     rows: rows.map(row => ({
       label: String(row.name ?? ''),
@@ -99,6 +102,16 @@ export const publishableCharts = (note: NoteData, source: PublishSource): ChartD
     .filter((chart): chart is ChartData => !!chart && !!source.sheets[chart.sourceSheetId] && !chart.setupRequired)
     .slice(0, MAX_PUBLISHED_CHARTS);
 
+/** Saved answer box → snapshot fields; blank summary and empty Q&As are dropped. */
+const reviewedAnswerBox = (answerBox: NotePublishSettings['answerBox']): Pick<PublishSnapshot, 'summary' | 'faq'> => {
+  const summary = answerBox?.summary?.trim().slice(0, ANSWER_BOX_LIMITS.summaryChars);
+  const faq = (answerBox?.faq ?? [])
+    .map(item => ({ q: item.q.trim().slice(0, ANSWER_BOX_LIMITS.questionChars), a: item.a.trim().slice(0, ANSWER_BOX_LIMITS.answerChars) }))
+    .filter(item => item.q && item.a)
+    .slice(0, ANSWER_BOX_LIMITS.faqItems);
+  return { ...(summary ? { summary } : {}), ...(faq.length ? { faq } : {}) };
+};
+
 /** Freeze a note into the publish wire format. Charts whose source sheet is gone are skipped. */
 export const buildPublishSnapshot = (note: NoteData, source: PublishSource, colorSettings: ChartColorSettings): PublishSnapshot => {
   const hideData = note.publish?.hideData ?? {};
@@ -113,6 +126,7 @@ export const buildPublishSnapshot = (note: NoteData, source: PublishSource, colo
     format: note.format ?? 'html',
     content: inlineCellValues(note.content ?? '', source.sheets),
     charts,
+    ...reviewedAnswerBox(note.publish?.answerBox),
   };
 };
 

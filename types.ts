@@ -338,6 +338,8 @@ export interface NotePublishSettings {
   paused?: boolean; // auto-republish off; page stays live with its last snapshot
   hideData?: Record<string, boolean>; // chart id → omit its data table/Dataset
   refreshSchedule?: PublishRefreshSchedule; // re-run live connector queries while the app is open
+  // Author-reviewed TL;DR + Q&A shown under the page title (AI drafts only land here after "Use this").
+  answerBox?: { summary?: string; faq?: Array<{ q: string; a: string }> };
   lastError?: string;
 }
 

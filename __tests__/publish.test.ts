@@ -105,3 +105,25 @@ describe('createDebouncedRunner', () => {
     expect(run).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('buildPublishSnapshot — AEO fields', () => {
+  it('includes the reviewed answer box, dropping blanks', () => {
+    const snapshot = buildPublishSnapshot(note({ publish: { answerBox: {
+      summary: '  Feb doubled Jan.  ',
+      faq: [{ q: 'How much in Feb?', a: '25.' }, { q: ' ', a: 'orphan answer' }],
+    } } }), source, DEFAULT_CHART_COLOR_SETTINGS);
+    expect(snapshot.summary).toBe('Feb doubled Jan.');
+    expect(snapshot.faq).toEqual([{ q: 'How much in Feb?', a: '25.' }]);
+    expect(publishSnapshotSchema.parse(snapshot)).toBeTruthy();
+    const plain = buildPublishSnapshot(note(), source, DEFAULT_CHART_COLOR_SETTINGS);
+    expect('summary' in plain || 'faq' in plain).toBe(false);
+  });
+
+  it('stamps connector charts with their last refresh time only', () => {
+    const plain = buildPublishSnapshot(note(), source, DEFAULT_CHART_COLOR_SETTINGS);
+    expect(plain.charts[0].dataAsOf).toBeUndefined();
+    const connected = { ...sheet, connectorConfig: { lastRefreshedAt: 1_760_000_000_000 } } as unknown as SheetData;
+    const live = buildPublishSnapshot(note(), { ...source, sheets: { s1: connected } }, DEFAULT_CHART_COLOR_SETTINGS);
+    expect(live.charts[0].dataAsOf).toBe(1_760_000_000_000);
+  });
+});

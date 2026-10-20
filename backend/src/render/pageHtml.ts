@@ -2,6 +2,7 @@ import type { PublishedChart, PublishSnapshot } from '../../../shared/publishSna
 import { COMPACT_LAYOUT, renderChartSvg, WIDE_LAYOUT } from './chartSvg';
 import { renderDataTable } from './dataTable';
 import { escapeHtml, jsonForScript } from './escape';
+import { ANSWER_BOX_STYLES, faqJsonLd, renderFaqHtml, renderSummaryHtml } from './answerBoxHtml';
 import { CHART_PLACEHOLDER_PREFIX, plainExcerpt, renderNoteHtml } from './noteHtml';
 
 // Full public page for /p/<slug>-<id>. Pieces (figure, styles, document shell)
@@ -54,6 +55,7 @@ figure.chart .cs-sep{stroke:var(--chart-bg)}
 figure.chart svg.cs-compact{display:none}
 @media (max-width:560px){figure.chart svg.cs-wide{display:none}figure.chart svg.cs-compact{display:block}}
 figure.chart figcaption{font-weight:600;margin-top:8px}
+figure.chart .as-of{display:block;font-weight:400;color:var(--muted);font-size:.8rem}
 .data-table{margin-top:8px;font-size:.875rem}
 .data-table summary{cursor:pointer;color:var(--muted)}
 .table-scroll{overflow-x:auto}
@@ -68,12 +70,24 @@ footer a{color:var(--accent)}
 .report{color:var(--muted)}
 `;
 
+/** ISO timestamp + its YYYY-MM-DD label as a <time> element. */
+export const timeHtml = (epochMs: number): string => {
+  const iso = new Date(epochMs).toISOString();
+  return `<time datetime="${iso}">${iso.slice(0, 10)}</time>`;
+};
+
+/** Charts without their own refresh time are "as of" the page's last publish. */
+export const withChartDataAsOf = (snapshot: PublishSnapshot, publishedAt: number): PublishSnapshot => ({
+  ...snapshot,
+  charts: snapshot.charts.map(chart => (chart.dataAsOf ? chart : { ...chart, dataAsOf: publishedAt })),
+});
+
 const chartVariant = (chart: PublishedChart, variant: 'cs-wide' | 'cs-compact') =>
   renderChartSvg(chart, variant === 'cs-wide' ? WIDE_LAYOUT : COMPACT_LAYOUT).replace('<svg ', `<svg class="${variant}" `);
 
 /** One chart as a <figure>: inline SVG + its capped data table (unless hideData). */
 export const renderChartFigure = (chart: PublishedChart): string =>
-  `<figure class="chart" id="chart-${escapeHtml(chart.id)}">${chartVariant(chart, 'cs-wide')}${chartVariant(chart, 'cs-compact')}<figcaption>${escapeHtml(chart.title)}</figcaption>${renderDataTable(chart)}</figure>`;
+  `<figure class="chart" id="chart-${escapeHtml(chart.id)}">${chartVariant(chart, 'cs-wide')}${chartVariant(chart, 'cs-compact')}<figcaption>${escapeHtml(chart.title)}${chart.dataAsOf ? `<span class="as-of">Data as of ${timeHtml(chart.dataAsOf)}</span>` : ''}</figcaption>${renderDataTable(chart)}</figure>`;
 
 const chartDatasetJsonLd = (chart: PublishedChart, pageUrl: string) => ({
   '@type': 'Dataset',
@@ -102,7 +116,7 @@ export const renderArticleBody = (snapshot: PublishSnapshot): string => {
 };
 
 export const pageDescription = (snapshot: PublishSnapshot): string =>
-  snapshot.description?.trim() || plainExcerpt(renderNoteHtml(snapshot.content, snapshot.format)) || `${snapshot.title} — made with SheetCanvas`;
+  snapshot.summary?.trim() || snapshot.description?.trim() || plainExcerpt(renderNoteHtml(snapshot.content, snapshot.format)) || `${snapshot.title} — made with SheetCanvas`;
 
 /** Complete HTML document for a published page. */
 export const renderPageHtml = (snapshot: PublishSnapshot, meta: PageMeta): string => {
@@ -113,6 +127,7 @@ export const renderPageHtml = (snapshot: PublishSnapshot, meta: PageMeta): strin
   const robots = meta.wordCount < NOINDEX_WORD_THRESHOLD ? 'noindex, follow' : 'index, follow, max-image-preview:large';
   const created = new Date(meta.createdAt).toISOString();
   const updated = new Date(meta.updatedAt).toISOString();
+  const datasetUpdated = (chart: PublishedChart) => new Date(chart.dataAsOf ?? meta.updatedAt).toISOString();
   const jsonLd = {
     '@context': 'https://schema.org',
     '@graph': [
@@ -131,7 +146,8 @@ export const renderPageHtml = (snapshot: PublishSnapshot, meta: PageMeta): strin
           : undefined,
         publisher: { '@type': 'Organization', name: 'SheetCanvas', url: SITE_ORIGIN },
       },
-      ...snapshot.charts.filter(chart => !chart.hideData).map(chart => chartDatasetJsonLd(chart, url)),
+      ...snapshot.charts.filter(chart => !chart.hideData).map(chart => ({ ...chartDatasetJsonLd(chart, url), dateModified: datasetUpdated(chart) })),
+      ...faqJsonLd(snapshot.faq, url),
     ],
   };
   const e = escapeHtml;
@@ -158,13 +174,14 @@ export const renderPageHtml = (snapshot: PublishSnapshot, meta: PageMeta): strin
 <meta name="twitter:description" content="${e(description)}">
 <meta name="twitter:image" content="${e(image)}">
 <script type="application/ld+json">${jsonForScript(jsonLd)}</script>
-<style>${PAGE_STYLES}</style>
+<style>${PAGE_STYLES}${ANSWER_BOX_STYLES}</style>
 </head>
 <body>
 <main>
 <h1>${e(title)}</h1>
-<p class="meta">${meta.author ? `By <a href="/@${e(meta.author.handle)}" rel="author">@${e(meta.author.handle)}</a> · ` : ''}Updated <time datetime="${updated}">${updated.slice(0, 10)}</time></p>
-<article>${renderArticleBody(snapshot)}</article>
+<p class="meta">${meta.author ? `By <a href="/@${e(meta.author.handle)}" rel="author">@${e(meta.author.handle)}</a> · ` : ''}Published ${timeHtml(meta.createdAt)} · Updated ${timeHtml(meta.updatedAt)}</p>
+${renderSummaryHtml(snapshot)}
+<article>${renderArticleBody(withChartDataAsOf(snapshot, meta.updatedAt))}${renderFaqHtml(snapshot.faq)}</article>
 </main>
 <footer>
 <a class="cta" href="${SITE_ORIGIN}/?utm_source=published_page&amp;utm_medium=footer">Made with SheetCanvas — turn your spreadsheets into pages like this</a>

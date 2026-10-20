@@ -19,7 +19,7 @@ export interface PublishedPageRow {
   owner_user_id?: string | null;
 }
 
-export type PageListing = Pick<PublishedPageRow, 'id' | 'slug' | 'title' | 'description' | 'word_count' | 'updated_at'>;
+export type PageListing = Pick<PublishedPageRow, 'id' | 'slug' | 'title' | 'description' | 'word_count' | 'created_at' | 'updated_at'>;
 
 /** Published page of a known owner, for /@handle listings and sitemap hubs. */
 export type OwnedPageListing = PageListing & { owner_user_id: string; tags: string[] };
@@ -87,7 +87,7 @@ export const createD1PagesRepo = (db: D1Database): PagesRepo => ({
   async listPublished(limit) {
     const result = await db
       .prepare(
-        `SELECT id, slug, title, description, word_count, updated_at FROM published_pages
+        `SELECT id, slug, title, description, word_count, created_at, updated_at FROM published_pages
          WHERE status = 'published' ORDER BY updated_at DESC LIMIT ?`
       )
       .bind(limit)
@@ -97,7 +97,7 @@ export const createD1PagesRepo = (db: D1Database): PagesRepo => ({
   async listOwned(limit, ownerId) {
     const result = await db
       .prepare(
-        `SELECT id, slug, title, description, word_count, updated_at, owner_user_id, json_extract(snapshot_json, '$.tags') AS tags_json
+        `SELECT id, slug, title, description, word_count, created_at, updated_at, owner_user_id, json_extract(snapshot_json, '$.tags') AS tags_json
          FROM published_pages
          WHERE status = 'published' AND owner_user_id IS NOT NULL AND (?1 IS NULL OR owner_user_id = ?1)
          ORDER BY updated_at DESC LIMIT ?2`
@@ -150,7 +150,7 @@ export const createMemoryPagesRepo = () => {
         .slice(0, limit)
         .map(page => ({
           id: page.id, slug: page.slug, title: page.title, description: page.description,
-          word_count: page.word_count, updated_at: page.updated_at, owner_user_id: page.owner_user_id!, tags: tagsFromSnapshot(page.snapshot_json),
+          word_count: page.word_count, created_at: page.created_at, updated_at: page.updated_at, owner_user_id: page.owner_user_id!, tags: tagsFromSnapshot(page.snapshot_json),
         }));
     },
     async countEvents(ipHash, kind, sinceMs) {

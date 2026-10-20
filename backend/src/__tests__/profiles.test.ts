@@ -113,6 +113,7 @@ describe('profile pages', () => {
     expect(html).toContain('Pricing test');
     expect(html).not.toContain('Anonymous one');
     expect(html).toContain('href="/@ann/tag/saas"');
+    expect(html).toMatch(/<p class="meta">Published <time datetime="[^"]+Z">\d{4}-\d{2}-\d{2}<\/time> · Updated <time datetime="[^"]+Z">/);
     expect(html).toContain('"@type":"ProfilePage"');
     expect(html).toContain('"@type":"ItemList"');
     expect(html).toContain('content="index, follow"');

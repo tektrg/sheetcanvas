@@ -1,6 +1,7 @@
 import type { PublishedChart, PublishSnapshot } from '../../../shared/publishSnapshot';
 import type { EmbedTheme } from '../../../shared/embed';
 import { escapeHtml } from './escape';
+import { ANSWER_BOX_STYLES, renderSummaryHtml } from './answerBoxHtml';
 import { DARK_THEME_VARS, LIGHT_THEME_VARS, PAGE_STYLES, renderArticleBody, renderChartFigure } from './pageHtml';
 
 // Minimal, script-free documents for /e/p (whole page) and /e/c (one chart):
@@ -37,7 +38,7 @@ const renderEmbedDocument = ({ bodyClass, title, canonicalUrl, theme, body }: Em
 <meta name="robots" content="noindex">
 <title>${e(title)}</title>
 <link rel="canonical" href="${e(canonicalUrl)}">
-<style>${PAGE_STYLES}${EMBED_STYLES}${themeOverride(theme)}</style>
+<style>${PAGE_STYLES}${ANSWER_BOX_STYLES}${EMBED_STYLES}${themeOverride(theme)}</style>
 </head>
 <body class="${bodyClass}">
 ${body}
@@ -54,7 +55,7 @@ export const renderPageEmbedHtml = (snapshot: PublishSnapshot, canonicalUrl: str
     title: snapshot.title,
     canonicalUrl,
     theme,
-    body: `<main><h1>${escapeHtml(snapshot.title)}</h1><article>${renderArticleBody({ ...snapshot, charts: snapshot.charts.map(chart => withDataHidden(chart, hideData)) })}</article></main>`,
+    body: `<main><h1>${escapeHtml(snapshot.title)}</h1>${renderSummaryHtml(snapshot)}<article>${renderArticleBody({ ...snapshot, charts: snapshot.charts.map(chart => withDataHidden(chart, hideData)) })}</article></main>`,
   });
 
 export const renderChartEmbedHtml = (chart: PublishedChart, canonicalUrl: string, theme: EmbedTheme, hideData: boolean): string =>

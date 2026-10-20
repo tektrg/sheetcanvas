@@ -63,7 +63,7 @@ describe('embeds /e/*', () => {
     const res = await send(`/e/c/${id}/0`);
     expectEmbedHeaders(res);
     const html = await res.text();
-    expect(html).toContain('<figcaption>Monthly revenue</figcaption>');
+    expect(html).toContain('<figcaption>Monthly revenue<span class="as-of">Data as of <time');
     expect(html).toContain('Showing 100 of 150 rows');
     expect(html).toContain(`href="${url}#chart-c1"`);
     expect(html).not.toContain('Secret chart');
