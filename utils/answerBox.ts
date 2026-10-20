@@ -23,6 +23,14 @@ export const requestAnswerBoxDraft = async (snapshot: PublishSnapshot): Promise<
   return { summary: json?.draft?.summary ?? '', faq: json?.draft?.faq ?? [] };
 };
 
+/** User-facing text for a failed draft/save: browser network errors ("Failed to fetch", "Load failed") become a plain hint. */
+export const answerBoxErrorMessage = (err: unknown, fallback: string): string => {
+  if (err instanceof TypeError || (err instanceof Error && /failed to fetch|load failed|networkerror/i.test(err.message))) {
+    return `${fallback}: can't reach the server. Check your connection and try again.`;
+  }
+  return err instanceof Error && err.message ? err.message : fallback;
+};
+
 /** Editor state → what gets saved: trimmed, blanks dropped, undefined when nothing is left. */
 export const toSavedAnswerBox = (box: AnswerBoxDraft): SavedAnswerBox | undefined => {
   const summary = box.summary.trim();

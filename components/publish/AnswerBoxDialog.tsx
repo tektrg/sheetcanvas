@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Plus, Sparkles, Trash2, X } from 'lucide-react';
 import { useStore } from '../../store';
 import { ANSWER_BOX_LIMITS } from '../../shared/publishSnapshot';
-import { answerBoxProblems, EMPTY_ANSWER_BOX, toSavedAnswerBox, type AnswerBoxDraft } from '../../utils/answerBox';
+import { answerBoxErrorMessage, answerBoxProblems, EMPTY_ANSWER_BOX, toSavedAnswerBox, type AnswerBoxDraft } from '../../utils/answerBox';
 import { draftAnswerBoxForNote, saveAnswerBox } from '../../utils/publishActions';
 import { PortalThemeScope } from '../PortalThemeScope';
 
@@ -23,6 +23,7 @@ const Counter: React.FC<{ value: string; max: number }> = ({ value, max }) => (
 const DraftPreview: React.FC<{ draft: AnswerBoxDraft; onUse: () => void; onDiscard: () => void }> = ({ draft, onUse, onDiscard }) => (
   <div data-testid="answer-box-draft" className="rounded-md border border-violet-200 bg-violet-50 p-3 text-sm dark:border-violet-800 dark:bg-violet-950/40">
     <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-300">AI draft — review before using</div>
+    <p className="mb-2 text-xs text-violet-800 dark:text-violet-200">AI can get facts and numbers wrong. Check every figure against your data before saving.</p>
     {draft.summary && <p className="mb-2">{draft.summary}</p>}
     <ul className="mb-3 space-y-1">
       {draft.faq.map((item, index) => <li key={index}><strong>{item.q}</strong> {item.a}</li>)}
@@ -57,13 +58,13 @@ export const AnswerBoxDialog: React.FC<{ noteId: string; onClose: () => void }> 
   const generate = async () => {
     setBusy('generate');
     setError(null);
-    try { setDraft(await draftAnswerBoxForNote(noteId)); } catch (err) { setError(err instanceof Error ? err.message : 'AI draft failed'); } finally { setBusy(null); }
+    try { setDraft(await draftAnswerBoxForNote(noteId)); } catch (err) { setError(answerBoxErrorMessage(err, 'AI draft failed')); } finally { setBusy(null); }
   };
 
   const save = async () => {
     setBusy('save');
     setError(null);
-    try { await saveAnswerBox(noteId, toSavedAnswerBox(box)); onClose(); } catch (err) { setError(err instanceof Error ? err.message : 'Save failed'); setBusy(null); }
+    try { await saveAnswerBox(noteId, toSavedAnswerBox(box)); onClose(); } catch (err) { setError(answerBoxErrorMessage(err, 'Save failed')); setBusy(null); }
   };
 
   return createPortal(

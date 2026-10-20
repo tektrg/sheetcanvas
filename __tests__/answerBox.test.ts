@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { answerBoxProblems, toSavedAnswerBox } from '../utils/answerBox';
+import { answerBoxErrorMessage, answerBoxProblems, toSavedAnswerBox } from '../utils/answerBox';
 
 describe('answer box editor helpers', () => {
   it('saves trimmed content and drops blank Q&As; nothing left → undefined', () => {
@@ -14,5 +14,12 @@ describe('answer box editor helpers', () => {
       'Question 1 needs both a question and an answer.',
       'Answer 2 is over 600 characters.',
     ]);
+  });
+
+  it('turns browser network failures into a friendly message', () => {
+    expect(answerBoxErrorMessage(new TypeError('Failed to fetch'), 'AI draft failed')).toBe("AI draft failed: can't reach the server. Check your connection and try again.");
+    expect(answerBoxErrorMessage(new Error('Load failed'), 'Save failed')).toMatch(/^Save failed: can't reach/);
+    expect(answerBoxErrorMessage(new Error('Rate limited'), 'AI draft failed')).toBe('Rate limited');
+    expect(answerBoxErrorMessage('x', 'Save failed')).toBe('Save failed');
   });
 });
