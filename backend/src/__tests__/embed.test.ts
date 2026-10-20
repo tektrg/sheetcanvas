@@ -102,6 +102,8 @@ describe('embeds /e/*', () => {
     const gone = await send(`/e/p/${id}`);
     expect(gone.status).toBe(410);
     expectEmbedHeaders(gone);
+    // Inside a host iframe the home link must open a new tab, not navigate the frame.
+    expect(await gone.text()).toContain('target="_blank" rel="noopener">Go to SheetCanvas');
     expect((await send(`/e/c/${id}/0`)).status).toBe(410);
   });
 });

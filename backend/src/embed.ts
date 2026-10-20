@@ -45,7 +45,7 @@ const loadLivePage = async (repo: PagesRepo, id: string): Promise<PageLookup> =>
 const embedHtml = (html: string, status = 200) => htmlResponse(html, status, EMBED_CACHE_SECONDS, EMBED_HEADERS);
 
 const embedErrorHtml = (status: 404 | 410) =>
-  embedHtml(status === 410 ? renderGoneHtml('Page removed', 'The author unpublished this page.') : renderGoneHtml('Not found', 'This embed does not exist.'), status);
+  embedHtml(status === 410 ? renderGoneHtml('Page removed', 'The author unpublished this page.', true) : renderGoneHtml('Not found', 'This embed does not exist.', true), status);
 
 const embedOptionsFromQuery = (c: AppContext): Required<EmbedOptions> => ({
   theme: parseEmbedTheme(c.req.query('theme')),

@@ -164,5 +164,6 @@ export const renderPageHtml = (snapshot: PublishSnapshot, meta: PageMeta): strin
 };
 
 /** Minimal page for 410 Gone / 404. */
-export const renderGoneHtml = (heading: string, message: string): string =>
-  `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>${escapeHtml(heading)}</title><style>${PAGE_STYLES}</style></head><body><main><h1>${escapeHtml(heading)}</h1><p>${escapeHtml(message)}</p><p><a href="${SITE_ORIGIN}/">Go to SheetCanvas</a></p></main></body></html>`;
+/** `inFrame`: shown inside a host iframe, so the home link opens a new tab instead of navigating the frame. */
+export const renderGoneHtml = (heading: string, message: string, inFrame = false): string =>
+  `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>${escapeHtml(heading)}</title><style>${PAGE_STYLES}</style></head><body><main><h1>${escapeHtml(heading)}</h1><p>${escapeHtml(message)}</p><p><a href="${SITE_ORIGIN}/"${inFrame ? ' target="_blank" rel="noopener"' : ''}>Go to SheetCanvas</a></p></main></body></html>`;

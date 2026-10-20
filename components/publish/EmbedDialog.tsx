@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, Copy, X } from 'lucide-react';
 import { useStore } from '../../store';
@@ -29,6 +29,16 @@ export const EmbedDialog: React.FC<{ noteId: string; pageId: string; onClose: ()
   const [theme, setTheme] = useState<EmbedTheme>('auto');
   const [hideData, setHideData] = useState(false);
   const [copied, setCopied] = useState<CopiedKind>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
+    dialogRef.current?.querySelector<HTMLElement>('select')?.focus();
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('keydown', onKey); opener?.focus?.(); };
+  }, [onClose]);
+
   if (!note) return null;
 
   const embeddableCharts = publishableCharts(note, { charts, sheets });
@@ -51,6 +61,7 @@ export const EmbedDialog: React.FC<{ noteId: string; pageId: string; onClose: ()
   return createPortal(
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4" onMouseDown={onClose} data-testid="embed-dialog-backdrop">
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="Embed published page"
@@ -84,7 +95,7 @@ export const EmbedDialog: React.FC<{ noteId: string; pageId: string; onClose: ()
           data-testid="embed-preview"
           src={publicHref(path)}
           title={`Preview: ${title}`}
-          height={Math.min(height, 480)}
+          height={height}
           className="w-full rounded border border-neutral-200 dark:border-neutral-700"
         />
 
@@ -100,6 +111,7 @@ export const EmbedDialog: React.FC<{ noteId: string; pageId: string; onClose: ()
           <button type="button" data-testid="embed-copy-url" onClick={() => copy('url', embedUrl)} className={`${copyButton} border border-neutral-200 dark:border-neutral-600 hover:bg-neutral-50 dark:hover:bg-neutral-700`}>
             {copied === 'url' ? <Check size={14} /> : <Copy size={14} />} Copy URL
           </button>
+          <span role="status" aria-live="polite" className="self-center text-xs text-teal-600">{copied ? 'Copied' : ''}</span>
         </div>
       </div>
     </div>,
