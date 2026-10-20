@@ -23,7 +23,7 @@ export const createFakeTheIndie = () => {
     const id = sessions.get(token);
     return id ? users.get(id) ?? null : null;
   };
-  const publicView = (u: AccountUser) => ({ id: u.id, handle: u.handle, displayName: u.displayName, avatarUrl: u.avatarUrl });
+  const publicView = (u: AccountUser) => ({ id: u.id, handle: u.handle, displayName: u.displayName, avatarUrl: null }); // real server: avatars never public
 
   /** Create a signed-in user directly (tests). Returns its session token. */
   const seedUser = (user: Partial<AccountUser> & { id: string }, token = `tok-${user.id}`) => {
@@ -72,7 +72,8 @@ export const createFakeTheIndie = () => {
     const byId = path.match(/^\/v1\/users\/([^/]+)\/public$/);
     if (byId && req.method === 'GET') {
       const user = users.get(decodeURIComponent(byId[1]));
-      return user ? json(publicView(user)) : fail(404, 'Not found');
+      // Real theindie-api: 404 when the account never chose a handle.
+      return user?.handle ? json(publicView(user)) : fail(404, 'Not found');
     }
     return fail(404, 'Unknown route');
   };

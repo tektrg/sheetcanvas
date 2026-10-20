@@ -30,6 +30,13 @@ Deploy the frontend with Wrangler Pages, not Vercel. Build first, then deploy th
 - `npx wrangler pages deploy dist --project-name sheetcanvas --branch main` – deploy the built frontend to production.
 - `npx wrangler pages deployment list --project-name sheetcanvas` – confirm the latest production deployment source commit and preview URL.
 
+Backend D1 migrations (before deploying a backend that reads `owner_user_id`):
+
+- Production tables were created from `backend/schema.sql`, never through Wrangler's tracker, so remote D1 has no `d1_migrations` table yet. `backend/migrations/` holds only `0001_page_owner.sql`, so the first `--remote` apply creates the tracker and runs just that file.
+- Check first: `npx wrangler d1 migrations list DB --remote` (from `backend/`) must list only `0001_page_owner.sql`, and `npx wrangler d1 execute DB --remote --command "PRAGMA table_info(published_pages)"` must NOT show `owner_user_id` (if it does, the ALTER would fail with "duplicate column").
+- Then: `npx wrangler d1 migrations apply DB --remote`, then deploy the backend Worker. The migration is additive (nullable column + index); the old Worker keeps working against it.
+- Never paste `0001_page_owner.sql` into `d1 execute` by hand; it is not idempotent and the tracker would re-run it later.
+
 After deployment, smoke check at minimum:
 
 - `https://sheetcanvas.com/`

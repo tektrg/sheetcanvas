@@ -28,6 +28,7 @@ export const PUBLISH_LIMITS = {
   publishesPerHour: 10,
   republishesPerHour: 120,
   reportsPerHour: 20,
+  claimsPerHour: 20,
   pageCacheSeconds: 60,
   sitemapMaxPages: 5000,
 } as const;
@@ -94,9 +95,9 @@ const readSnapshot = async (c: AppContext): Promise<PublishSnapshot> => {
 };
 
 const enforceRateLimit = async (repo: PagesRepo, ipHash: string, kind: PublishEventKind, now: number) => {
-  const limit = { publish: PUBLISH_LIMITS.publishesPerHour, republish: PUBLISH_LIMITS.republishesPerHour, report: PUBLISH_LIMITS.reportsPerHour }[kind];
+  const limit = { publish: PUBLISH_LIMITS.publishesPerHour, republish: PUBLISH_LIMITS.republishesPerHour, report: PUBLISH_LIMITS.reportsPerHour, claim: PUBLISH_LIMITS.claimsPerHour }[kind];
   if ((await repo.countEvents(ipHash, kind, now - HOUR_MS)) >= limit) {
-    throw new HttpError(429, 'rate_limited', `Too many ${kind === 'report' ? 'reports' : `${kind}es`} from this network. Try again within the hour.`);
+    throw new HttpError(429, 'rate_limited', `Too many ${kind === 'report' ? 'reports' : kind === 'claim' ? 'claims' : `${kind}es`} from this network. Try again within the hour.`);
   }
   await repo.recordEvent(ipHash, kind, now);
 };
@@ -206,6 +207,7 @@ export const createPublishApp = (
     const user = (await sessionUser(c, getAccounts(c.env), true))!;
     const parsed = claimSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) throw new HttpError(400, 'invalid_claim', `Body must be {pages: [{id, editKey}]} (max ${MAX_CLAIM_PAGES})`);
+    await enforceRateLimit(repo, await clientIpHash(c), 'claim', now());
     const claimed: string[] = [];
     const skipped: Array<{ id: string; reason: 'not_found' | 'forbidden' | 'owned_by_other' }> = [];
     for (const { id, editKey } of parsed.data.pages) {

@@ -72,6 +72,16 @@ describe('claim', () => {
     expect(memory.pages.get(page.id)!.owner_user_id).toBe('u_ann');
   });
 
+  it('rate-limits claim requests per network', async () => {
+    const { publish, claim, fake } = setup();
+    const token = fake.seedUser({ id: 'u_ann', handle: 'ann' });
+    const page = await publish();
+    const statuses: number[] = [];
+    for (let i = 0; i < 21; i++) statuses.push((await claim(token, [page])).status);
+    expect(statuses.slice(0, 20).every(s => s === 200)).toBe(true);
+    expect(statuses[20]).toBe(429);
+  });
+
   it('publish with a bad bearer is 401, anonymous publish still works', async () => {
     const { send } = setup();
     const bad = await send('/api/pages', { method: 'POST', body: JSON.stringify(snapshot()), headers: { authorization: 'Bearer nope' } });

@@ -90,7 +90,7 @@ export const AccountMenu: React.FC = () => {
         onClick={() => setOpen(v => !v)}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100"
       >
-        {user?.avatarUrl ? <img src={user.avatarUrl} alt="" className="h-4 w-4 rounded-full" referrerPolicy="no-referrer" /> : <UserRound size={14} strokeWidth={1.5} />}
+        <UserRound size={14} strokeWidth={1.5} />
         <span className="max-w-[120px] truncate">{label}</span>
       </button>
       {open && (
@@ -104,7 +104,7 @@ export const AccountMenu: React.FC = () => {
           ) : (
             <>
               <div className="px-2 pb-2 mb-1 border-b border-neutral-100 dark:border-neutral-800">
-                <p className="text-sm font-medium truncate">{user.displayName}</p>
+                <p className="text-sm font-medium truncate">{user.displayName || (user.handle ? `@${user.handle}` : 'Signed in')}</p>
                 <p className="text-xs text-neutral-500 truncate">{user.handle ? `@${user.handle}` : 'No handle yet'}</p>
               </div>
               {user.handle && (

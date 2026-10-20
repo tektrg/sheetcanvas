@@ -2,7 +2,7 @@
 // without D1 (tests use `createMemoryPagesRepo`).
 
 export type PageStatus = 'published' | 'unpublished';
-export type PublishEventKind = 'publish' | 'republish' | 'report';
+export type PublishEventKind = 'publish' | 'republish' | 'report' | 'claim';
 
 export interface PublishedPageRow {
   id: string;

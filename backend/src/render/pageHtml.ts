@@ -17,7 +17,7 @@ export interface PageMeta {
   updatedAt: number;
   wordCount: number;
   /** Signed-in owner with a handle → "by @handle" by-line + JSON-LD author. */
-  author?: { handle: string; displayName: string };
+  author?: { handle: string; displayName: string | null };
 }
 
 export const canonicalPageUrl = (slug: string, id: string) => `${SITE_ORIGIN}/p/${slug}-${id}`;

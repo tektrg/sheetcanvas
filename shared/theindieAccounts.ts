@@ -9,15 +9,18 @@ export const THEINDIE_APP_ID = 'sheetcanvas';
 export interface AccountUser {
   id: string;
   handle: string | null;
-  displayName: string;
+  /** null until the person sets one (Google sign-in may leave it empty). */
+  displayName: string | null;
+  /** Own avatar only; theindie-api serves it to contacts, so web clients must not rely on it loading. */
   avatarUrl: string | null;
 }
 
 export interface PublicProfile {
   id: string;
   handle: string;
-  displayName: string;
-  avatarUrl: string | null;
+  displayName: string | null;
+  /** Always null from theindie-api: avatars are never public. */
+  avatarUrl: null;
 }
 
 export interface GoogleSignInResult {

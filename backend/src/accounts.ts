@@ -14,6 +14,8 @@ import { HttpError } from './errors';
 // the Workers Cache API for 5 minutes (no KV); outside Workers there is no cache.
 
 export const ACCOUNT_CACHE_SECONDS = 300;
+/** Sessions are cached briefly: a sign-out/revocation upstream is honoured within a minute. */
+export const SESSION_CACHE_SECONDS = 60;
 const CACHE_ORIGIN = 'https://sheetcanvas.com/__account-cache';
 
 export interface AccountsResolver {
@@ -28,15 +30,17 @@ const sha256Hex = async (value: string) =>
 
 const edgeCache = (): Cache | null => (typeof caches !== 'undefined' ? (caches as unknown as { default: Cache }).default : null);
 
-/** Cache-API memo for JSON values. `null` results (404/401) are not cached. */
-const cachedJson = async <T>(key: string, load: () => Promise<T | null>): Promise<T | null> => {
+/** Cache-API memo for JSON values, keyed by hashed input. `null` results (404/401) are never cached. */
+const cachedJson = async <T>(key: string, load: () => Promise<T | null>, ttlSeconds = ACCOUNT_CACHE_SECONDS): Promise<T | null> => {
   const cache = edgeCache();
   const request = new Request(`${CACHE_ORIGIN}/${key}`);
   const hit = await cache?.match(request).catch(() => undefined);
   if (hit) return (await hit.json()) as T;
   const value = await load();
-  if (value !== null && cache) {
-    const response = new Response(JSON.stringify(value), { headers: { 'content-type': 'application/json', 'cache-control': `max-age=${ACCOUNT_CACHE_SECONDS}` } });
+  if (value === null) {
+    await cache?.delete(request).catch(() => false); // 401/404 upstream: drop any entry a racing request wrote
+  } else if (cache) {
+    const response = new Response(JSON.stringify(value), { headers: { 'content-type': 'application/json', 'cache-control': `max-age=${ttlSeconds}` } });
     await cache.put(request, response).catch(() => {});
   }
   return value;
@@ -57,7 +61,7 @@ export const createAccountsResolver = (baseUrl: string, fetchImpl?: FetchLike): 
   return {
     async verifySession(token) {
       if (!token) return null;
-      return cachedJson(`me/${await sha256Hex(token)}`, () => nullOn(['unauthorized'], () => client.getMe(token)));
+      return cachedJson(`me/${await sha256Hex(token)}`, () => nullOn(['unauthorized'], () => client.getMe(token)), SESSION_CACHE_SECONDS);
     },
     async profileByHandle(handle) {
       return withHandle(await cachedJson(`handle/${encodeURIComponent(handle)}`, () => nullOn(['not_found', 'invalid'], () => client.getByHandle(handle))));
