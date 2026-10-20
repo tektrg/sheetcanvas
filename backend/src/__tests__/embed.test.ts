@@ -97,7 +97,7 @@ describe('embeds /e/*', () => {
 });
 
 describe('/oembed', () => {
-  const oembed = (send: (p: string) => Promise<Response>, url: string, extra = '') =>
+  const oembed = (send: (p: string) => Response | Promise<Response>, url: string, extra = '') =>
     send(`/oembed?url=${encodeURIComponent(url)}&format=json${extra}`);
 
   it('returns a rich iframe card for a /p/ URL', async () => {
