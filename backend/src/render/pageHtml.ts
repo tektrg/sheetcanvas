@@ -26,7 +26,9 @@ export const PAGE_STYLES = `
 @media (prefers-color-scheme:dark){:root{--bg:#111318;--fg:#e5e7eb;--muted:#9ca3af;--line:#2d3139;--accent:#a5b4fc;--code:#1b1e25}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif}
-main{max-width:760px;margin:0 auto;padding:40px 16px 24px}
+main{display:block;width:100%;max-width:760px;margin-left:auto;margin-right:auto;padding:40px 16px 24px}
+article{overflow-wrap:anywhere}
+article table{display:block;max-width:100%;overflow-x:auto}
 h1{font-size:2rem;line-height:1.2;margin:0 0 8px}
 .meta{color:var(--muted);font-size:.875rem;margin:0 0 32px}
 article img{max-width:100%;height:auto}
@@ -35,6 +37,7 @@ article pre{overflow-x:auto;background:var(--code);padding:12px;border-radius:6p
 article table{border-collapse:collapse}
 figure.chart{margin:32px 0}
 figure.chart svg{width:100%;height:auto;display:block;border:1px solid var(--line);border-radius:8px}
+@media (max-width:600px){figure.chart svg text{font-size:15px}}
 figure.chart figcaption{font-weight:600;margin-top:8px}
 .data-table{margin-top:8px;font-size:.875rem}
 .data-table summary{cursor:pointer;color:var(--muted)}
@@ -43,7 +46,7 @@ figure.chart figcaption{font-weight:600;margin-top:8px}
 .data-table th,.data-table td{border-bottom:1px solid var(--line);padding:4px 8px;text-align:right;white-space:nowrap}
 .data-table th[scope=row],.data-table thead th:first-child{text-align:left}
 .table-note{color:var(--muted);font-size:.8rem}
-footer{max-width:760px;margin:48px auto 0;padding:24px 16px 40px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;font-size:.875rem}
+footer{width:100%;max-width:760px;margin:48px auto 0;padding:24px 16px 40px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;font-size:.875rem}
 footer a{color:var(--accent)}
 .cta{font-weight:600;text-decoration:none}
 .cta:hover{text-decoration:underline}
