@@ -38,6 +38,8 @@ After deployment, smoke check at minimum:
 
 Known-good reference from the May 27, 2026 deploy: project `sheetcanvas`, source commit `021c60c`, deployment `c1980e27-a5fe-44e0-8757-ca5ba3604029`, preview `https://c1980e27.sheetcanvas.pages.dev`.
 
+Backend worker (`cd backend && npx wrangler deploy`, Air needs `CLOUDFLARE_ACCOUNT_ID`; rollback via `npx wrangler deployments list` + `npx wrangler rollback <id>`). Known-good reference from the Oct 20, 2026 deploy: worker `flexsheet-backend`, source commit `377d499`, version `fdd1d3e1-d513-4a77-b4a1-9612946ded8d` (previous `dc585bdd-9aa8-41cb-b2f0-a97611a403c0`).
+
 Latest known-good (Oct 20, 2026, merge of `feat/agent-diagrams` + `main` embed/publish): source commit `07cabd2`, deployment `338f95d7-6576-4c4a-9d0e-3ad42a02af9c`, preview `https://338f95d7.sheetcanvas.pages.dev`. Wrangler on the Air needs `CLOUDFLARE_ACCOUNT_ID=9cd49d097f431e967341161edc370cfb` (two accounts visible; non-interactive shells otherwise fail). Worker NOT redeployed in that run — the live Worker was built from `main` (98dda89) and lacks the branch's public-MCP changes.
 
 ## Two-Machine Dev (Pro + Air)
