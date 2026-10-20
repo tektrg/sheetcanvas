@@ -10,6 +10,8 @@ const EMBED_STYLES = `
 main{max-width:none;padding:16px}
 h1{font-size:1.4rem}
 figure.chart{margin:0 0 8px}
+/* Fixed-height iframe, no JS: keep chart + caption + data toggle + backlink inside the frame. */
+body.embed-chart figure.chart svg{max-height:calc(100vh - 150px)}
 footer.embed-footer{max-width:none;margin:0;padding:8px 16px 12px;border-top:1px solid var(--line);font-size:.8rem;justify-content:flex-end}
 `;
 
@@ -18,13 +20,14 @@ const themeOverride = (theme: EmbedTheme) =>
   theme === 'light' ? `:root{color-scheme:light;${LIGHT_THEME_VARS}}` : theme === 'dark' ? `:root{color-scheme:dark;${DARK_THEME_VARS}}` : '';
 
 interface EmbedDocument {
+  bodyClass: string;
   title: string;
   canonicalUrl: string;
   theme: EmbedTheme;
   body: string;
 }
 
-const renderEmbedDocument = ({ title, canonicalUrl, theme, body }: EmbedDocument): string => {
+const renderEmbedDocument = ({ bodyClass, title, canonicalUrl, theme, body }: EmbedDocument): string => {
   const e = escapeHtml;
   return `<!doctype html>
 <html lang="en">
@@ -36,7 +39,7 @@ const renderEmbedDocument = ({ title, canonicalUrl, theme, body }: EmbedDocument
 <link rel="canonical" href="${e(canonicalUrl)}">
 <style>${PAGE_STYLES}${EMBED_STYLES}${themeOverride(theme)}</style>
 </head>
-<body>
+<body class="${bodyClass}">
 ${body}
 <footer class="embed-footer"><a class="cta" href="${e(canonicalUrl)}" target="_blank" rel="noopener">View on SheetCanvas ↗</a></footer>
 </body>
@@ -47,6 +50,7 @@ const withDataHidden = (chart: PublishedChart, hideData: boolean): PublishedChar
 
 export const renderPageEmbedHtml = (snapshot: PublishSnapshot, canonicalUrl: string, theme: EmbedTheme, hideData: boolean): string =>
   renderEmbedDocument({
+    bodyClass: 'embed-page',
     title: snapshot.title,
     canonicalUrl,
     theme,
@@ -55,6 +59,7 @@ export const renderPageEmbedHtml = (snapshot: PublishSnapshot, canonicalUrl: str
 
 export const renderChartEmbedHtml = (chart: PublishedChart, canonicalUrl: string, theme: EmbedTheme, hideData: boolean): string =>
   renderEmbedDocument({
+    bodyClass: 'embed-chart',
     title: chart.title,
     canonicalUrl,
     theme,
