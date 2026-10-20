@@ -93,7 +93,7 @@
           "name": "Does SheetCanvas have real-time collaboration like Google Sheets?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "No. As of Oct 2026, SheetCanvas is private by default: your workspace is stored in your browser. Publish a page or embed a chart to share results; live co-editing is not supported."
+            "text": "No. As of October 2026, SheetCanvas is private by default: your workspace is stored in your browser. Publish a page or embed a chart to share results; live co-editing is not supported."
           }
         },
         {
@@ -129,7 +129,8 @@
       .dates { color: var(--muted); font-size: 14px; }
       .section { padding: 40px 0; border-top: 1px solid var(--line); }
       .answer { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 22px; max-width: 760px; }
-      .table-wrap { overflow-x: auto; }
+      .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      @media (max-width: 640px) { .table-wrap table { min-width: 600px; } th, td { padding: 10px; font-size: 15px; } caption { position: sticky; left: 0; max-width: calc(100vw - 32px); } }
       table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); }
       caption { text-align: left; color: var(--muted); font-size: 14px; padding-bottom: 8px; }
       th, td { border-top: 1px solid var(--line); padding: 12px; text-align: left; vertical-align: top; }
@@ -170,7 +171,7 @@
         <section class="section" aria-labelledby="answer-title">
           <h2 id="answer-title">Which is better for exploring data, SheetCanvas or Google Sheets?</h2>
           <div class="answer">
-            <p>It depends on whether you need real-time collaboration or a visual analysis surface. Choose Google Sheets when several people edit the same spreadsheet live, when you rely on Apps Script automations, or when the sheet is a shared operational record; its collaboration is mature and free with a Google account. Choose SheetCanvas when you want to place several tables, charts, pivots, notes, and diagrams on one canvas to explore a question, or have your AI agent build that layout over MCP. SheetCanvas can also read a Google Sheet through its connector, so you can keep the data in Sheets and analyse it on the canvas.</p>
+            <p>It depends on whether you need real-time collaboration or a visual analysis surface. Choose Google Sheets when several people edit the same spreadsheet live, when you rely on Apps Script automations, or when the sheet is a shared operational record; its collaboration is mature and free with a Google account. Choose SheetCanvas when you want to place several tables, charts, pivots, notes, and diagrams on one canvas to explore a question, or have your AI agent build that layout over MCP. SheetCanvas can also read a Google Sheet through its connector, so you can keep the data in Sheets and analyze it on the canvas.</p>
           </div>
         </section>
 
@@ -201,7 +202,7 @@
           </div>
           <div class="faq-item">
             <dt>Does SheetCanvas have real-time collaboration like Google Sheets?</dt>
-            <dd>No. As of Oct 2026, SheetCanvas is private by default: your workspace is stored in your browser. Publish a page or embed a chart to share results; live co-editing is not supported.</dd>
+            <dd>No. As of October 2026, SheetCanvas is private by default: your workspace is stored in your browser. Publish a page or embed a chart to share results; live co-editing is not supported.</dd>
           </div>
           <div class="faq-item">
             <dt>When should I stay in Google Sheets?</dt>

@@ -129,7 +129,8 @@
       .dates { color: var(--muted); font-size: 14px; }
       .section { padding: 40px 0; border-top: 1px solid var(--line); }
       .answer { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 22px; max-width: 760px; }
-      .table-wrap { overflow-x: auto; }
+      .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      @media (max-width: 640px) { .table-wrap table { min-width: 600px; } th, td { padding: 10px; font-size: 15px; } caption { position: sticky; left: 0; max-width: calc(100vw - 32px); } }
       table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); }
       caption { text-align: left; color: var(--muted); font-size: 14px; padding-bottom: 8px; }
       th, td { border-top: 1px solid var(--line); padding: 12px; text-align: left; vertical-align: top; }
@@ -170,7 +171,7 @@
         <section class="section" aria-labelledby="answer-title">
           <h2 id="answer-title">Which is better for notes with data, SheetCanvas or Notion?</h2>
           <div class="answer">
-            <p>It depends on whether your work is mostly writing or mostly analysis. Choose Notion for team wikis, project tracking, documents, and databases that many people update; it is a mature all-in-one workspace with permissions and collaboration. Choose SheetCanvas when the notes exist to explain data: you import a CSV or connect ClickHouse, Google Sheets, or GA4, then keep spreadsheets, charts, pivots, diagrams, and notes side by side on a canvas, optionally built by an AI agent over MCP. SheetCanvas is not a wiki or project tracker; Notion is not a spreadsheet analysis tool. Some people analyse in SheetCanvas and link or embed the result from Notion.</p>
+            <p>It depends on whether your work is mostly writing or mostly analysis. Choose Notion for team wikis, project tracking, documents, and databases that many people update; it is a mature all-in-one workspace with permissions and collaboration. Choose SheetCanvas when the notes exist to explain data: you import a CSV or connect ClickHouse, Google Sheets, or GA4, then keep spreadsheets, charts, pivots, diagrams, and notes side by side on a canvas, optionally built by an AI agent over MCP. SheetCanvas is not a wiki or project tracker; Notion is not a spreadsheet analysis tool. Some people analyze in SheetCanvas and link or embed the result from Notion.</p>
           </div>
         </section>
 

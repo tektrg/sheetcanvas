@@ -41,7 +41,7 @@ export const HOME_FAQS = [
   },
   {
     q: 'Which data sources does SheetCanvas connect to?',
-    a: `As of ${'October 2026'}, SheetCanvas imports local CSV, XLSX, and XLS files and has connectors for ClickHouse, Google Sheets, and Google Analytics 4. It does not claim connectors beyond those.`,
+    a: 'As of October 2026, SheetCanvas imports local CSV, XLSX, and XLS files and has connectors for ClickHouse, Google Sheets, and Google Analytics 4. For other tools, export to CSV or Excel and import the file.',
   },
   {
     q: 'Can I use SheetCanvas with Claude or Codex?',
@@ -72,16 +72,16 @@ export const COMPARISONS = [
     description: 'An honest, dated comparison of SheetCanvas and Microsoft Excel: when a spreadsheet canvas fits better, and when Excel is still the right tool.',
     question: 'Which is better for data analysis, SheetCanvas or Excel?',
     answer: [
-      'It depends on whether the workbook is the product or the analysis is. Choose Excel for financial models, complex formulas, VBA macros, Power Query pipelines, and files your organisation already standardises on; Excel is the deeper and more compatible spreadsheet. Choose SheetCanvas when you are exploring an export and want the source table, several charts, a pivot, and written notes visible side by side on one canvas, or when you want an AI agent to build that layout for you over MCP. A common pattern is to keep Excel as the system of record and open an exported CSV or XLSX in SheetCanvas to explain it.',
+      'It depends on whether the workbook is the product or the analysis is. Choose Excel for financial models, complex formulas, VBA macros, Power Query pipelines, and files your organization already standardizes on; Excel is the deeper and more compatible spreadsheet. Choose SheetCanvas when you are exploring an export and want the source table, several charts, a pivot, and written notes visible side by side on one canvas, or when you want an AI agent to build that layout for you over MCP. A common pattern is to keep Excel as the system of record and open an exported CSV or XLSX in SheetCanvas to explain it.',
     ],
     rows: [
       ['Core model', 'Spreadsheets, charts, pivots, notes, and diagrams as objects on one canvas', 'Workbook of grid sheets with tabs, charts, and pivot tables'],
-      ['Formulas and modelling', 'Common spreadsheet formulas for lightweight analysis', 'Very large formula library, dynamic arrays, data model, what-if tools'],
+      ['Formulas and modeling', 'Common spreadsheet formulas for lightweight analysis', 'Very large formula library, dynamic arrays, data model, what-if tools'],
       ['Automation', 'MCP tools for external AI agents', 'VBA macros, Office Scripts, Power Automate'],
       ['Data import', 'CSV, XLSX, XLS; connectors for ClickHouse, Google Sheets, GA4', 'Broad import options including Power Query'],
       ['AI assistance', 'Bring your own agent (Claude, Codex) via MCP; built-in copilot not yet available', 'Microsoft Copilot in Microsoft 365 (plan-dependent)'],
       ['Sharing', 'Private by default; publish a page or embed a chart to share', 'Share workbooks through OneDrive / SharePoint with co-authoring'],
-      ['Best at', 'Visual, exploratory analysis and agent-built dashboards', 'Heavy modelling, compatibility, enterprise workflows'],
+      ['Best at', 'Visual, exploratory analysis and agent-built dashboards', 'Heavy modeling, compatibility, enterprise workflows'],
     ],
     faqs: [
       { q: 'Can SheetCanvas open Excel files?', a: 'Yes. SheetCanvas imports XLSX and XLS files, as well as CSV, as spreadsheet objects on the canvas.' },
@@ -98,7 +98,7 @@ export const COMPARISONS = [
     description: 'An honest, dated comparison of SheetCanvas and Google Sheets for exploring data, building quick dashboards, and working with AI agents.',
     question: 'Which is better for exploring data, SheetCanvas or Google Sheets?',
     answer: [
-      'It depends on whether you need real-time collaboration or a visual analysis surface. Choose Google Sheets when several people edit the same spreadsheet live, when you rely on Apps Script automations, or when the sheet is a shared operational record; its collaboration is mature and free with a Google account. Choose SheetCanvas when you want to place several tables, charts, pivots, notes, and diagrams on one canvas to explore a question, or have your AI agent build that layout over MCP. SheetCanvas can also read a Google Sheet through its connector, so you can keep the data in Sheets and analyse it on the canvas.',
+      'It depends on whether you need real-time collaboration or a visual analysis surface. Choose Google Sheets when several people edit the same spreadsheet live, when you rely on Apps Script automations, or when the sheet is a shared operational record; its collaboration is mature and free with a Google account. Choose SheetCanvas when you want to place several tables, charts, pivots, notes, and diagrams on one canvas to explore a question, or have your AI agent build that layout over MCP. SheetCanvas can also read a Google Sheet through its connector, so you can keep the data in Sheets and analyze it on the canvas.',
     ],
     rows: [
       ['Core model', 'Objects on one canvas (sheets, charts, pivots, notes, diagrams)', 'Grid spreadsheet with tabs, charts, and pivot tables'],
@@ -110,7 +110,7 @@ export const COMPARISONS = [
     ],
     faqs: [
       { q: 'Can SheetCanvas read data from Google Sheets?', a: 'Yes. SheetCanvas has a Google Sheets connector that loads a sheet as a connected spreadsheet object on the canvas.' },
-      { q: 'Does SheetCanvas have real-time collaboration like Google Sheets?', a: `No. As of Oct 2026, SheetCanvas is private by default: your workspace is stored in your browser. Publish a page or embed a chart to share results; live co-editing is not supported.` },
+      { q: 'Does SheetCanvas have real-time collaboration like Google Sheets?', a: 'No. As of October 2026, SheetCanvas is private by default: your workspace is stored in your browser. Publish a page or embed a chart to share results; live co-editing is not supported.' },
       { q: 'When should I stay in Google Sheets?', a: 'Stay in Google Sheets when a team edits the same data together every day, or when Apps Script automations run on the sheet.' },
     ],
     related: '/alternatives/google-sheets/',
@@ -123,7 +123,7 @@ export const COMPARISONS = [
     description: 'An honest, dated comparison of SheetCanvas and Notion for combining notes with tables, charts, and analysis.',
     question: 'Which is better for notes with data, SheetCanvas or Notion?',
     answer: [
-      'It depends on whether your work is mostly writing or mostly analysis. Choose Notion for team wikis, project tracking, documents, and databases that many people update; it is a mature all-in-one workspace with permissions and collaboration. Choose SheetCanvas when the notes exist to explain data: you import a CSV or connect ClickHouse, Google Sheets, or GA4, then keep spreadsheets, charts, pivots, diagrams, and notes side by side on a canvas, optionally built by an AI agent over MCP. SheetCanvas is not a wiki or project tracker; Notion is not a spreadsheet analysis tool. Some people analyse in SheetCanvas and link or embed the result from Notion.',
+      'It depends on whether your work is mostly writing or mostly analysis. Choose Notion for team wikis, project tracking, documents, and databases that many people update; it is a mature all-in-one workspace with permissions and collaboration. Choose SheetCanvas when the notes exist to explain data: you import a CSV or connect ClickHouse, Google Sheets, or GA4, then keep spreadsheets, charts, pivots, diagrams, and notes side by side on a canvas, optionally built by an AI agent over MCP. SheetCanvas is not a wiki or project tracker; Notion is not a spreadsheet analysis tool. Some people analyze in SheetCanvas and link or embed the result from Notion.',
     ],
     rows: [
       ['Core model', 'Free-form canvas of spreadsheets, charts, notes, diagrams', 'Pages and blocks, with databases (table, board, calendar, chart views)'],
@@ -148,20 +148,20 @@ export const COMPARISONS = [
     description: 'An honest, dated comparison of SheetCanvas and Tableau for building dashboards, from quick ad-hoc analysis to governed enterprise BI.',
     question: 'Which is better for building dashboards, SheetCanvas or Tableau?',
     answer: [
-      'It depends on scale and governance. Choose Tableau when an organisation needs governed, reusable dashboards over many data sources, row-level security, scheduled extracts, and a team of analysts publishing to many viewers; it is a mature enterprise BI platform. Choose SheetCanvas for quick, ad-hoc analysis: drop in a CSV or connect ClickHouse, Google Sheets, or GA4, place the source table, charts, pivots, and notes on one canvas, and optionally let an AI agent build it over MCP, without setting up a BI server. SheetCanvas does not offer Tableau-level governance, data modelling, or visual-encoding depth.',
+      'It depends on scale and governance. Choose Tableau when an organization needs governed, reusable dashboards over many data sources, row-level security, scheduled extracts, and a team of analysts publishing to many viewers; it is a mature enterprise BI platform. Choose SheetCanvas for quick, ad-hoc analysis: drop in a CSV or connect ClickHouse, Google Sheets, or GA4, place the source table, charts, pivots, and notes on one canvas, and optionally let an AI agent build it over MCP, without setting up a BI server. SheetCanvas does not offer Tableau-level governance, data modeling, or visual-encoding depth.',
     ],
     rows: [
       ['Core model', 'Canvas of spreadsheets, charts, pivots, notes, diagrams', 'Worksheets, dashboards, and stories on a governed data model'],
       ['Setup', 'Free; open in the browser, no account needed', 'Desktop or cloud authoring plus server/cloud for sharing'],
-      ['Data sources', 'CSV, XLSX, XLS; ClickHouse, Google Sheets, GA4', 'Very broad native connector catalogue'],
-      ['Visualisation depth', 'Common chart types for exploration', 'Advanced visual grammar, calculated fields, LOD expressions'],
+      ['Data sources', 'CSV, XLSX, XLS; ClickHouse, Google Sheets, GA4', 'Very broad native connector catalog'],
+      ['Visualization depth', 'Common chart types for exploration', 'Advanced visual grammar, calculated fields, LOD expressions'],
       ['Governance', 'None beyond your own workspace', 'Permissions, row-level security, certified data sources'],
       ['AI assistance', 'Bring your own agent (Claude, Codex) via MCP; built-in copilot not yet available', 'Tableau AI features (edition-dependent)'],
-      ['Best at', 'Fast, ad-hoc analysis with notes beside the data', 'Organisation-wide, governed BI'],
+      ['Best at', 'Fast, ad-hoc analysis with notes beside the data', 'Organization-wide, governed BI'],
     ],
     faqs: [
       { q: 'Is SheetCanvas a BI tool?', a: 'It is a lightweight analysis canvas, not an enterprise BI platform. It suits individual or small-team analysis; it does not provide row-level security or certified data sources.' },
-      { q: 'Can SheetCanvas connect to a data warehouse?', a: 'As of Oct 2026, SheetCanvas connects to ClickHouse, plus Google Sheets and Google Analytics 4. Other warehouses are not supported.' },
+      { q: 'Can SheetCanvas connect to a data warehouse?', a: 'As of October 2026, SheetCanvas connects to ClickHouse, plus Google Sheets and Google Analytics 4. Other warehouses are not supported.' },
       { q: 'When should I choose Tableau?', a: 'Choose Tableau when many people need the same governed dashboards, when you need many native data connectors, or when visual analysis depth matters more than setup speed.' },
     ],
     related: '/use-cases/data-analysis-canvas/',

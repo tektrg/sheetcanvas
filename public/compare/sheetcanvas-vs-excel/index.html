@@ -129,7 +129,8 @@
       .dates { color: var(--muted); font-size: 14px; }
       .section { padding: 40px 0; border-top: 1px solid var(--line); }
       .answer { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 22px; max-width: 760px; }
-      .table-wrap { overflow-x: auto; }
+      .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      @media (max-width: 640px) { .table-wrap table { min-width: 600px; } th, td { padding: 10px; font-size: 15px; } caption { position: sticky; left: 0; max-width: calc(100vw - 32px); } }
       table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); }
       caption { text-align: left; color: var(--muted); font-size: 14px; padding-bottom: 8px; }
       th, td { border-top: 1px solid var(--line); padding: 12px; text-align: left; vertical-align: top; }
@@ -170,7 +171,7 @@
         <section class="section" aria-labelledby="answer-title">
           <h2 id="answer-title">Which is better for data analysis, SheetCanvas or Excel?</h2>
           <div class="answer">
-            <p>It depends on whether the workbook is the product or the analysis is. Choose Excel for financial models, complex formulas, VBA macros, Power Query pipelines, and files your organisation already standardises on; Excel is the deeper and more compatible spreadsheet. Choose SheetCanvas when you are exploring an export and want the source table, several charts, a pivot, and written notes visible side by side on one canvas, or when you want an AI agent to build that layout for you over MCP. A common pattern is to keep Excel as the system of record and open an exported CSV or XLSX in SheetCanvas to explain it.</p>
+            <p>It depends on whether the workbook is the product or the analysis is. Choose Excel for financial models, complex formulas, VBA macros, Power Query pipelines, and files your organization already standardizes on; Excel is the deeper and more compatible spreadsheet. Choose SheetCanvas when you are exploring an export and want the source table, several charts, a pivot, and written notes visible side by side on one canvas, or when you want an AI agent to build that layout for you over MCP. A common pattern is to keep Excel as the system of record and open an exported CSV or XLSX in SheetCanvas to explain it.</p>
           </div>
         </section>
 
@@ -182,12 +183,12 @@
             <thead><tr><th scope="col">Area</th><th scope="col">SheetCanvas</th><th scope="col">Microsoft Excel</th></tr></thead>
             <tbody>
             <tr><th scope="row">Core model</th><td>Spreadsheets, charts, pivots, notes, and diagrams as objects on one canvas</td><td>Workbook of grid sheets with tabs, charts, and pivot tables</td></tr>
-            <tr><th scope="row">Formulas and modelling</th><td>Common spreadsheet formulas for lightweight analysis</td><td>Very large formula library, dynamic arrays, data model, what-if tools</td></tr>
+            <tr><th scope="row">Formulas and modeling</th><td>Common spreadsheet formulas for lightweight analysis</td><td>Very large formula library, dynamic arrays, data model, what-if tools</td></tr>
             <tr><th scope="row">Automation</th><td>MCP tools for external AI agents</td><td>VBA macros, Office Scripts, Power Automate</td></tr>
             <tr><th scope="row">Data import</th><td>CSV, XLSX, XLS; connectors for ClickHouse, Google Sheets, GA4</td><td>Broad import options including Power Query</td></tr>
             <tr><th scope="row">AI assistance</th><td>Bring your own agent (Claude, Codex) via MCP; built-in copilot not yet available</td><td>Microsoft Copilot in Microsoft 365 (plan-dependent)</td></tr>
             <tr><th scope="row">Sharing</th><td>Private by default; publish a page or embed a chart to share</td><td>Share workbooks through OneDrive / SharePoint with co-authoring</td></tr>
-            <tr><th scope="row">Best at</th><td>Visual, exploratory analysis and agent-built dashboards</td><td>Heavy modelling, compatibility, enterprise workflows</td></tr>
+            <tr><th scope="row">Best at</th><td>Visual, exploratory analysis and agent-built dashboards</td><td>Heavy modeling, compatibility, enterprise workflows</td></tr>
             </tbody>
           </table>
           </div>

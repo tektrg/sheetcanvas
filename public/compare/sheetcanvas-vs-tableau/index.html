@@ -93,7 +93,7 @@
           "name": "Can SheetCanvas connect to a data warehouse?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "As of Oct 2026, SheetCanvas connects to ClickHouse, plus Google Sheets and Google Analytics 4. Other warehouses are not supported."
+            "text": "As of October 2026, SheetCanvas connects to ClickHouse, plus Google Sheets and Google Analytics 4. Other warehouses are not supported."
           }
         },
         {
@@ -129,7 +129,8 @@
       .dates { color: var(--muted); font-size: 14px; }
       .section { padding: 40px 0; border-top: 1px solid var(--line); }
       .answer { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 22px; max-width: 760px; }
-      .table-wrap { overflow-x: auto; }
+      .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      @media (max-width: 640px) { .table-wrap table { min-width: 600px; } th, td { padding: 10px; font-size: 15px; } caption { position: sticky; left: 0; max-width: calc(100vw - 32px); } }
       table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); }
       caption { text-align: left; color: var(--muted); font-size: 14px; padding-bottom: 8px; }
       th, td { border-top: 1px solid var(--line); padding: 12px; text-align: left; vertical-align: top; }
@@ -170,7 +171,7 @@
         <section class="section" aria-labelledby="answer-title">
           <h2 id="answer-title">Which is better for building dashboards, SheetCanvas or Tableau?</h2>
           <div class="answer">
-            <p>It depends on scale and governance. Choose Tableau when an organisation needs governed, reusable dashboards over many data sources, row-level security, scheduled extracts, and a team of analysts publishing to many viewers; it is a mature enterprise BI platform. Choose SheetCanvas for quick, ad-hoc analysis: drop in a CSV or connect ClickHouse, Google Sheets, or GA4, place the source table, charts, pivots, and notes on one canvas, and optionally let an AI agent build it over MCP, without setting up a BI server. SheetCanvas does not offer Tableau-level governance, data modelling, or visual-encoding depth.</p>
+            <p>It depends on scale and governance. Choose Tableau when an organization needs governed, reusable dashboards over many data sources, row-level security, scheduled extracts, and a team of analysts publishing to many viewers; it is a mature enterprise BI platform. Choose SheetCanvas for quick, ad-hoc analysis: drop in a CSV or connect ClickHouse, Google Sheets, or GA4, place the source table, charts, pivots, and notes on one canvas, and optionally let an AI agent build it over MCP, without setting up a BI server. SheetCanvas does not offer Tableau-level governance, data modeling, or visual-encoding depth.</p>
           </div>
         </section>
 
@@ -183,11 +184,11 @@
             <tbody>
             <tr><th scope="row">Core model</th><td>Canvas of spreadsheets, charts, pivots, notes, diagrams</td><td>Worksheets, dashboards, and stories on a governed data model</td></tr>
             <tr><th scope="row">Setup</th><td>Free; open in the browser, no account needed</td><td>Desktop or cloud authoring plus server/cloud for sharing</td></tr>
-            <tr><th scope="row">Data sources</th><td>CSV, XLSX, XLS; ClickHouse, Google Sheets, GA4</td><td>Very broad native connector catalogue</td></tr>
-            <tr><th scope="row">Visualisation depth</th><td>Common chart types for exploration</td><td>Advanced visual grammar, calculated fields, LOD expressions</td></tr>
+            <tr><th scope="row">Data sources</th><td>CSV, XLSX, XLS; ClickHouse, Google Sheets, GA4</td><td>Very broad native connector catalog</td></tr>
+            <tr><th scope="row">Visualization depth</th><td>Common chart types for exploration</td><td>Advanced visual grammar, calculated fields, LOD expressions</td></tr>
             <tr><th scope="row">Governance</th><td>None beyond your own workspace</td><td>Permissions, row-level security, certified data sources</td></tr>
             <tr><th scope="row">AI assistance</th><td>Bring your own agent (Claude, Codex) via MCP; built-in copilot not yet available</td><td>Tableau AI features (edition-dependent)</td></tr>
-            <tr><th scope="row">Best at</th><td>Fast, ad-hoc analysis with notes beside the data</td><td>Organisation-wide, governed BI</td></tr>
+            <tr><th scope="row">Best at</th><td>Fast, ad-hoc analysis with notes beside the data</td><td>Organization-wide, governed BI</td></tr>
             </tbody>
           </table>
           </div>
@@ -202,7 +203,7 @@
           </div>
           <div class="faq-item">
             <dt>Can SheetCanvas connect to a data warehouse?</dt>
-            <dd>As of Oct 2026, SheetCanvas connects to ClickHouse, plus Google Sheets and Google Analytics 4. Other warehouses are not supported.</dd>
+            <dd>As of October 2026, SheetCanvas connects to ClickHouse, plus Google Sheets and Google Analytics 4. Other warehouses are not supported.</dd>
           </div>
           <div class="faq-item">
             <dt>When should I choose Tableau?</dt>

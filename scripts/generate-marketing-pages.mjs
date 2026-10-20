@@ -58,7 +58,8 @@ const PAGE_CSS = `      :root { color-scheme: light; --ink: #121717; --muted: #4
       .dates { color: var(--muted); font-size: 14px; }
       .section { padding: 40px 0; border-top: 1px solid var(--line); }
       .answer { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 22px; max-width: 760px; }
-      .table-wrap { overflow-x: auto; }
+      .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      @media (max-width: 640px) { .table-wrap table { min-width: 600px; } th, td { padding: 10px; font-size: 15px; } caption { position: sticky; left: 0; max-width: calc(100vw - 32px); } }
       table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); }
       caption { text-align: left; color: var(--muted); font-size: 14px; padding-bottom: 8px; }
       th, td { border-top: 1px solid var(--line); padding: 12px; text-align: left; vertical-align: top; }
@@ -247,6 +248,7 @@ function renderAboutPage() {
         applicationSubCategory: 'Spreadsheet',
         operatingSystem: 'Web',
         isAccessibleForFree: true,
+        offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD', description: 'Free core; optional paid add-ons are planned.' },
         url: `${SITE_ORIGIN}/`,
         screenshot: `${SITE_ORIGIN}/brand/sheetcanvas-og.png`,
         featureList: WHAT_IT_DOES,
