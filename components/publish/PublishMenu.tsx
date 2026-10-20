@@ -1,4 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { PortalThemeScope } from '../PortalThemeScope';
 import { Check, Code2, Copy, ExternalLink, Globe, MessageSquareText, Pause, Play, RefreshCw } from 'lucide-react';
 import { useStore } from '../../store';
 import type { PublishRefreshSchedule } from '../../types';
@@ -17,6 +19,18 @@ import { AnswerBoxDialog } from './AnswerBoxDialog';
 
 // Publish control for one note/page: a globe button (with a "Live" badge when
 // published) that opens a small panel. Used on the canvas note bar and in Library rows.
+// The panel is portaled to <body> with fixed positioning: inside a note it would
+// otherwise sit under embedded charts (their own stacking contexts) and be unclickable.
+
+const PANEL_WIDTH = 288;
+const VIEWPORT_PAD = 8;
+
+/** Fixed position for the panel under the anchor button, kept inside the viewport. */
+export const publishPanelPosition = (rect: Pick<DOMRect, 'left' | 'right' | 'bottom'>, align: 'left' | 'right', viewportWidth: number) => {
+  const preferred = align === 'right' ? rect.right - PANEL_WIDTH : rect.left;
+  const left = Math.min(Math.max(preferred, VIEWPORT_PAD), Math.max(VIEWPORT_PAD, viewportWidth - PANEL_WIDTH - VIEWPORT_PAD));
+  return { top: rect.bottom + 4, left };
+};
 
 const SCHEDULE_LABELS: Record<PublishRefreshSchedule, string> = { off: 'Off', hourly: 'Hourly', daily: 'Daily' };
 
@@ -48,10 +62,27 @@ export const PublishMenu: React.FC<{ noteId: string; align?: 'left' | 'right' }>
   const [embedOpen, setEmbedOpen] = useState(false);
   const [answerBoxOpen, setAnswerBoxOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const update = () => {
+      const rect = rootRef.current?.getBoundingClientRect();
+      if (rect) setPosition(publishPanelPosition(rect, align === 'left' ? 'left' : 'right', window.innerWidth));
+    };
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => { window.removeEventListener('resize', update); window.removeEventListener('scroll', update, true); };
+  }, [open, align]);
 
   useEffect(() => {
     if (!open) return;
-    const close = (event: MouseEvent) => { if (!rootRef.current?.contains(event.target as Node)) setOpen(false); };
+    const close = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!rootRef.current?.contains(target) && !panelRef.current?.contains(target)) setOpen(false);
+    };
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
   }, [open]);
@@ -88,10 +119,15 @@ export const PublishMenu: React.FC<{ noteId: string; align?: 'left' | 'right' }>
         {live && <LiveBadge paused={settings.paused} />}
       </button>
 
-      {open && (
+      {open && createPortal(
+        <PortalThemeScope anchor={rootRef.current}>
         <div
+          ref={panelRef}
           data-testid="publish-panel"
-          className={`absolute ${align === 'right' ? 'right-0' : 'left-0'} top-full mt-1 w-72 bg-white dark:bg-neutral-800 rounded-lg shadow-xl border border-neutral-100 dark:border-neutral-700 z-[120] py-2 text-left`}
+          style={{ position: 'fixed', top: position?.top ?? 0, left: position?.left ?? 0, width: PANEL_WIDTH, visibility: position ? 'visible' : 'hidden' }}
+          onMouseDown={e => e.stopPropagation()}
+          onWheel={e => e.stopPropagation()}
+          className={`bg-white dark:bg-neutral-800 rounded-lg shadow-xl border border-neutral-100 dark:border-neutral-700 z-[1000] py-2 text-left`}
         >
           <div className="px-3 pb-2 text-xs text-neutral-500">
             {live ? 'Anyone with the link can view this page.' : 'Publish a frozen, public copy of this page and its charts. No sign-in needed.'}
@@ -197,6 +233,8 @@ export const PublishMenu: React.FC<{ noteId: string; align?: 'left' | 'right' }>
             <p className="mt-2 px-3 text-xs text-red-600" role="alert">{error || settings.lastError}</p>
           )}
         </div>
+        </PortalThemeScope>,
+        document.body,
       )}
       {answerBoxOpen && <AnswerBoxDialog noteId={noteId} onClose={() => setAnswerBoxOpen(false)} />}
       {embedOpen && live && <EmbedDialog noteId={noteId} pageId={settings.id} onClose={() => setEmbedOpen(false)} />}
