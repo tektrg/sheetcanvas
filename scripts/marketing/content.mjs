@@ -57,7 +57,7 @@ export const HOME_FAQS = [
   },
   {
     q: 'Do I need an account?',
-    a: 'No. You can use SheetCanvas without an account. Sign-in is optional, for publishing pages under a profile.',
+    a: 'No. As of October 2026, SheetCanvas works without an account. Optional accounts and public profiles are planned but not live yet.',
   },
 ];
 
