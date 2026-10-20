@@ -8,7 +8,7 @@ import { HandlePickerDialog } from './HandlePickerDialog';
 // Account entry in the top-left pill (next to Canvas / Library): Google sign-in
 // via theindie-api, then profile link, handle picker and sign out.
 
-const GoogleButton: React.FC<{ onSignedIn: (needsHandle: boolean) => void }> = ({ onSignedIn }) => {
+const GoogleButton: React.FC<{ onSignedIn: (needsHandle: boolean, claimedCount: number) => void }> = ({ onSignedIn }) => {
   const slotRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const clientId = googleClientId();
@@ -27,7 +27,7 @@ const GoogleButton: React.FC<{ onSignedIn: (needsHandle: boolean) => void }> = (
           callback: ({ credential }) => {
             setError(null);
             signInWithGoogleIdToken(credential, nonce)
-              .then(result => onSignedIn(!result.user.handle))
+              .then(result => onSignedIn(!result.user.handle, result.claimedCount))
               .catch(err => setError(err instanceof Error ? err.message : 'Sign-in failed'));
           },
         });
@@ -72,8 +72,11 @@ export const AccountMenu: React.FC = () => {
     return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
   }, [open]);
 
-  const onSignedIn = React.useCallback((needsHandle: boolean) => {
-    setOpen(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const onSignedIn = React.useCallback((needsHandle: boolean, claimedCount: number) => {
+    setNotice(claimedCount ? `${claimedCount} published ${claimedCount === 1 ? 'page' : 'pages'} from this browser linked to your account.` : null);
+    // Keep the menu open to show the claim notice unless the handle picker takes over.
+    setOpen(!needsHandle && claimedCount > 0);
     if (needsHandle) setPickingHandle(true);
   }, []);
 
@@ -103,6 +106,7 @@ export const AccountMenu: React.FC = () => {
             </>
           ) : (
             <>
+              {notice && <p role="status" className="mb-2 rounded-md bg-teal-50 dark:bg-teal-900/30 px-2 py-1.5 text-xs text-teal-800 dark:text-teal-200">{notice}</p>}
               <div className="px-2 pb-2 mb-1 border-b border-neutral-100 dark:border-neutral-800">
                 <p className="text-sm font-medium truncate">{user.displayName || (user.handle ? `@${user.handle}` : 'Signed in')}</p>
                 <p className="text-xs text-neutral-500 truncate">{user.handle ? `@${user.handle}` : 'No handle yet'}</p>
@@ -115,7 +119,7 @@ export const AccountMenu: React.FC = () => {
               <button role="menuitem" type="button" className={item} onClick={() => { setOpen(false); setPickingHandle(true); }}>
                 <AtSign size={14} /> {user.handle ? 'Change handle' : 'Choose handle'}
               </button>
-              <button role="menuitem" type="button" className={item} onClick={() => { setOpen(false); void signOut(); }}>
+              <button role="menuitem" type="button" className={item} onClick={() => { setOpen(false); setNotice(null); void signOut(); }}>
                 <LogOut size={14} /> Sign out
               </button>
             </>

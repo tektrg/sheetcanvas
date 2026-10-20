@@ -6,6 +6,9 @@ import { canonicalPageUrl, NOINDEX_WORD_THRESHOLD, PAGE_STYLES, SITE_ORIGIN } fr
 // Author profile (/@handle) and tag hub (/@handle/tag/:tag): static HTML, no
 // script, same styles/CSP as /p/ pages.
 
+/** Site OG card, used when the owner has no avatar. */
+export const PROFILE_FALLBACK_IMAGE = `${SITE_ORIGIN}/brand/sheetcanvas-og.png`;
+
 export const profilePath = (handle: string) => `/@${handle}`;
 export const tagPath = (handle: string, tag: string) => `/@${handle}/tag/${encodeURIComponent(tag)}`;
 export const profileUrl = (handle: string) => `${SITE_ORIGIN}${profilePath(handle)}`;
@@ -97,7 +100,8 @@ export const renderProfileHtml = ({ profile, pages, allTags, tag }: ListingView)
 <meta property="og:description" content="${e(description)}">
 <meta property="og:url" content="${e(url)}">
 <meta property="og:site_name" content="SheetCanvas">
-${profile.avatarUrl ? `<meta property="og:image" content="${e(profile.avatarUrl)}">\n` : ''}<meta name="twitter:card" content="summary">
+<meta property="og:image" content="${e(profile.avatarUrl || PROFILE_FALLBACK_IMAGE)}">
+<meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="${e(title)}">
 <meta name="twitter:description" content="${e(description)}">
 <script type="application/ld+json">${jsonForScript(jsonLd)}</script>

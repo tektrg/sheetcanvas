@@ -116,6 +116,7 @@ describe('profile pages', () => {
     expect(html).toContain('"@type":"ProfilePage"');
     expect(html).toContain('"@type":"ItemList"');
     expect(html).toContain('content="index, follow"');
+    expect(html).toContain('<meta property="og:image" content="https://sheetcanvas.com/brand/sheetcanvas-og.png">');
     expect(html).not.toContain('<script>');
   });
 

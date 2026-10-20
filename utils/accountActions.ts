@@ -25,8 +25,8 @@ const claimQuietly = (token: string) =>
 export const signInWithGoogleIdToken = async (idToken: string, nonce?: string) => {
   const result = await theindieClient().signInWithGoogle({ idToken, nonce, deviceName: 'SheetCanvas web' });
   await saveSession({ token: result.token, expiresAt: result.expiresAt, user: result.user });
-  await claimQuietly(result.token);
-  return result;
+  const claim = await claimQuietly(result.token);
+  return { ...result, claimedCount: claim?.claimed.length ?? 0 };
 };
 
 /** On app start: restore the session, refresh the user, drop it if theindie-api rejects it. */
