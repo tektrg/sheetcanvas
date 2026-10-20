@@ -47,6 +47,7 @@ import {
 } from "./validation";
 import { handleAgentRequest, handleQuotaRead } from "./agent/route";
 import { mcpApp } from "./mcp/route";
+import { publishApp } from "./publish";
 
 export { CanvasBridge } from "./mcp/bridge";
 
@@ -171,10 +172,11 @@ app.use(
       "MCP-Protocol-Version",
       "Mcp-Session-Id",
       "Last-Event-ID",
-      "x-session-id"
+      "x-session-id",
+      "x-edit-key"
     ],
     exposeHeaders: ["Mcp-Session-Id", "x-agent-quota-used", "x-agent-quota-limit"],
-    allowMethods: ["GET", "POST", "OPTIONS"],
+    allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     maxAge: 86400
   })
 );
@@ -182,6 +184,7 @@ app.use(
 app.options("*", (c) => c.body(null, 204));
 
 app.route("/", mcpApp);
+app.route("/", publishApp);
 
 app.onError((err, c) => {
   const { status, body } = toJsonError(err);

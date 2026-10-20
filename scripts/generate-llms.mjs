@@ -2,7 +2,7 @@
 
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
-import { EXCLUDED_PUBLIC_DIRS, ROUTE_ORDER, SITE_ORIGIN } from './seo-route-config.mjs';
+import { EXCLUDED_PUBLIC_DIRS, PUBLISHED_PAGES_LLMS_URL, ROUTE_ORDER, SITE_ORIGIN } from './seo-route-config.mjs';
 import {
   findSchemaObjectsByType,
   getJsonLdBlocks,
@@ -19,7 +19,10 @@ const ROUTE_GROUPS = [
   {
     heading: 'Start here',
     routes: ['/', '/learn/', '/docs/', '/blog/'],
-    extraLinks: [{ label: 'RSS feed', url: RSS_FEED_URL }],
+    extraLinks: [
+      { label: 'RSS feed', url: RSS_FEED_URL },
+      { label: 'Pages published by SheetCanvas users', url: PUBLISHED_PAGES_LLMS_URL },
+    ],
   },
   {
     heading: 'Product-specific guides',

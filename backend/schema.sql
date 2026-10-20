@@ -42,3 +42,44 @@ CREATE TABLE IF NOT EXISTS mcp_events (
 
 CREATE INDEX IF NOT EXISTS idx_mcp_events_type_created ON mcp_events(event_type, created_at_ms);
 CREATE INDEX IF NOT EXISTS idx_mcp_events_token_created ON mcp_events(token_hash, created_at_ms);
+
+-- Anonymous published pages (public /p/<slug>-<id>). No accounts: whoever holds
+-- the edit key may republish/unpublish. Only the SHA-256 of the key is stored.
+-- status: 'published' | 'unpublished' (unpublished rows keep id/slug for a 410).
+CREATE TABLE IF NOT EXISTS published_pages (
+  id TEXT PRIMARY KEY,
+  slug TEXT NOT NULL,
+  edit_key_hash TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  snapshot_json TEXT NOT NULL,
+  word_count INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'published',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_published_pages_status_updated ON published_pages(status, updated_at);
+
+-- Rolling per-IP publish counters for rate limiting (ip_hash, never the raw IP).
+-- kind: 'publish' | 'republish'.
+CREATE TABLE IF NOT EXISTS publish_events (
+  ip_hash TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_publish_events_ip_kind_created ON publish_events(ip_hash, kind, created_at);
+
+-- Abuse / removal requests filed from the public page footer.
+CREATE TABLE IF NOT EXISTS page_reports (
+  id TEXT PRIMARY KEY,
+  page_id TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  details TEXT NOT NULL DEFAULT '',
+  contact TEXT NOT NULL DEFAULT '',
+  ip_hash TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_page_reports_page ON page_reports(page_id, created_at);

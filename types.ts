@@ -315,6 +315,32 @@ export interface NoteData {
   // Original HTML preserved when a legacy note is migrated to markdown, so a
   // bad conversion can be recovered / rendered as a fallback.
   legacyHtml?: string;
+  // --- Page fields: every note is a page the Library can organize. ---
+  // Optional on the type so legacy saved notes and older call sites stay valid;
+  // `normalizeNotePage` (utils/pages.ts) fills them on load and on add.
+  // Empty title = display falls back to the note's first line.
+  title?: string;
+  tags?: string[];
+  createdAt?: number; // epoch ms
+  updatedAt?: number; // epoch ms
+  // Anonymous public page state (utils/publish.ts). The edit key is NOT here:
+  // it lives in a separate IndexedDB store so exports/shares never carry it.
+  publish?: NotePublishSettings;
+}
+
+export type PublishRefreshSchedule = 'off' | 'hourly' | 'daily';
+
+export interface NotePublishSettings {
+  id?: string; // server page id; present = published (or unpublishing)
+  slug?: string;
+  url?: string; // canonical https://sheetcanvas.com/p/<slug>-<id>
+  publishedAt?: number;
+  lastPublishedAt?: number;
+  lastPublishedHash?: string; // hash of the last snapshot sent; unchanged → skip republish
+  paused?: boolean; // auto-republish off; page stays live with its last snapshot
+  hideData?: Record<string, boolean>; // chart id → omit its data table/Dataset
+  refreshSchedule?: PublishRefreshSchedule; // re-run live connector queries while the app is open
+  lastError?: string;
 }
 
 // Agent-native diagram: an Excalidraw scene drawn as a canvas item. Element

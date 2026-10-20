@@ -36,6 +36,7 @@
     "@excalidraw/excalidraw": "^0.18.1",
     "@tanstack/react-virtual": "3.14.10",
     "@tektrg/diagram-kit": "0.1.0",
+    "@tektrg/table-core": "file:../../table-core",
     "@zumer/snapdom": "^2.16.0",
     "ai": "^6.0.191",
     "alasql": "^4.17.3",
