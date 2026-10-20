@@ -21,6 +21,8 @@ import { EMBED_CSP, htmlResponse } from './htmlResponse';
 type PublishEnv = { Bindings: Env };
 type AppContext = Context<PublishEnv>;
 
+// Embeds are NOT put in the Worker edge cache (unlike /p/, which republish/unpublish purge):
+// every request reads D1, so changes show as soon as the 60s browser/proxy max-age lapses.
 const EMBED_CACHE_SECONDS = 60;
 const EMBED_HEADERS = { 'content-security-policy': EMBED_CSP, 'x-robots-tag': 'noindex' };
 const ALLOWED_HOSTS = new Set(['sheetcanvas.com', 'www.sheetcanvas.com']);

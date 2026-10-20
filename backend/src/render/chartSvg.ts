@@ -11,6 +11,8 @@ import { escapeHtml, formatCompact } from './escape';
 export const CHART_WIDTH = 720;
 export const CHART_HEIGHT = 360;
 const MARGIN = { top: 16, right: 16, bottom: 48, left: 56 };
+// Presentation attributes = light colors (used as-is by the OG PNG renderer).
+// HTML pages restyle the cs-* classes via CSS variables for dark mode (pageHtml.ts).
 const AXIS_COLOR = '#9ca3af';
 const TEXT_COLOR = '#4b5563';
 const FONT = 'font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="11"';
@@ -28,12 +30,12 @@ const chartDescription = (chart: PublishedChart): string => {
 };
 
 const svgOpen = (chart: PublishedChart, width = CHART_WIDTH, height = CHART_HEIGHT) =>
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="${escapeHtml(chart.title)}"><title>${escapeHtml(chart.title)}</title><desc>${escapeHtml(chartDescription(chart))}</desc><rect width="100%" height="100%" fill="#ffffff"/>`;
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="${escapeHtml(chart.title)}"><title>${escapeHtml(chart.title)}</title><desc>${escapeHtml(chartDescription(chart))}</desc><rect class="cs-bg" width="100%" height="100%" fill="#ffffff"/>`;
 
 const truncateLabel = (label: string, max = 14) => (label.length > max ? `${label.slice(0, max - 1)}…` : label);
 
 const emptyChart = (chart: PublishedChart) =>
-  `${svgOpen(chart)}<text x="${CHART_WIDTH / 2}" y="${CHART_HEIGHT / 2}" text-anchor="middle" fill="${TEXT_COLOR}" ${FONT}>No data</text></svg>`;
+  `${svgOpen(chart)}<text x="${CHART_WIDTH / 2}" y="${CHART_HEIGHT / 2}" text-anchor="middle" class="cs-text" fill="${TEXT_COLOR}" ${FONT}>No data</text></svg>`;
 
 const seriesType = (chart: PublishedChart, series: PublishedSeries): CartesianType => {
   const type = series.type ?? chart.type;
@@ -69,18 +71,18 @@ const renderCartesian = (chart: PublishedChart): string => {
   const parts: string[] = [svgOpen(chart), `<g transform="translate(${MARGIN.left},${MARGIN.top})" ${FONT}>`];
   for (const tick of y.ticks(5)) {
     parts.push(
-      `<line x1="0" x2="${innerWidth}" y1="${y(tick)}" y2="${y(tick)}" stroke="#e5e7eb"/>`,
-      `<text x="-8" y="${y(tick)}" dy="0.32em" text-anchor="end" fill="${TEXT_COLOR}">${escapeHtml(formatCompact(tick))}</text>`
+      `<line x1="0" x2="${innerWidth}" y1="${y(tick)}" y2="${y(tick)}" class="cs-grid" stroke="#e5e7eb"/>`,
+      `<text x="-8" y="${y(tick)}" dy="0.32em" text-anchor="end" class="cs-text" fill="${TEXT_COLOR}">${escapeHtml(formatCompact(tick))}</text>`
     );
   }
   const labelStep = Math.max(1, Math.ceil(chart.rows.length / MAX_X_TICKS));
   chart.rows.forEach((row, i) => {
     if (i % labelStep !== 0) return;
     parts.push(
-      `<text x="${center(i)}" y="${innerHeight + 18}" text-anchor="middle" fill="${TEXT_COLOR}">${escapeHtml(truncateLabel(row.label))}</text>`
+      `<text x="${center(i)}" y="${innerHeight + 18}" text-anchor="middle" class="cs-text" fill="${TEXT_COLOR}">${escapeHtml(truncateLabel(row.label))}</text>`
     );
   });
-  parts.push(`<line x1="0" x2="${innerWidth}" y1="${y(0)}" y2="${y(0)}" stroke="${AXIS_COLOR}"/>`);
+  parts.push(`<line x1="0" x2="${innerWidth}" y1="${y(0)}" y2="${y(0)}" class="cs-axis" stroke="${AXIS_COLOR}"/>`);
 
   const barSeries = chart.series.map((s, i) => ({ s, i })).filter(({ s }) => seriesType(chart, s) === 'bar');
   const groupWidth = x.bandwidth() / (stacked ? 1 : Math.max(1, barSeries.length));
@@ -120,7 +122,7 @@ const legend = (series: PublishedSeries[]): string => {
   let cursor = MARGIN.left;
   const items = series.slice(0, 8).map(s => {
     const label = truncateLabel(s.label, 20);
-    const item = `<rect x="${cursor}" y="${CHART_HEIGHT - 16}" width="10" height="10" fill="${s.color}"/><text x="${cursor + 14}" y="${CHART_HEIGHT - 7}" fill="${TEXT_COLOR}">${escapeHtml(label)}</text>`;
+    const item = `<rect x="${cursor}" y="${CHART_HEIGHT - 16}" width="10" height="10" fill="${s.color}"/><text x="${cursor + 14}" y="${CHART_HEIGHT - 7}" class="cs-text" fill="${TEXT_COLOR}">${escapeHtml(label)}</text>`;
     cursor += 24 + label.length * 6.5;
     return item;
   });
@@ -140,12 +142,12 @@ const renderScatter = (chart: PublishedChart): string => {
   const parts = [svgOpen(chart), `<g transform="translate(${MARGIN.left},${MARGIN.top})" ${FONT}>`];
   for (const tick of y.ticks(5)) {
     parts.push(
-      `<line x1="0" x2="${innerWidth}" y1="${y(tick)}" y2="${y(tick)}" stroke="#e5e7eb"/>`,
-      `<text x="-8" y="${y(tick)}" dy="0.32em" text-anchor="end" fill="${TEXT_COLOR}">${escapeHtml(formatCompact(tick))}</text>`
+      `<line x1="0" x2="${innerWidth}" y1="${y(tick)}" y2="${y(tick)}" class="cs-grid" stroke="#e5e7eb"/>`,
+      `<text x="-8" y="${y(tick)}" dy="0.32em" text-anchor="end" class="cs-text" fill="${TEXT_COLOR}">${escapeHtml(formatCompact(tick))}</text>`
     );
   }
   for (const tick of x.ticks(8)) {
-    parts.push(`<text x="${x(tick)}" y="${innerHeight + 18}" text-anchor="middle" fill="${TEXT_COLOR}">${escapeHtml(formatCompact(tick))}</text>`);
+    parts.push(`<text x="${x(tick)}" y="${innerHeight + 18}" text-anchor="middle" class="cs-text" fill="${TEXT_COLOR}">${escapeHtml(formatCompact(tick))}</text>`);
   }
   chart.series.forEach((s, seriesIndex) => {
     chart.rows.forEach((row, i) => {
@@ -176,7 +178,7 @@ const renderPie = (chart: PublishedChart): string => {
   const arcPath = arc<(typeof slices)[number]>().innerRadius(0).outerRadius(radius);
   const parts = [svgOpen(chart), `<g transform="translate(${CHART_WIDTH / 2},${CHART_HEIGHT / 2})" ${FONT}>`];
   slices.forEach((slice, i) => {
-    parts.push(`<path d="${arcPath(slice)}" fill="${palette[i % palette.length]}" stroke="#ffffff"/>`);
+    parts.push(`<path d="${arcPath(slice)}" fill="${palette[i % palette.length]}" class="cs-sep" stroke="#ffffff"/>`);
     if (slice.endAngle - slice.startAngle > 0.25) {
       const [cx, cy] = arc<(typeof slices)[number]>().innerRadius(radius * 0.6).outerRadius(radius * 0.6).centroid(slice);
       parts.push(`<text x="${cx}" y="${cy}" text-anchor="middle" fill="#ffffff">${escapeHtml(truncateLabel(slice.data.label, 12))}</text>`);

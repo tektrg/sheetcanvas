@@ -52,7 +52,8 @@ describe('embeds /e/*', () => {
   it('keeps /p/* unframable and adds the oEmbed discovery tag there', async () => {
     const { send, id, slug } = await setup();
     const res = await send(`/p/${slug}-${id}`);
-    expect(res.headers.get('content-security-policy')).not.toContain('frame-ancestors');
+    expect(res.headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
+    expect(res.headers.get('content-security-policy')).not.toContain('frame-ancestors *');
     const html = await res.text();
     expect(html).toContain('<link rel="alternate" type="application/json+oembed" href="https://sheetcanvas.com/oembed?url=https%3A%2F%2Fsheetcanvas.com%2Fp%2F');
   });
@@ -81,6 +82,15 @@ describe('embeds /e/*', () => {
     const hostile = await (await send(`/e/c/${id}/0?theme=${encodeURIComponent('"><b>INJECTED</b>')}`)).text();
     expect(hostile).not.toContain('INJECTED');
     expect(hostile).not.toContain('color-scheme:dark;');
+  });
+
+  it('themes chart SVG chrome via CSS variables (dark-aware, no JS)', async () => {
+    const { send, id } = await setup();
+    const html = await (await send(`/e/c/${id}/0?theme=dark`)).text();
+    expect(html).toContain('class="cs-bg"');
+    expect(html).toContain('figure.chart .cs-bg{fill:var(--chart-bg)}');
+    expect(html).toMatch(/color-scheme:dark;[^}]*--chart-bg:#16191f/);
+    expect(html).not.toContain('<script');
   });
 
   it('answers 404 for bad chart index / unknown page and 410 when unpublished (still framable)', async () => {

@@ -22,8 +22,8 @@ export const canonicalPageUrl = (slug: string, id: string) => `${SITE_ORIGIN}/p/
 export const oembedDiscoveryUrl = (pageUrl: string) => `${SITE_ORIGIN}/oembed?url=${encodeURIComponent(pageUrl)}&format=json`;
 export const ogImageUrl = (id: string, updatedAt: number) => `${SITE_ORIGIN}/og/${id}.png?v=${updatedAt}`;
 
-export const LIGHT_THEME_VARS = '--bg:#fff;--fg:#111827;--muted:#6b7280;--line:#e5e7eb;--accent:#4f46e5;--code:#f9fafb';
-export const DARK_THEME_VARS = '--bg:#111318;--fg:#e5e7eb;--muted:#9ca3af;--line:#2d3139;--accent:#a5b4fc;--code:#1b1e25';
+export const LIGHT_THEME_VARS = '--bg:#fff;--fg:#111827;--muted:#6b7280;--line:#e5e7eb;--accent:#4f46e5;--code:#f9fafb;--chart-bg:#fff;--chart-text:#4b5563;--chart-grid:#e5e7eb;--chart-axis:#9ca3af';
+export const DARK_THEME_VARS = '--bg:#111318;--fg:#e5e7eb;--muted:#9ca3af;--line:#2d3139;--accent:#a5b4fc;--code:#1b1e25;--chart-bg:#16191f;--chart-text:#c4c9d2;--chart-grid:#2d3139;--chart-axis:#6b7280';
 
 export const PAGE_STYLES = `
 :root{color-scheme:light dark;${LIGHT_THEME_VARS}}
@@ -41,6 +41,12 @@ article pre{overflow-x:auto;background:var(--code);padding:12px;border-radius:6p
 article table{border-collapse:collapse}
 figure.chart{margin:32px 0}
 figure.chart svg{width:100%;height:auto;display:block;border:1px solid var(--line);border-radius:8px}
+figure.chart svg{background:var(--chart-bg)}
+figure.chart .cs-bg{fill:var(--chart-bg)}
+figure.chart .cs-text{fill:var(--chart-text)}
+figure.chart .cs-grid{stroke:var(--chart-grid)}
+figure.chart .cs-axis{stroke:var(--chart-axis)}
+figure.chart .cs-sep{stroke:var(--chart-bg)}
 @media (max-width:600px){figure.chart svg text{font-size:15px}}
 figure.chart figcaption{font-weight:600;margin-top:8px}
 .data-table{margin-top:8px;font-size:.875rem}
