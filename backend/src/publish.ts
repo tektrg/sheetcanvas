@@ -14,6 +14,8 @@ import {
 import { canonicalPageUrl, pageDescription, NOINDEX_WORD_THRESHOLD, renderGoneHtml, renderPageHtml, SITE_ORIGIN } from './render/pageHtml';
 import { countWords, renderNoteHtml } from './render/noteHtml';
 import { escapeHtml } from './render/escape';
+import { htmlResponse } from './htmlResponse';
+import { registerEmbedRoutes } from './embed';
 
 // Anonymous publish: POST creates a page and returns a one-time edit key; PUT /
 // DELETE require it (X-Edit-Key). Public routes render the frozen snapshot as
@@ -136,17 +138,6 @@ export const parseSlugId = (slugId: string) => {
   const dash = slugId.lastIndexOf('-');
   return dash === -1 ? { id: slugId, slug: '' } : { id: slugId.slice(dash + 1), slug: slugId.slice(0, dash) };
 };
-
-const htmlResponse = (html: string, status: number, cacheSeconds: number) =>
-  new Response(html, {
-    status,
-    headers: {
-      'content-type': 'text/html; charset=utf-8',
-      'cache-control': `public, max-age=${cacheSeconds}, s-maxage=${cacheSeconds}`,
-      'x-content-type-options': 'nosniff',
-      'content-security-policy': "default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'",
-    },
-  });
 
 const reportFormHtml = (id: string, done: boolean) =>
   renderGoneHtml(
@@ -286,6 +277,7 @@ export const createPublishApp = (getRepo: (env: Env) => PagesRepo, now: () => nu
     }
   });
 
+  registerEmbedRoutes(app, getRepo);
   return app;
 };
 

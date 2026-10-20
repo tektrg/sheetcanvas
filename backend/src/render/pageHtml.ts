@@ -5,7 +5,7 @@ import { escapeHtml, jsonForScript } from './escape';
 import { CHART_PLACEHOLDER_PREFIX, plainExcerpt, renderNoteHtml } from './noteHtml';
 
 // Full public page for /p/<slug>-<id>. Pieces (figure, styles, document shell)
-// are exported separately so a later chart-only embed (/e/*) can reuse them.
+// are exported separately so the embed renderer (embedHtml.ts) reuses them.
 
 export const SITE_ORIGIN = 'https://sheetcanvas.com';
 export const NOINDEX_WORD_THRESHOLD = 150;
@@ -19,11 +19,15 @@ export interface PageMeta {
 }
 
 export const canonicalPageUrl = (slug: string, id: string) => `${SITE_ORIGIN}/p/${slug}-${id}`;
+export const oembedDiscoveryUrl = (pageUrl: string) => `${SITE_ORIGIN}/oembed?url=${encodeURIComponent(pageUrl)}&format=json`;
 export const ogImageUrl = (id: string, updatedAt: number) => `${SITE_ORIGIN}/og/${id}.png?v=${updatedAt}`;
 
+export const LIGHT_THEME_VARS = '--bg:#fff;--fg:#111827;--muted:#6b7280;--line:#e5e7eb;--accent:#4f46e5;--code:#f9fafb';
+export const DARK_THEME_VARS = '--bg:#111318;--fg:#e5e7eb;--muted:#9ca3af;--line:#2d3139;--accent:#a5b4fc;--code:#1b1e25';
+
 export const PAGE_STYLES = `
-:root{color-scheme:light dark;--bg:#fff;--fg:#111827;--muted:#6b7280;--line:#e5e7eb;--accent:#4f46e5;--code:#f9fafb}
-@media (prefers-color-scheme:dark){:root{--bg:#111318;--fg:#e5e7eb;--muted:#9ca3af;--line:#2d3139;--accent:#a5b4fc;--code:#1b1e25}}
+:root{color-scheme:light dark;${LIGHT_THEME_VARS}}
+@media (prefers-color-scheme:dark){:root{${DARK_THEME_VARS}}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif}
 main{display:block;width:100%;max-width:760px;margin-left:auto;margin-right:auto;padding:40px 16px 24px}
@@ -123,6 +127,7 @@ export const renderPageHtml = (snapshot: PublishSnapshot, meta: PageMeta): strin
 <meta name="description" content="${e(description)}">
 <meta name="robots" content="${robots}">
 <link rel="canonical" href="${e(url)}">
+<link rel="alternate" type="application/json+oembed" href="${e(oembedDiscoveryUrl(url))}" title="${e(title)}">
 <meta property="og:type" content="article">
 <meta property="og:title" content="${e(title)}">
 <meta property="og:description" content="${e(description)}">
