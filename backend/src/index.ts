@@ -46,6 +46,7 @@ import {
   googleSheetsQuerySchema
 } from "./validation";
 import { handleAgentRequest, handleQuotaRead } from "./agent/route";
+import { createAnswerBoxHandler } from "./agent/answerBox";
 import { mcpApp } from "./mcp/route";
 import { publishApp } from "./publish";
 
@@ -227,6 +228,11 @@ app.get("/api/favicon", async (c) => {
 app.post("/api/agent", (c) => {
   requireBearerToken(c.req.raw, c.env);
   return handleAgentRequest(c);
+});
+const handleAnswerBoxDraft = createAnswerBoxHandler();
+app.post("/api/pages/answer-box", (c) => {
+  requireBearerToken(c.req.raw, c.env);
+  return handleAnswerBoxDraft(c);
 });
 app.get("/api/agent/quota", (c) => {
   requireBearerToken(c.req.raw, c.env);

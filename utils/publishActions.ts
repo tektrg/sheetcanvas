@@ -15,6 +15,7 @@ import { readConnectorQuery, refreshConnectedSheetFromQuery } from './connectedS
 import { ApiError } from './backendApi';
 import { getSession, saveSession } from './accountSession';
 import type { PublishSnapshot } from '../shared/publishSnapshot';
+import { requestAnswerBoxDraft, type SavedAnswerBox } from './answerBox';
 
 // Store-coupled publish actions used by the Publish menu and the auto-republish
 // hook. Writing `publish` on a note never bumps `updatedAt` (not a content field).
@@ -137,4 +138,18 @@ export const refreshNoteConnectorSources = async (noteId: string) => {
       console.warn('[publish] scheduled refresh failed', sheetId, errorMessage(err));
     }
   }
+};
+
+/** AI draft from the note as it would publish now (minus any saved answer box). Never saves. */
+export const draftAnswerBoxForNote = async (noteId: string) => {
+  const current = await currentSnapshot(noteId);
+  if (!current) throw new Error('Page not found');
+  const { summary: _summary, faq: _faq, ...withoutAnswerBox } = current.snapshot;
+  return requestAnswerBoxDraft(withoutAnswerBox);
+};
+
+/** Save the author-reviewed answer box; a live page republishes right away. */
+export const saveAnswerBox = async (noteId: string, answerBox: SavedAnswerBox | undefined) => {
+  patchPublish(noteId, { answerBox });
+  if (!useStore.getState().notes[noteId]?.publish?.paused) await republishNote(noteId);
 };

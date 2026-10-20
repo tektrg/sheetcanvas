@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Check, Code2, Copy, ExternalLink, Globe, Pause, Play, RefreshCw } from 'lucide-react';
+import { Check, Code2, Copy, ExternalLink, Globe, MessageSquareText, Pause, Play, RefreshCw } from 'lucide-react';
 import { useStore } from '../../store';
 import type { PublishRefreshSchedule } from '../../types';
 import { extractEmbeddedChartIds } from '../../utils/pages';
@@ -13,6 +13,7 @@ import {
   unpublishNote,
 } from '../../utils/publishActions';
 import { EmbedDialog } from './EmbedDialog';
+import { AnswerBoxDialog } from './AnswerBoxDialog';
 
 // Publish control for one note/page: a globe button (with a "Live" badge when
 // published) that opens a small panel. Used on the canvas note bar and in Library rows.
@@ -30,6 +31,11 @@ export const LiveBadge: React.FC<{ paused?: boolean }> = ({ paused }) => (
   </span>
 );
 
+const answerBoxStatus = (answerBox: { summary?: string; faq?: unknown[] } | undefined) => {
+  const parts = [answerBox?.summary ? 'Summary' : '', answerBox?.faq?.length ? `${answerBox.faq.length} Q&A` : ''].filter(Boolean);
+  return parts.length ? parts.join(' + ') : 'Not set';
+};
+
 const rowButton = 'w-full flex items-center gap-2 px-3 py-1.5 text-sm text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-700 disabled:opacity-50';
 
 export const PublishMenu: React.FC<{ noteId: string; align?: 'left' | 'right' }> = ({ noteId, align = 'right' }) => {
@@ -40,6 +46,7 @@ export const PublishMenu: React.FC<{ noteId: string; align?: 'left' | 'right' }>
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [embedOpen, setEmbedOpen] = useState(false);
+  const [answerBoxOpen, setAnswerBoxOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -129,6 +136,17 @@ export const PublishMenu: React.FC<{ noteId: string; align?: 'left' | 'right' }>
             </div>
           )}
 
+          <button
+            type="button"
+            data-testid="publish-answer-box"
+            className={`${rowButton} mt-2 border-t border-neutral-100 dark:border-neutral-700 pt-2`}
+            onClick={() => { setAnswerBoxOpen(true); setOpen(false); }}
+            title="TL;DR + Q&A shown under the page title, quoted by search and AI answer engines"
+          >
+            <MessageSquareText size={13} /> Answer box…
+            <span className="ml-auto text-[11px] text-neutral-400">{answerBoxStatus(settings.answerBox)}</span>
+          </button>
+
           {chartIds.length > 0 && (
             <div className="mt-2 border-t border-neutral-100 dark:border-neutral-700 px-3 pt-2">
               <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">Charts</div>
@@ -180,6 +198,7 @@ export const PublishMenu: React.FC<{ noteId: string; align?: 'left' | 'right' }>
           )}
         </div>
       )}
+      {answerBoxOpen && <AnswerBoxDialog noteId={noteId} onClose={() => setAnswerBoxOpen(false)} />}
       {embedOpen && live && <EmbedDialog noteId={noteId} pageId={settings.id} onClose={() => setEmbedOpen(false)} />}
     </div>
   );

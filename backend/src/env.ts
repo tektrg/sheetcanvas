@@ -14,6 +14,8 @@ export type Env = {
   AGENT_FLOW_DEBUG?: string;
   AGENT_QUOTA?: KVNamespace;
   ENVIRONMENT?: string;
+  /** "1" with ENVIRONMENT=development: answer-box drafts come from a deterministic local fake (no Gemini key). */
+  ANSWER_BOX_FAKE?: string;
   /** theindie-api base URL (accounts); default https://api.theindie.app. */
   THEINDIE_API_URL?: string;
 };
