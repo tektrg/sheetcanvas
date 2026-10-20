@@ -38,6 +38,8 @@ After deployment, smoke check at minimum:
 
 Known-good reference from the May 27, 2026 deploy: project `sheetcanvas`, source commit `021c60c`, deployment `c1980e27-a5fe-44e0-8757-ca5ba3604029`, preview `https://c1980e27.sheetcanvas.pages.dev`.
 
+Latest known-good (Oct 20, 2026, merge of `feat/agent-diagrams` + `main` embed/publish): source commit `07cabd2`, deployment `338f95d7-6576-4c4a-9d0e-3ad42a02af9c`, preview `https://338f95d7.sheetcanvas.pages.dev`. Wrangler on the Air needs `CLOUDFLARE_ACCOUNT_ID=9cd49d097f431e967341161edc370cfb` (two accounts visible; non-interactive shells otherwise fail). Worker NOT redeployed in that run — the live Worker was built from `main` (98dda89) and lacks the branch's public-MCP changes.
+
 ## Two-Machine Dev (Pro + Air)
 
 Dev also runs on a second Mac ("Air"): `ssh trungs-air`, path `~/01_Project/SheetCanvas/flexsheet` (same relative layout as Pro). Air has a reverse alias back to this Mac: `ssh mbp-m4` (tailscale IP, user `trungluong`) — no such alias existed from Pro to Air as of Sep 2026, so reach Air only via `trungs-air`. On Air, always `source ~/.nvm/nvm.sh` and put its bin dir **ahead of** `/usr/local/bin` on `PATH` before running anything Node-related — Air also has a stray system Node that otherwise shadows the pinned `.nvmrc` version and breaks native deps like `rollup`'s platform binary.
