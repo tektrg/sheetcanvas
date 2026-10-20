@@ -7,6 +7,12 @@
     <priority>1.0</priority>
   </url>
   <url>
+    <loc>https://sheetcanvas.com/about/</loc>
+    <lastmod>2026-10-20</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.55</priority>
+  </url>
+  <url>
     <loc>https://sheetcanvas.com/learn/</loc>
     <lastmod>2026-06-14</lastmod>
     <changefreq>monthly</changefreq>

@@ -4,6 +4,7 @@ export const EXCLUDED_PUBLIC_DIRS = new Set(['landing-page-design']);
 
 export const ROUTE_ORDER = [
   '/',
+  '/about/',
   '/learn/',
   '/docs/',
   '/blog/',

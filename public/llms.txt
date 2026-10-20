@@ -1,10 +1,11 @@
 # SheetCanvas
 
-> SheetCanvas is a browser-based spreadsheet canvas for local CSV/XLSX files, canvas objects, and shipped connector-backed sheets. The live app stays at https://sheetcanvas.com/.
+> SheetCanvas is a free visual canvas for spreadsheets, charts and notes, where you analyze data and publish shareable data pages. It is a browser-based spreadsheet canvas: free core, with optional paid add-ons planned (as of Oct 2026). Optional: connect your own AI agent over MCP. The live app stays at https://sheetcanvas.com/.
 
 ## Start here
 
 - SheetCanvas app: https://sheetcanvas.com/
+- About SheetCanvas: https://sheetcanvas.com/about/
 - Learn SheetCanvas: https://sheetcanvas.com/learn/
 - SheetCanvas Docs: https://sheetcanvas.com/docs/
 - SheetCanvas Blog: https://sheetcanvas.com/blog/

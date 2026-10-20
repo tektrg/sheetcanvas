@@ -6,7 +6,10 @@ export const PUBLISHED_ON = '2026-10-20';
 export const REVIEWED_ON = '2026-10-20';
 
 export const POSITIONING =
-  'SheetCanvas is an agent-native spreadsheet canvas for analysts, operators, and founders that puts spreadsheets, charts, pivots, notes, and diagrams side by side on one canvas, and lets your own AI agent (such as Claude or Codex, connected over MCP) build them from your files and data connectors.';
+  'SheetCanvas is a free visual canvas for spreadsheets, charts and notes, where you analyze data and publish shareable data pages.';
+
+export const AGENT_LINE =
+  'Optional: connect your own AI agent (such as Claude or Codex) over MCP so it can build sheets and charts on your canvas.';
 
 export const WHO_FOR = [
   { who: 'Analysts and operators', why: 'who explore CSV, Excel, or warehouse exports and need the source table, the chart, and the conclusion visible together.' },
@@ -18,15 +21,15 @@ export const WHAT_IT_DOES = [
   'Imports local CSV, XLSX, and XLS files as spreadsheet objects on a canvas.',
   'Builds bar, line, area, pie, scatter, treemap, pivot, and sparkline views next to the source data.',
   'Keeps rich-text notes and diagrams (Excalidraw-style drawings and Mermaid) beside the evidence they explain.',
-  'Exposes the open canvas to external agents over MCP (Model Context Protocol), so Claude, Codex, or another MCP client can read, filter, sort, and chart sheets on the canvas. (A built-in copilot is announced in the app as coming soon.)',
   'Connects to ClickHouse, Google Sheets, and Google Analytics 4 (GA4) as refreshable connected sheets.',
-  'Publishes a note or page to a public link, and embeds individual charts or pages on other websites.',
+  'Publishes a note or page as a shareable public data page, and embeds individual charts or pages on other websites.',
+  'Secondary: exposes the open canvas to your own AI agent over MCP (Model Context Protocol), so Claude, Codex, or another MCP client can read, filter, sort, and chart sheets. A built-in copilot is announced in the app as coming soon.',
 ];
 
 export const HOME_FAQS = [
   {
     q: 'What is SheetCanvas?',
-    a: 'SheetCanvas is a browser-based spreadsheet canvas. Instead of one grid with tabs, you place spreadsheets, charts, pivots, notes, and diagrams on a single canvas so the data and the explanation stay visible together. MCP access lets your AI agent build those objects for you.',
+    a: 'SheetCanvas is a free visual canvas for spreadsheets, charts and notes, where you analyze data and publish shareable data pages. Instead of one grid with tabs, the data and its explanation stay visible together on one canvas.',
   },
   {
     q: 'Who is SheetCanvas for?',
@@ -46,11 +49,15 @@ export const HOME_FAQS = [
   },
   {
     q: 'Where is my data stored?',
-    a: 'Workspaces are stored locally in your browser. Local file imports stay on your device. Connector credentials are stored encrypted by the SheetCanvas backend so it can query the source on your behalf, and published pages are stored on the server only when you choose to publish.',
+    a: 'Private by default: workspaces are stored locally in your browser. Local file imports stay on your device. Connector credentials are stored encrypted by the SheetCanvas backend so it can query the source on your behalf, and published pages are stored on the server only when you choose to publish.',
   },
   {
     q: 'How much does SheetCanvas cost?',
-    a: 'As of October 2026, SheetCanvas has no published pricing. The web app opens at sheetcanvas.com and you can start working without creating an account.',
+    a: 'As of October 2026, SheetCanvas has a free core, with optional paid add-ons planned. No prices are published yet.',
+  },
+  {
+    q: 'Do I need an account?',
+    a: 'No. You can use SheetCanvas without an account. Sign-in is optional, for publishing pages under a profile.',
   },
 ];
 
@@ -73,7 +80,7 @@ export const COMPARISONS = [
       ['Automation', 'MCP tools for external AI agents', 'VBA macros, Office Scripts, Power Automate'],
       ['Data import', 'CSV, XLSX, XLS; connectors for ClickHouse, Google Sheets, GA4', 'Broad import options including Power Query'],
       ['AI assistance', 'Bring your own agent (Claude, Codex) via MCP; built-in copilot not yet available', 'Microsoft Copilot in Microsoft 365 (plan-dependent)'],
-      ['Sharing', 'Publish a page or embed a chart via public link', 'Share workbooks through OneDrive / SharePoint with co-authoring'],
+      ['Sharing', 'Private by default; publish a page or embed a chart to share', 'Share workbooks through OneDrive / SharePoint with co-authoring'],
       ['Best at', 'Visual, exploratory analysis and agent-built dashboards', 'Heavy modelling, compatibility, enterprise workflows'],
     ],
     faqs: [
@@ -95,7 +102,7 @@ export const COMPARISONS = [
     ],
     rows: [
       ['Core model', 'Objects on one canvas (sheets, charts, pivots, notes, diagrams)', 'Grid spreadsheet with tabs, charts, and pivot tables'],
-      ['Collaboration', 'Single-user workspace stored in your browser; share via published pages', 'Real-time multi-user editing, comments, version history'],
+      ['Collaboration', 'Private by default: workspace stored in your browser; publish pages to share (no live co-editing)', 'Real-time multi-user editing, comments, version history'],
       ['Automation', 'MCP tools for external AI agents', 'Apps Script, add-ons, macros'],
       ['AI assistance', 'Bring your own agent (Claude, Codex) via MCP; built-in copilot not yet available', 'Gemini in Google Workspace (plan-dependent)'],
       ['Data sources', 'CSV, XLSX, XLS; ClickHouse, Google Sheets, GA4 connectors', 'Import functions, connected sheets for BigQuery, add-ons'],
@@ -103,7 +110,7 @@ export const COMPARISONS = [
     ],
     faqs: [
       { q: 'Can SheetCanvas read data from Google Sheets?', a: 'Yes. SheetCanvas has a Google Sheets connector that loads a sheet as a connected spreadsheet object on the canvas.' },
-      { q: 'Does SheetCanvas have real-time collaboration like Google Sheets?', a: `No. As of Oct 2026, a SheetCanvas workspace is stored locally in your browser. You can share results by publishing a page or embedding a chart, but not co-edit live.` },
+      { q: 'Does SheetCanvas have real-time collaboration like Google Sheets?', a: `No. As of Oct 2026, SheetCanvas is private by default: your workspace is stored in your browser. Publish a page or embed a chart to share results; live co-editing is not supported.` },
       { q: 'When should I stay in Google Sheets?', a: 'Stay in Google Sheets when a team edits the same data together every day, or when Apps Script automations run on the sheet.' },
     ],
     related: '/alternatives/google-sheets/',
@@ -122,7 +129,7 @@ export const COMPARISONS = [
       ['Core model', 'Free-form canvas of spreadsheets, charts, notes, diagrams', 'Pages and blocks, with databases (table, board, calendar, chart views)'],
       ['Spreadsheet analysis', 'Spreadsheet objects with formulas, sorting, filtering, pivots', 'Database properties and formulas; not a full spreadsheet'],
       ['Charts', 'Bar, line, area, pie, scatter, treemap, pivot, sparkline', 'Chart views on databases'],
-      ['Collaboration', 'Single-user workspace; share via published pages and embeds', 'Multi-user workspace with permissions, comments, and sharing'],
+      ['Collaboration', 'Private by default: workspace stored in your browser; publish pages or embeds to share', 'Multi-user workspace with permissions, comments, and sharing'],
       ['AI assistance', 'Bring your own agent (Claude, Codex) via MCP; built-in copilot not yet available', 'Notion AI (plan-dependent)'],
       ['Best at', 'Explaining data with charts and notes together', 'Team documentation, wikis, and project tracking'],
     ],
@@ -145,7 +152,7 @@ export const COMPARISONS = [
     ],
     rows: [
       ['Core model', 'Canvas of spreadsheets, charts, pivots, notes, diagrams', 'Worksheets, dashboards, and stories on a governed data model'],
-      ['Setup', 'Open in the browser; start without an account', 'Desktop or cloud authoring plus server/cloud for sharing'],
+      ['Setup', 'Free; open in the browser, no account needed', 'Desktop or cloud authoring plus server/cloud for sharing'],
       ['Data sources', 'CSV, XLSX, XLS; ClickHouse, Google Sheets, GA4', 'Very broad native connector catalogue'],
       ['Visualisation depth', 'Common chart types for exploration', 'Advanced visual grammar, calculated fields, LOD expressions'],
       ['Governance', 'None beyond your own workspace', 'Permissions, row-level security, certified data sources'],
