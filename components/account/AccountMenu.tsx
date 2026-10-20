@@ -97,7 +97,7 @@ export const AccountMenu: React.FC = () => {
         <span className="max-w-[120px] truncate">{label}</span>
       </button>
       {open && (
-        <div role="menu" className="absolute left-0 top-full mt-2 w-64 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-2xl p-3 text-neutral-900 dark:text-neutral-100">
+        <div role="menu" className="absolute left-0 top-full mt-2 w-64 max-sm:fixed max-sm:left-4 max-sm:right-4 max-sm:top-16 max-sm:mt-0 max-sm:w-auto rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-2xl p-3 text-neutral-900 dark:text-neutral-100">
           {!user ? (
             <>
               <p className="text-sm font-medium mb-1">Sign in to SheetCanvas</p>

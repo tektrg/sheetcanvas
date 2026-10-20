@@ -37,6 +37,7 @@ const PROFILE_STYLES = `
 .pages h2 a:hover{color:var(--accent);text-decoration:underline}
 .pages p{margin:0 0 4px}
 .pages .meta{margin:0;font-size:.8rem}
+.truncated{margin:16px 0 0;font-size:.875rem}
 .back{font-size:.875rem}
 .back a{color:var(--accent)}
 `;
@@ -46,6 +47,8 @@ interface ListingView {
   pages: OwnedPageListing[];
   allTags: Array<{ tag: string; count: number }>;
   tag?: string;
+  /** More pages exist than were loaded; only the newest `pages.length` are shown. */
+  truncated?: boolean;
 }
 
 const pageItem = (handle: string, page: OwnedPageListing) => {
@@ -57,7 +60,7 @@ const pageItem = (handle: string, page: OwnedPageListing) => {
   return `<li><h2><a href="/p/${e(page.slug)}-${e(page.id)}">${e(page.title)}</a></h2>${page.description ? `<p>${e(page.description)}</p>` : ''}<p class="meta">Updated <time datetime="${updated}">${updated.slice(0, 10)}</time>${chips}</p></li>`;
 };
 
-export const renderProfileHtml = ({ profile, pages, allTags, tag }: ListingView): string => {
+export const renderProfileHtml = ({ profile, pages, allTags, tag, truncated = false }: ListingView): string => {
   const e = escapeHtml;
   const handle = profile.handle;
   const name = profile.displayName || `@${handle}`;
@@ -113,6 +116,7 @@ export const renderProfileHtml = ({ profile, pages, allTags, tag }: ListingView)
 <p class="lede">${lede}</p>
 ${chips}
 <ol class="pages">${pages.map(page => pageItem(handle, page)).join('')}</ol>
+${truncated ? `<p class="meta truncated">Showing latest ${pages.length} pages.</p>` : ''}
 </main>
 <footer>
 <a class="cta" href="${SITE_ORIGIN}/?utm_source=profile_page&amp;utm_medium=footer">Made with SheetCanvas — publish your own data pages</a>

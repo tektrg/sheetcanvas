@@ -181,3 +181,24 @@ describe('profile pages', () => {
     expect(xml).not.toContain('/@solo');
   });
 });
+
+describe('profile truncation', () => {
+  it('shows "Showing latest 500 pages" only when the owner has more than 500', async () => {
+    const { memory, fake, send } = setup();
+    fake.seedUser({ id: 'u_big', handle: 'big' });
+    const insert = (i: number) => memory.repo.insertPage({
+      id: `p${i}`, slug: `page-${i}`, edit_key_hash: 'x', title: `Page ${i}`, description: '',
+      snapshot_json: JSON.stringify(snapshot({ title: `Page ${i}`, tags: ['bulk'] })), word_count: 200,
+      status: 'published', created_at: i, updated_at: i, owner_user_id: 'u_big',
+    });
+    for (let i = 0; i < 500; i++) await insert(i);
+    const full = await (await send('/@big')).text();
+    expect(full).not.toContain('Showing latest');
+    await insert(500);
+    const html = await (await send('/@big')).text();
+    expect(html).toContain('Showing latest 500 pages.');
+    expect(html.match(/<li><h2>/g)?.length).toBe(500);
+    expect(html).not.toContain('/p/page-0-p0'); // oldest dropped
+    expect(await (await send('/@big/tag/bulk')).text()).toContain('Showing latest 500 pages.');
+  });
+});

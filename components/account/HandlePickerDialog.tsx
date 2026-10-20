@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { AccountApiError, HANDLE_MAX, handleProblem } from '../../shared/theindieAccounts';
 import { chooseHandle } from '../../utils/accountActions';
+import { createDismissGuard } from './dismissGuard';
+import { PortalThemeScope } from '../PortalThemeScope';
 
 // Pick / change the public @handle (theindie-api PUT /v1/me/handle). Inline
 // format validation mirrors the server; reserved/taken/too-soon come back from it.
@@ -13,14 +15,18 @@ export const HandlePickerDialog: React.FC<{ initial: string | null; onClose: () 
   const [serverError, setServerError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const [guard] = useState(() => createDismissGuard(() => onCloseRef.current()));
+  const dismiss = guard.dismiss;
 
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null;
     inputRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e: KeyboardEvent) => guard.onKeyDown(e);
     document.addEventListener('keydown', onKey);
     return () => { document.removeEventListener('keydown', onKey); opener?.focus?.(); };
-  }, [onClose]);
+  }, [guard]);
 
   const problem = handleProblem(value);
   const unchanged = value === initial;
@@ -30,6 +36,7 @@ export const HandlePickerDialog: React.FC<{ initial: string | null; onClose: () 
     e.preventDefault();
     setTouched(true);
     if (problem || unchanged) return;
+    guard.setBusy(true);
     setSaving(true);
     setServerError(null);
     try {
@@ -38,12 +45,14 @@ export const HandlePickerDialog: React.FC<{ initial: string | null; onClose: () 
     } catch (err) {
       setServerError(err instanceof AccountApiError ? err.message : 'Could not save the handle');
     } finally {
+      guard.setBusy(false);
       setSaving(false);
     }
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
+    <PortalThemeScope>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4" onMouseDown={e => { if (e.target === e.currentTarget) dismiss(); }}>
       <form
         role="dialog"
         aria-modal="true"
@@ -53,7 +62,7 @@ export const HandlePickerDialog: React.FC<{ initial: string | null; onClose: () 
       >
         <div className="flex items-start justify-between mb-3">
           <h2 id="handle-picker-title" className="text-base font-semibold">{initial ? 'Change your handle' : 'Choose your handle'}</h2>
-          <button type="button" aria-label="Close" onClick={onClose} className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800"><X size={16} /></button>
+          <button type="button" aria-label="Close" onClick={dismiss} disabled={saving} className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800"><X size={16} /></button>
         </div>
         <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">Your published pages are listed on your public profile.</p>
         <label htmlFor="handle-input" className="block text-xs font-medium text-neutral-600 dark:text-neutral-300 mb-1">Handle</label>
@@ -77,7 +86,7 @@ export const HandlePickerDialog: React.FC<{ initial: string | null; onClose: () 
           {shownError ?? `sheetcanvas.com/@${value || 'yourname'} · 3–30 characters: a–z, 0–9, - and _`}
         </p>
         <div className="mt-5 flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="rounded-md px-3 py-1.5 text-sm text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800">
+          <button type="button" onClick={dismiss} disabled={saving} className="rounded-md px-3 py-1.5 text-sm text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800">
             {initial ? 'Cancel' : 'Later'}
           </button>
           <button
@@ -89,7 +98,8 @@ export const HandlePickerDialog: React.FC<{ initial: string | null; onClose: () 
           </button>
         </div>
       </form>
-    </div>,
+    </div>
+    </PortalThemeScope>,
     document.body,
   );
 };

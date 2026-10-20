@@ -28,8 +28,11 @@ export const registerProfileRoutes = (
     if (!isValidHandle(handle)) return null;
     const profile = await getAccounts(env).profileByHandle(handle);
     if (!profile) return null;
-    const pages = await getRepo(env).listOwned(PROFILE_LIMITS.pagesPerProfile, profile.id);
-    return pages.length ? { profile, pages } : null;
+    // One extra row tells us whether the listing was cut off.
+    const loaded = await getRepo(env).listOwned(PROFILE_LIMITS.pagesPerProfile + 1, profile.id);
+    const truncated = loaded.length > PROFILE_LIMITS.pagesPerProfile;
+    const pages = loaded.slice(0, PROFILE_LIMITS.pagesPerProfile);
+    return pages.length ? { profile, pages, truncated } : null;
   };
 
   // Hono cannot mix a literal "@" with a :param in one segment, so match the
@@ -51,7 +54,7 @@ export const registerProfileRoutes = (
     const found = await load(c.env, raw);
     const tagged = found?.pages.filter(page => page.tags.includes(tag)) ?? [];
     if (!found || !tagged.length) return notFound();
-    const html = renderProfileHtml({ profile: found.profile, pages: tagged, allTags: tagCounts(found.pages), tag });
+    const html = renderProfileHtml({ profile: found.profile, pages: tagged, allTags: tagCounts(found.pages), tag, truncated: found.truncated });
     return htmlResponse(html, 200, PROFILE_LIMITS.cacheSeconds);
   });
 };
