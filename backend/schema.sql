@@ -46,6 +46,7 @@ CREATE INDEX IF NOT EXISTS idx_mcp_events_token_created ON mcp_events(token_hash
 -- Anonymous published pages (public /p/<slug>-<id>). No accounts: whoever holds
 -- the edit key may republish/unpublish. Only the SHA-256 of the key is stored.
 -- status: 'published' | 'unpublished' (unpublished rows keep id/slug for a 410).
+-- owner_user_id is added by migrations/0001_page_owner.sql (apply after this file).
 CREATE TABLE IF NOT EXISTS published_pages (
   id TEXT PRIMARY KEY,
   slug TEXT NOT NULL,

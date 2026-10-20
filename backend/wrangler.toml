@@ -23,7 +23,10 @@ routes = [
   { pattern = "www.sheetcanvas.com/e/*", zone_name = "sheetcanvas.com" },
   { pattern = "www.sheetcanvas.com/oembed*", zone_name = "sheetcanvas.com" },
   { pattern = "www.sheetcanvas.com/sitemap-pages.xml", zone_name = "sheetcanvas.com" },
-  { pattern = "www.sheetcanvas.com/llms-pages.txt", zone_name = "sheetcanvas.com" }
+  { pattern = "www.sheetcanvas.com/llms-pages.txt", zone_name = "sheetcanvas.com" },
+  # Author profiles + tag hubs (backend/src/profiles.ts). The Pages SPA has no /@ routes.
+  { pattern = "sheetcanvas.com/@*", zone_name = "sheetcanvas.com" },
+  { pattern = "www.sheetcanvas.com/@*", zone_name = "sheetcanvas.com" }
 ]
 
 [vars]
@@ -33,6 +36,8 @@ DEFAULT_TIMEOUT_MS = "15000"
 MAX_ROWS = "5000"
 AGENT_MODEL = "gemini-2.5-flash"
 AGENT_DAILY_LIMIT = "50"
+# Shared accounts server (Sign in with Google, handles). Override in .dev.vars for a local stub.
+THEINDIE_API_URL = "https://api.theindie.app"
 # Set ENVIRONMENT="development" in backend/.dev.vars for local agent testing
 # without an AGENT_QUOTA KV binding. Production requires KV.
 # OAuth client settings for Google Analytics (GA4).
@@ -60,3 +65,5 @@ binding = "DB"
 database_name = "flexsheet"
 # Production D1 database created with `wrangler d1 create flexsheet --location wnam`.
 database_id = "dc491891-8ad1-4ca6-832d-8a19059bfa2f"
+# Column additions on top of schema.sql (tracked, run once): wrangler d1 migrations apply DB --local|--remote
+migrations_dir = "migrations"

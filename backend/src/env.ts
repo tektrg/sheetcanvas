@@ -14,4 +14,6 @@ export type Env = {
   AGENT_FLOW_DEBUG?: string;
   AGENT_QUOTA?: KVNamespace;
   ENVIRONMENT?: string;
+  /** theindie-api base URL (accounts); default https://api.theindie.app. */
+  THEINDIE_API_URL?: string;
 };

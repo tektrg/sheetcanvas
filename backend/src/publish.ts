@@ -16,6 +16,9 @@ import { countWords, renderNoteHtml } from './render/noteHtml';
 import { escapeHtml } from './render/escape';
 import { htmlResponse } from './htmlResponse';
 import { registerEmbedRoutes } from './embed';
+import { accountsFromEnv, bearerToken, type AccountsResolver } from './accounts';
+import { profileSitemapEntries, registerProfileRoutes } from './profiles';
+import type { AccountUser } from '../../shared/theindieAccounts';
 
 // Anonymous publish: POST creates a page and returns a one-time edit key; PUT /
 // DELETE require it (X-Edit-Key). Public routes render the frozen snapshot as
@@ -35,6 +38,11 @@ const DEFAULT_OG_IMAGE = `${SITE_ORIGIN}/brand/sheetcanvas-og.png`;
 
 type PublishEnv = { Bindings: Env };
 type AppContext = Context<PublishEnv>;
+
+const MAX_CLAIM_PAGES = 200;
+const claimSchema = z.object({
+  pages: z.array(z.object({ id: z.string().min(1).max(40), editKey: z.string().min(1).max(200) })).max(MAX_CLAIM_PAGES),
+});
 
 const reportSchema = z.object({
   reason: z.enum(['spam', 'abuse', 'copyright', 'privacy', 'my_content', 'other']),
@@ -150,7 +158,26 @@ const reportFormHtml = (id: string, done: boolean) =>
       : `<form method="post" action="/api/pages/${escapeHtml(id)}/report"><p><label>Reason <select name="reason"><option value="spam">Spam</option><option value="abuse">Abusive or illegal</option><option value="copyright">Copyright</option><option value="privacy">Private information</option><option value="my_content">This is my content — remove it</option><option value="other">Other</option></select></label></p><p><label>Details<br><textarea name="details" rows="4" cols="50" maxlength="2000"></textarea></label></p><p><label>Contact (optional)<br><input name="contact" maxlength="200"></label></p><p><button type="submit">Send report</button></p></form>`
   );
 
-export const createPublishApp = (getRepo: (env: Env) => PagesRepo, now: () => number = Date.now) => {
+/**
+ * Signed-in author from "Authorization: Bearer <theindie session>".
+ * No header → null (anonymous). Header present but rejected → 401.
+ */
+const sessionUser = async (c: AppContext, accounts: AccountsResolver, required: boolean): Promise<AccountUser | null> => {
+  const token = bearerToken(c.req.header('authorization'));
+  if (!token) {
+    if (required) throw new HttpError(401, 'invalid_session', 'Sign in required');
+    return null;
+  }
+  const user = await accounts.verifySession(token);
+  if (!user) throw new HttpError(401, 'invalid_session', 'Session expired — sign in again');
+  return user;
+};
+
+export const createPublishApp = (
+  getRepo: (env: Env) => PagesRepo,
+  now: () => number = Date.now,
+  getAccounts: (env: Env) => AccountsResolver = accountsFromEnv,
+) => {
   const app = new Hono<PublishEnv>();
   app.onError((err, c) => {
     const { status, body } = toJsonError(err);
@@ -161,14 +188,38 @@ export const createPublishApp = (getRepo: (env: Env) => PagesRepo, now: () => nu
   app.post('/api/pages', async c => {
     const repo = getRepo(c.env);
     const snapshot = await readSnapshot(c);
+    const owner = await sessionUser(c, getAccounts(c.env), false);
     const at = now();
     await enforceRateLimit(repo, await clientIpHash(c), 'publish', at);
     const id = newPageId();
     const editKey = randomBase64Url(32);
     const fields = derivedFields(snapshot);
-    await repo.insertPage({ id, edit_key_hash: await sha256Hex(editKey), status: 'published', created_at: at, updated_at: at, ...fields });
+    await repo.insertPage({ id, edit_key_hash: await sha256Hex(editKey), status: 'published', created_at: at, updated_at: at, owner_user_id: owner?.id ?? null, ...fields });
     const body: PublishCreatedResponse = { id, slug: fields.slug, url: canonicalPageUrl(fields.slug, id), editKey };
     return c.json(body, 201);
+  });
+
+  // Attach pages this browser published anonymously (proved by edit key) to the
+  // signed-in account. Pages already owned by someone else are left alone.
+  app.post('/api/pages/claim', async c => {
+    const repo = getRepo(c.env);
+    const user = (await sessionUser(c, getAccounts(c.env), true))!;
+    const parsed = claimSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) throw new HttpError(400, 'invalid_claim', `Body must be {pages: [{id, editKey}]} (max ${MAX_CLAIM_PAGES})`);
+    const claimed: string[] = [];
+    const skipped: Array<{ id: string; reason: 'not_found' | 'forbidden' | 'owned_by_other' }> = [];
+    for (const { id, editKey } of parsed.data.pages) {
+      const page = await repo.getPage(id);
+      if (!page) { skipped.push({ id, reason: 'not_found' }); continue; }
+      if (!constantTimeEqual(await sha256Hex(editKey), page.edit_key_hash)) { skipped.push({ id, reason: 'forbidden' }); continue; }
+      if (page.owner_user_id && page.owner_user_id !== user.id) { skipped.push({ id, reason: 'owned_by_other' }); continue; }
+      if (page.owner_user_id !== user.id) {
+        await repo.updatePage(id, { owner_user_id: user.id });
+        await purgePageCache(id); // by-line changes
+      }
+      claimed.push(id);
+    }
+    return c.json({ userId: user.id, claimed, skipped });
   });
 
   app.put('/api/pages/:id', async c => {
@@ -220,7 +271,9 @@ export const createPublishApp = (getRepo: (env: Env) => PagesRepo, now: () => nu
     if (slug !== pageSlug) return c.redirect(`/p/${pageSlug}-${id}`, 301);
     if (cached) return new Response(cached.body, cached);
     const snapshot = publishSnapshotSchema.parse(JSON.parse(page!.snapshot_json));
+    const author = page!.owner_user_id ? await getAccounts(c.env).profileById(page!.owner_user_id).catch(() => null) : null;
     const html = renderPageHtml(snapshot, {
+      author: author ? { handle: author.handle, displayName: author.displayName } : undefined,
       id,
       slug: page!.slug,
       createdAt: page!.created_at,
@@ -234,11 +287,13 @@ export const createPublishApp = (getRepo: (env: Env) => PagesRepo, now: () => nu
   });
 
   app.get('/sitemap-pages.xml', async c => {
-    const pages = await getRepo(c.env).listPublished(PUBLISH_LIMITS.sitemapMaxPages);
+    const repo = getRepo(c.env);
+    const pages = await repo.listPublished(PUBLISH_LIMITS.sitemapMaxPages);
+    const profileUrls = await profileSitemapEntries(repo, getAccounts(c.env)).catch(() => '');
     const urls = pages
       .filter(page => page.word_count >= NOINDEX_WORD_THRESHOLD)
       .map(page => `<url><loc>${escapeHtml(canonicalPageUrl(page.slug, page.id))}</loc><lastmod>${new Date(page.updated_at).toISOString()}</lastmod></url>`)
-      .join('');
+      .join('') + profileUrls;
     return c.body(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls}</urlset>\n`, 200, {
       'content-type': 'application/xml; charset=utf-8',
       'cache-control': 'public, max-age=300',
@@ -278,6 +333,7 @@ export const createPublishApp = (getRepo: (env: Env) => PagesRepo, now: () => nu
   });
 
   registerEmbedRoutes(app, getRepo);
+  registerProfileRoutes(app, getRepo, getAccounts);
   return app;
 };
 

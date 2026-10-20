@@ -16,6 +16,8 @@ export interface PageMeta {
   createdAt: number;
   updatedAt: number;
   wordCount: number;
+  /** Signed-in owner with a handle → "by @handle" by-line + JSON-LD author. */
+  author?: { handle: string; displayName: string };
 }
 
 export const canonicalPageUrl = (slug: string, id: string) => `${SITE_ORIGIN}/p/${slug}-${id}`;
@@ -35,6 +37,7 @@ article{overflow-wrap:anywhere}
 article table{display:block;max-width:100%;overflow-x:auto}
 h1{font-size:2rem;line-height:1.2;margin:0 0 8px}
 .meta{color:var(--muted);font-size:.875rem;margin:0 0 32px}
+.meta a{color:var(--accent)}
 article img{max-width:100%;height:auto}
 article a{color:var(--accent)}
 article pre{overflow-x:auto;background:var(--code);padding:12px;border-radius:6px}
@@ -123,6 +126,9 @@ export const renderPageHtml = (snapshot: PublishSnapshot, meta: PageMeta): strin
         datePublished: created,
         dateModified: updated,
         keywords: snapshot.tags.join(', ') || undefined,
+        author: meta.author
+          ? { '@type': 'Person', name: meta.author.displayName || `@${meta.author.handle}`, url: `${SITE_ORIGIN}/@${meta.author.handle}` }
+          : undefined,
         publisher: { '@type': 'Organization', name: 'SheetCanvas', url: SITE_ORIGIN },
       },
       ...snapshot.charts.filter(chart => !chart.hideData).map(chart => chartDatasetJsonLd(chart, url)),
@@ -157,7 +163,7 @@ export const renderPageHtml = (snapshot: PublishSnapshot, meta: PageMeta): strin
 <body>
 <main>
 <h1>${e(title)}</h1>
-<p class="meta">Updated <time datetime="${updated}">${updated.slice(0, 10)}</time></p>
+<p class="meta">${meta.author ? `By <a href="/@${e(meta.author.handle)}" rel="author">@${e(meta.author.handle)}</a> · ` : ''}Updated <time datetime="${updated}">${updated.slice(0, 10)}</time></p>
 <article>${renderArticleBody(snapshot)}</article>
 </main>
 <footer>
