@@ -1,5 +1,5 @@
 import type { PublishedChart, PublishSnapshot } from '../../../shared/publishSnapshot';
-import { renderChartSvg } from './chartSvg';
+import { COMPACT_LAYOUT, renderChartSvg, WIDE_LAYOUT } from './chartSvg';
 import { renderDataTable } from './dataTable';
 import { escapeHtml, jsonForScript } from './escape';
 import { CHART_PLACEHOLDER_PREFIX, plainExcerpt, renderNoteHtml } from './noteHtml';
@@ -47,7 +47,9 @@ figure.chart .cs-text{fill:var(--chart-text)}
 figure.chart .cs-grid{stroke:var(--chart-grid)}
 figure.chart .cs-axis{stroke:var(--chart-axis)}
 figure.chart .cs-sep{stroke:var(--chart-bg)}
-@media (max-width:600px){figure.chart svg text{font-size:15px}}
+/* Two pre-laid-out variants (chartSvg.ts): compact viewBox on narrow screens keeps axis text >= ~10px. */
+figure.chart svg.cs-compact{display:none}
+@media (max-width:560px){figure.chart svg.cs-wide{display:none}figure.chart svg.cs-compact{display:block}}
 figure.chart figcaption{font-weight:600;margin-top:8px}
 .data-table{margin-top:8px;font-size:.875rem}
 .data-table summary{cursor:pointer;color:var(--muted)}
@@ -63,9 +65,12 @@ footer a{color:var(--accent)}
 .report{color:var(--muted)}
 `;
 
+const chartVariant = (chart: PublishedChart, variant: 'cs-wide' | 'cs-compact') =>
+  renderChartSvg(chart, variant === 'cs-wide' ? WIDE_LAYOUT : COMPACT_LAYOUT).replace('<svg ', `<svg class="${variant}" `);
+
 /** One chart as a <figure>: inline SVG + its capped data table (unless hideData). */
 export const renderChartFigure = (chart: PublishedChart): string =>
-  `<figure class="chart" id="chart-${escapeHtml(chart.id)}">${renderChartSvg(chart)}<figcaption>${escapeHtml(chart.title)}</figcaption>${renderDataTable(chart)}</figure>`;
+  `<figure class="chart" id="chart-${escapeHtml(chart.id)}">${chartVariant(chart, 'cs-wide')}${chartVariant(chart, 'cs-compact')}<figcaption>${escapeHtml(chart.title)}</figcaption>${renderDataTable(chart)}</figure>`;
 
 const chartDatasetJsonLd = (chart: PublishedChart, pageUrl: string) => ({
   '@type': 'Dataset',
