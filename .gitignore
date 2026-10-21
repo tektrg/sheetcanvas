@@ -22,6 +22,9 @@ reports/seo/search-console/
 .env
 .env.*
 !.env.example
+# Committed on purpose: PUBLIC build values only (OAuth client IDs). Never put secrets here.
+!.env.production
+!.env.development
 *.local.*
 .dev.vars
 .dev.vars.*

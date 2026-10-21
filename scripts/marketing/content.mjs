@@ -57,7 +57,7 @@ export const HOME_FAQS = [
   },
   {
     q: 'Do I need an account?',
-    a: 'No. As of October 2026, SheetCanvas works without an account. Optional accounts and public profiles are planned but not live yet.',
+    a: 'No account needed to use SheetCanvas; sign in with Google (optional) to publish pages under your own @profile.',
   },
 ];
 

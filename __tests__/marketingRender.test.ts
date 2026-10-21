@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest';
-// @ts-expect-error plain .mjs build helper without types
 import { faqSchema, humanDate, publishableTestimonials, renderTestimonials, replaceBetweenMarkers } from '../scripts/marketing/render.mjs';
-// @ts-expect-error plain .mjs build helper without types
 import testimonialsFile from '../marketing/testimonials.json';
 
 describe('marketing testimonials', () => {
