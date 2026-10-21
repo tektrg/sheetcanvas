@@ -4,7 +4,18 @@ import { toolDefs, TOOL_NAMES, type ToolName } from '../../../agent/tools';
 import type { Env } from '../env';
 import type { BridgeCallResult, BridgeStatus } from './bridge';
 import { requireBearerToken } from '../auth';
-import { ANALYSIS_PLAYBOOK } from '../agent/analysisPlaybook';
+import { ANALYSIS_PLAYBOOK, PUBLIC_ANALYSIS_PLAYBOOK } from '../agent/analysisPlaybook';
+import { MCP_TOOL_ANNOTATIONS } from '../../../agent/toolAnnotations';
+import { PUBLIC_CONNECTOR_TOOL_NAMES } from '../../../agent/publicToolPolicy';
+import {
+  SHEETCANVAS_APP_RESOURCE_URI,
+  SHEETCANVAS_APP_TOOL,
+  SHEETCANVAS_APP_TOOL_NAME,
+  SHEETCANVAS_PUBLIC_APP_RESOURCE_URI,
+  SHEETCANVAS_PUBLIC_APP_TOOL,
+  buildSheetCanvasAppResource,
+  buildPublicSheetCanvasAppResource,
+} from './pluginUi';
 
 /**
  * Remote MCP endpoint (streamable HTTP, JSON responses) backed by a live
@@ -15,13 +26,16 @@ import { ANALYSIS_PLAYBOOK } from '../agent/analysisPlaybook';
  *   GET  /api/mcp/bridge/:token  – WebSocket upgrade for the browser tab
  *   GET  /api/mcp/status/:token  – is a tab connected for this token?
  *   POST /mcp/:token             – the MCP endpoint external agents talk to
+ *   POST /mcp                    – anonymous, session-isolated public plugin
  */
 
 // Only 2025-06-18: older revisions permit JSON-RPC batching, which this
 // endpoint intentionally does not implement.
 const SUPPORTED_PROTOCOL_VERSIONS = ['2025-06-18'];
-const SERVER_INFO = { name: 'sheetcanvas', version: '1.0.0' };
+const SERVER_INFO = { name: 'sheetcanvas', version: '1.0.1' };
 const TOKEN_PATTERN = /^[a-f0-9]{48}$/;
+const PUBLIC_SESSION_PATTERN = /^p_[a-f0-9]{64}$/;
+const PUBLIC_SESSION_TTL_MS = 2 * 60 * 60 * 1_000;
 const MCP_EVENT_TYPES = {
   tokenGenerated: 'token_generated',
   exposeEnabled: 'expose_enabled',
@@ -30,14 +44,49 @@ const MCP_EVENT_TYPES = {
 } as const;
 
 // Converted once at module load — toolDefs is the single source of truth.
-const MCP_TOOL_LIST = TOOL_NAMES.map((name) => ({
-  name,
-  description: toolDefs[name].description,
-  inputSchema: z.toJSONSchema(toolDefs[name].inputSchema, {
-    io: 'input',
-    unrepresentable: 'any',
-  }),
-}));
+function toMcpTool(name: ToolName) {
+  return {
+    name,
+    description: toolDefs[name].description,
+    inputSchema: z.toJSONSchema(toolDefs[name].inputSchema, {
+      io: 'input',
+      unrepresentable: 'any',
+    }),
+    annotations: MCP_TOOL_ANNOTATIONS[name],
+  };
+}
+
+// Agent-native diagrams: never on the anonymous public plugin (kept out of the
+// ChatGPT Plugins Directory review surface), and on private canvases only when
+// the DIAGRAMS_ENABLED env flag is "true".
+const PRIVATE_ONLY_TOOL_NAMES = new Set<ToolName>([
+  'createDiagram',
+  'updateDiagramElement',
+  'addToDiagram',
+  'readDiagram',
+  'listDiagrams',
+]);
+
+const ALWAYS_PRIVATE_TOOL_NAMES = TOOL_NAMES.filter((name) => !PRIVATE_ONLY_TOOL_NAMES.has(name));
+const MCP_TOOL_LIST = [SHEETCANVAS_APP_TOOL, ...ALWAYS_PRIVATE_TOOL_NAMES.map(toMcpTool)];
+const MCP_TOOL_LIST_WITH_DIAGRAMS = [SHEETCANVAS_APP_TOOL, ...TOOL_NAMES.map(toMcpTool)];
+
+const diagramsEnabled = (env: Env) => env.DIAGRAMS_ENABLED?.trim() === 'true';
+
+function privateToolNames(env: Env): readonly ToolName[] {
+  return diagramsEnabled(env) ? TOOL_NAMES : ALWAYS_PRIVATE_TOOL_NAMES;
+}
+const PUBLIC_TOOL_NAMES = TOOL_NAMES.filter(
+  (name) => !PUBLIC_CONNECTOR_TOOL_NAMES.has(name) && !PRIVATE_ONLY_TOOL_NAMES.has(name),
+);
+const PUBLIC_MCP_TOOL_LIST = [SHEETCANVAS_PUBLIC_APP_TOOL, ...PUBLIC_TOOL_NAMES.map(toMcpTool)];
+
+interface McpConnection {
+  bridgeKey: string;
+  analyticsToken: string;
+  mode: 'private' | 'public';
+  publicSession?: string;
+}
 
 interface JsonRpcRequest {
   jsonrpc: '2.0';
@@ -60,12 +109,22 @@ function mintToken(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+function mintPublicSession(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  const value = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `p_${value}`;
+}
+
 // Hand-written stub surface: workers-types' generated RPC types blow up
 // TypeScript's instantiation depth (TS2589) on these signatures.
 interface CanvasBridgeStub {
   fetch(request: Request): Promise<Response>;
   callTool(name: string, input: Record<string, unknown>): Promise<BridgeCallResult>;
   getStatus(): Promise<BridgeStatus>;
+  initializePublicSession(expiresAtMs: number): Promise<void>;
+  isPublicSessionActive(nowMs: number): Promise<boolean>;
+  terminatePublicSession(): Promise<void>;
 }
 
 function bridgeStubForToken(env: Env, token: string): CanvasBridgeStub {
@@ -137,12 +196,34 @@ async function recordFirstConnectionIfNeeded(env: Env, token: string) {
   }
 }
 
-async function handleToolsCall(env: Env, token: string, request: JsonRpcRequest) {
+async function handleToolsCall(env: Env, connection: McpConnection, request: JsonRpcRequest) {
   const id = request.id ?? null;
   const params = request.params ?? {};
   const toolName = params.name;
+  if (toolName === SHEETCANVAS_APP_TOOL_NAME) {
+    const args = params.arguments ?? {};
+    if (!args || Array.isArray(args) || typeof args !== 'object' || Object.keys(args).length > 0) {
+      return rpcError(id, -32602, `${SHEETCANVAS_APP_TOOL_NAME} does not accept arguments`);
+    }
+    const ready = connection.mode === 'private' ||
+      (await bridgeStubForToken(env, connection.bridgeKey).getStatus()).browserConnected;
+    return rpcResult(id, {
+      content: [{ type: 'text', text: ready ? 'SheetCanvas is ready in the interactive workspace.' :
+        'SheetCanvas is opening in the interactive workspace. Canvas tools wait briefly for it to connect; keep the workspace visible.' }],
+      structuredContent: { ready },
+      ...(connection.mode === 'public'
+        ? { _meta: { bridgeSession: connection.publicSession } }
+        : {}),
+    });
+  }
   if (typeof toolName !== 'string' || !TOOL_NAMES.includes(toolName as ToolName)) {
     return rpcError(id, -32602, `Unknown tool: ${String(toolName)}`);
+  }
+  if (connection.mode === 'public' && !PUBLIC_TOOL_NAMES.includes(toolName as ToolName)) {
+    return rpcError(id, -32602, `Tool is unavailable in anonymous sessions: ${toolName}`);
+  }
+  if (connection.mode === 'private' && !privateToolNames(env).includes(toolName as ToolName)) {
+    return rpcError(id, -32602, `Unknown tool: ${toolName}`);
   }
 
   const args = params.arguments ?? {};
@@ -151,7 +232,7 @@ async function handleToolsCall(env: Env, token: string, request: JsonRpcRequest)
     return rpcError(id, -32602, `Invalid arguments for ${toolName}: ${parsed.error.message}`);
   }
 
-  const bridge = bridgeStubForToken(env, token);
+  const bridge = bridgeStubForToken(env, connection.bridgeKey);
   const callResult = await bridge.callTool(toolName, parsed.data as Record<string, unknown>);
   if (!callResult.ok) {
     return rpcResult(id, {
@@ -160,7 +241,7 @@ async function handleToolsCall(env: Env, token: string, request: JsonRpcRequest)
     });
   }
   await recordMcpEvent(env, {
-    token,
+    token: connection.analyticsToken,
     eventType: MCP_EVENT_TYPES.toolCall,
     toolName,
     ok: true,
@@ -170,7 +251,7 @@ async function handleToolsCall(env: Env, token: string, request: JsonRpcRequest)
   });
 }
 
-function handleInitialize(request: JsonRpcRequest) {
+function handleInitialize(request: JsonRpcRequest, mode: McpConnection['mode']) {
   const requested = request.params?.protocolVersion;
   const protocolVersion =
     typeof requested === 'string' && SUPPORTED_PROTOCOL_VERSIONS.includes(requested)
@@ -178,15 +259,18 @@ function handleInitialize(request: JsonRpcRequest) {
       : SUPPORTED_PROTOCOL_VERSIONS[0];
   return rpcResult(request.id ?? null, {
     protocolVersion,
-    capabilities: { tools: {} },
+    capabilities: { tools: {}, resources: {} },
     serverInfo: SERVER_INFO,
     instructions:
-      'Tools execute inside a live SheetCanvas browser tab. If a call fails with "Canvas not connected", ask the user to open their SheetCanvas tab and enable "Expose to agents" in the Copilot panel. If a write tool times out, verify with a read (e.g. getRange) before retrying — the write may already have been applied.\n\n' +
-      ANALYSIS_PLAYBOOK,
+      (mode === 'public'
+        ? 'Open the SheetCanvas workspace before using canvas tools. This public plugin uses an anonymous, short-lived session and does not access a SheetCanvas account. '
+        : 'Tools execute inside a live SheetCanvas browser tab. If a call fails with "Canvas not connected", ask the user to open their SheetCanvas tab and enable "Expose to agents" in the Copilot panel. ') +
+      'If a write tool times out, verify with a read (e.g. getRange) before retrying — the write may already have been applied.\n\n' +
+      (mode === 'public' ? PUBLIC_ANALYSIS_PLAYBOOK : ANALYSIS_PLAYBOOK),
   });
 }
 
-async function handleMcpRequest(env: Env, token: string, request: JsonRpcRequest) {
+async function handleMcpRequest(env: Env, connection: McpConnection, request: JsonRpcRequest) {
   // JSON-RPC notifications (no id) must not get a response — the caller
   // returns 202. We don't execute them either: every method we support is
   // meaningless without a reply, and silently running tools/call would risk
@@ -195,13 +279,52 @@ async function handleMcpRequest(env: Env, token: string, request: JsonRpcRequest
 
   switch (request.method) {
     case 'initialize':
-      return handleInitialize(request);
+      return handleInitialize(request, connection.mode);
     case 'ping':
       return rpcResult(request.id, {});
     case 'tools/list':
-      return rpcResult(request.id, { tools: MCP_TOOL_LIST });
+      return rpcResult(request.id, {
+        tools:
+          connection.mode === 'public'
+            ? PUBLIC_MCP_TOOL_LIST
+            : diagramsEnabled(env)
+              ? MCP_TOOL_LIST_WITH_DIAGRAMS
+              : MCP_TOOL_LIST,
+      });
     case 'tools/call':
-      return handleToolsCall(env, token, request);
+      return handleToolsCall(env, connection, request);
+    case 'resources/list':
+      return rpcResult(request.id, {
+        resources: [
+          {
+            uri:
+              connection.mode === 'public'
+                ? SHEETCANVAS_PUBLIC_APP_RESOURCE_URI
+                : SHEETCANVAS_APP_RESOURCE_URI,
+            name: 'SheetCanvas workspace',
+            title: 'SheetCanvas workspace',
+            description: 'Interactive spreadsheet, chart, and analysis canvas.',
+            mimeType: 'text/html;profile=mcp-app',
+          },
+        ],
+      });
+    case 'resources/read': {
+      const uri = request.params?.uri;
+      const expectedUri =
+        connection.mode === 'public'
+          ? SHEETCANVAS_PUBLIC_APP_RESOURCE_URI
+          : SHEETCANVAS_APP_RESOURCE_URI;
+      if (uri !== expectedUri) {
+        return rpcError(request.id, -32002, `Resource not found: ${String(uri)}`);
+      }
+      return rpcResult(request.id, {
+        contents: [
+          connection.mode === 'public'
+            ? buildPublicSheetCanvasAppResource()
+            : buildSheetCanvasAppResource(connection.analyticsToken),
+        ],
+      });
+    }
     default:
       return rpcError(request.id, -32601, `Method not found: ${request.method}`);
   }
@@ -276,6 +399,83 @@ mcpApp.get('/api/mcp/status/:token', async (c) => {
   return c.json(status);
 });
 
+mcpApp.get('/api/mcp/public-bridge/:session', async (c) => {
+  const session = c.req.param('session');
+  if (!PUBLIC_SESSION_PATTERN.test(session)) {
+    return c.json({ error: { code: 'bad_session', message: 'Invalid public session' } }, 400);
+  }
+  const bridge = bridgeStubForToken(c.env, `public:${session}`);
+  if (!(await bridge.isPublicSessionActive(Date.now()))) {
+    return c.json({ error: { code: 'expired_session', message: 'Public session expired' } }, 410);
+  }
+  if (c.req.header('Upgrade')?.toLowerCase() !== 'websocket') {
+    return c.json({ error: { code: 'upgrade_required', message: 'Expected WebSocket upgrade' } }, 426);
+  }
+  return bridge.fetch(c.req.raw);
+});
+
+mcpApp.post('/mcp', async (c) => {
+  const body = await c.req.json().catch(() => undefined);
+  if (body === undefined) {
+    return c.json(rpcError(null, -32700, 'Request body is not valid JSON'), 400);
+  }
+  if (!body || Array.isArray(body) || typeof body.method !== 'string') {
+    return c.json(rpcError(null, -32600, 'Expected a single JSON-RPC request object'), 400);
+  }
+
+  const request = body as JsonRpcRequest;
+  let session = c.req.header('Mcp-Session-Id') ?? '';
+  let bridge: CanvasBridgeStub;
+
+  if (request.method === 'initialize') {
+    if (!PUBLIC_SESSION_PATTERN.test(session)) session = '';
+    if (PUBLIC_SESSION_PATTERN.test(session)) {
+      bridge = bridgeStubForToken(c.env, `public:${session}`);
+      if (!(await bridge.isPublicSessionActive(Date.now()))) session = '';
+    }
+    if (!session) {
+      session = mintPublicSession();
+      bridge = bridgeStubForToken(c.env, `public:${session}`);
+      await bridge.initializePublicSession(Date.now() + PUBLIC_SESSION_TTL_MS);
+    }
+  } else {
+    if (!PUBLIC_SESSION_PATTERN.test(session)) {
+      return c.json(rpcError(request.id ?? null, -32600, 'Missing or invalid Mcp-Session-Id'), 400);
+    }
+    bridge = bridgeStubForToken(c.env, `public:${session}`);
+    if (!(await bridge.isPublicSessionActive(Date.now()))) {
+      return c.json(rpcError(request.id ?? null, -32001, 'MCP session expired'), 404);
+    }
+  }
+
+  c.header('Mcp-Session-Id', session);
+  c.header('Cache-Control', 'no-store');
+  const response = await handleMcpRequest(
+    c.env,
+    {
+      bridgeKey: `public:${session}`,
+      analyticsToken: session,
+      mode: 'public',
+      publicSession: session,
+    },
+    request,
+  );
+  if (response === null) return c.body(null, 202);
+  return c.json(response);
+});
+
+mcpApp.get('/mcp', (c) =>
+  c.json(rpcError(null, -32600, 'This server does not offer an SSE stream'), 405));
+
+mcpApp.delete('/mcp', async (c) => {
+  const session = c.req.header('Mcp-Session-Id') ?? '';
+  if (!PUBLIC_SESSION_PATTERN.test(session)) return c.body(null, 404);
+  const bridge = bridgeStubForToken(c.env, `public:${session}`);
+  if (!(await bridge.isPublicSessionActive(Date.now()))) return c.body(null, 404);
+  await bridge.terminatePublicSession();
+  return c.body(null, 204);
+});
+
 mcpApp.post('/mcp/:token', async (c) => {
   const token = c.req.param('token');
   if (!isValidToken(token)) {
@@ -290,7 +490,11 @@ mcpApp.post('/mcp/:token', async (c) => {
     return c.json(rpcError(null, -32600, 'Expected a single JSON-RPC request object'), 400);
   }
 
-  const response = await handleMcpRequest(c.env, token, body as JsonRpcRequest);
+  const response = await handleMcpRequest(
+    c.env,
+    { bridgeKey: token, analyticsToken: token, mode: 'private' },
+    body as JsonRpcRequest,
+  );
   if (response === null) return c.body(null, 202);
   return c.json(response);
 });

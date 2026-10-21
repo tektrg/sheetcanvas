@@ -15,6 +15,9 @@ import { z } from 'zod';
 import type { SelectionContext } from '../../../types';
 import { toolDefs, type ToolName } from '../../../agent/tools';
 import { useStore } from '../../../store';
+import { isPublicCanvasTool } from '../../../agent/publicToolPolicy';
+import { isPublicCanvasEnvironment } from '../mcpPluginBootstrap';
+import { isPublicCanvasReady } from '../publicCanvasSession';
 import { dispatchTool } from './toolDispatch';
 import { flushAgentFocus } from '../agentFocusAccumulator';
 import { computeDesiredTools, gatingKey, readGatingState } from './webmcpToolGating';
@@ -287,12 +290,20 @@ async function runSingleReconcile(): Promise<ReconcileReport> {
   const outcome: RegisterOutcome = { added: [], replaced: [], failed: [] };
 
   const gating = readGatingState(useStore.getState());
-  const desired = registryEnabled ? computeDesiredTools(gating) : new Set<ToolName>();
+  const publicCanvas = isPublicCanvasEnvironment();
+  const publicPending = publicCanvas && !isPublicCanvasReady();
+  const desired = registryEnabled && !publicPending ? computeDesiredTools(gating, publicCanvas) : new Set<ToolName>();
   const now = Date.now();
 
   // 1. Removal pass: registered ∖ desired.
   for (const [name, entry] of registry) {
     if (desired.has(name)) continue;
+    if (publicPending || (publicCanvas && !isPublicCanvasTool(name))) {
+      entry.controller.abort();
+      registry.delete(name);
+      removed.push(name);
+      continue;
+    }
     if (entry.inFlight > 0) {
       entry.pendingRemoval = true;
       continue;

@@ -179,6 +179,139 @@ const QueryBriefSchema = z.object({
 
 // ── Tool definitions ────────────────────────────────────────────────────────
 
+// ── Diagram schemas (agent-native diagrams; private MCP only, see backend/src/mcp/route.ts) ──
+const DiagramIdPart = z.string().min(1).max(60).regex(/^[A-Za-z0-9_.-]+$/, 'ids use letters, digits, _ . -');
+const DiagramLabel = z.string().min(1).max(200);
+const DiagramColor = z
+  .string()
+  .min(1)
+  .max(32)
+  .describe('Named color (yellow, blue, green, pink, purple, gray, red, orange) or hex like #a5d8ff.');
+
+const OrgchartSpecSchema = z.object({
+  nodes: z
+    .array(z.object({ id: DiagramIdPart, label: DiagramLabel, parentId: DiagramIdPart.optional(), color: DiagramColor.optional() }).strict())
+    .min(1)
+    .max(150),
+}).strict();
+
+const FlowSpecSchema = z.object({
+  nodes: z
+    .array(z.object({ id: DiagramIdPart, label: DiagramLabel, shape: z.enum(['rect', 'diamond', 'ellipse']).optional() }).strict())
+    .min(1)
+    .max(150),
+  edges: z.array(z.object({ from: DiagramIdPart, to: DiagramIdPart, label: z.string().min(1).max(80).optional() }).strict()).max(300),
+  direction: z.enum(['TB', 'LR']).optional(),
+}).strict();
+
+const CurveSpecSchema = z.object({
+  points: z.array(z.object({ x: z.number(), y: z.number() }).strict()).min(2).max(500),
+  annotations: z.array(z.object({ id: DiagramIdPart, at: z.number(), label: DiagramLabel }).strict()).max(30).default([]),
+  axes: z.object({ x: z.string().max(60).optional(), y: z.string().max(60).optional() }).strict().optional(),
+}).strict();
+
+const Coord = z.number().min(-10000).max(10000);
+const Length = z.number().positive().max(10000);
+const Facing = z.enum(['left', 'right']);
+const Scale = z.number().min(0.2).max(5);
+const FREEFORM_TYPES = ['rect', 'ellipse', 'diamond', 'line', 'arrow', 'text', 'freedraw'] as const;
+
+// Everything about a primitive except its id/type, shared by freeform shapes and comic shape items.
+const FreeformShapeFields = {
+  x: Coord,
+  y: Coord,
+  width: Length.optional(),
+  height: Length.optional(),
+  points: z.array(z.tuple([Coord, Coord])).min(2).max(1000).optional(),
+  text: z.string().min(1).max(500).optional(),
+  fontSize: z.number().min(8).max(96).optional(),
+  textAlign: z.enum(['left', 'center', 'right']).optional(),
+  color: DiagramColor.optional(),
+  fill: DiagramColor.optional(),
+  strokeWidth: z.number().min(0.5).max(16).optional(),
+  strokeStyle: z.enum(['solid', 'dashed']).optional(),
+  roughness: z.union([z.literal(0), z.literal(1), z.literal(2)]).optional(),
+  roundness: z.boolean().optional(),
+};
+
+const FreeformSpecSchema = z.object({
+  width: Length.optional(),
+  height: Length.optional(),
+  shapes: z.array(z.object({ id: DiagramIdPart, type: z.enum(FREEFORM_TYPES), ...FreeformShapeFields }).strict()).min(1).max(500),
+}).strict();
+
+const ComicCharacter = z.object({
+    type: z.literal('character'),
+    id: DiagramIdPart,
+    x: Coord.optional(),
+    y: Coord.optional(),
+    on: DiagramIdPart.optional(),
+    pose: z.enum(['stand', 'sit', 'type', 'wave']).optional(),
+    facing: Facing.optional(),
+    scale: Scale.optional(),
+    offPanel: z.boolean().optional(),
+    side: z.enum(['left', 'right', 'top']).optional(),
+  }).strict();
+const ComicSpeech = z.object({
+    type: z.literal('speech'),
+    id: DiagramIdPart,
+    text: z.string().min(1).max(300),
+    x: Coord.optional(),
+    y: Coord.optional(),
+    speaker: z.union([DiagramIdPart, z.object({ x: Coord, y: Coord }).strict()]),
+    tail: z.enum(['line', 'bubble']).optional(),
+  }).strict();
+const ComicProp = z.object({
+    type: z.literal('prop'),
+    id: DiagramIdPart,
+    kind: z.enum(['desk', 'monitor', 'chair', 'laptop', 'bed', 'door', 'table']),
+    x: Coord.optional(),
+    y: Coord.optional(),
+    on: DiagramIdPart.optional(),
+    scale: Scale.optional(),
+    facing: Facing.optional(),
+  }).strict();
+const ComicCaption = z.object({ type: z.literal('caption'), id: DiagramIdPart, text: z.string().min(1).max(200) }).strict();
+const ComicShape = z.object({ type: z.literal('shape'), id: DiagramIdPart, shape: z.enum(FREEFORM_TYPES), ...FreeformShapeFields }).strict();
+const COMIC_ITEMS = [ComicCharacter, ComicSpeech, ComicProp, ComicCaption, ComicShape] as const;
+const ComicItemSchema = z.discriminatedUnion('type', [...COMIC_ITEMS]);
+
+// Items addable to any diagram (createDiagram extras / addToDiagram): comic items
+// plus a title, each optionally placed relative to an existing element.
+const AnchorFields = {
+  anchor: z.string().min(1).max(200).optional(),
+  placement: z.enum(['above', 'below', 'left', 'right', 'on']).optional(),
+  offset: z.object({ x: Coord.optional(), y: Coord.optional() }).strict().optional(),
+};
+const DiagramExtraItemSchema = z.discriminatedUnion('type', [
+  ...COMIC_ITEMS.map((item) => item.extend(AnchorFields)),
+  z.object({ type: z.literal('title'), id: DiagramIdPart, text: z.string().min(1).max(200) }).strict(),
+] as unknown as [typeof ComicCharacter, typeof ComicCharacter]);
+const DiagramExtrasSchema = z.array(DiagramExtraItemSchema).min(1).max(100);
+
+
+const ComicSpecSchema = z.object({
+  panels: z
+    .array(z.object({
+      id: DiagramIdPart,
+      width: z.number().min(100).max(2000).optional(),
+      height: z.number().min(100).max(2000).optional(),
+      border: z.boolean().optional(),
+      items: z.array(ComicItemSchema).max(150),
+    }).strict())
+    .min(1)
+    .max(12),
+  layout: z.enum(['row', 'grid']).optional(),
+}).strict();
+
+export const DIAGRAM_SPEC_SCHEMAS = {
+  orgchart: OrgchartSpecSchema,
+  flow: FlowSpecSchema,
+  curve: CurveSpecSchema,
+  freeform: FreeformSpecSchema,
+  comic: ComicSpecSchema,
+} as const;
+
 export const toolDefs = {
   listSheets: {
     description:
@@ -390,7 +523,7 @@ export const toolDefs = {
   createNote: {
     description:
       'Use this to deliver a formatted analytical write-up — narrative + live numbers + charts — as one editable object. Creates a live report note on the canvas: Markdown text with optional inline, data-bound components that stay current as the underlying sheets change.\n\n' +
-      "Pass `content` as Markdown. Standard Markdown works (headings, **bold**, lists, tables, links). You may embed exactly these THREE live components as self-closing tags; no user code ever runs and any other component-like tag renders as inert text:\n" +
+      "Pass `content` as Markdown. Standard Markdown works (headings, **bold**, lists, tables, links). Fenced ```mermaid code blocks render as diagrams (flowchart, sequence, gantt, pie, etc.); call validateDiagram on the block source first and fix any errors before writing it (listDiagramTypes shows supported types). You may embed exactly these THREE live components as self-closing tags; no user code ever runs and any other component-like tag renders as inert text:\n" +
       '- <CellValue sheet="SHEET_ID" cell="B4" format="currency"/> — one live value from a cell. `format` is optional, one of: currency | percent | number | date | text (defaults to the cell\'s own format).\n' +
       '- <CanvasChart id="CHART_ID" height="240"/> — renders an existing canvas chart inline (create it first with createChart).\n' +
       '- <Sparkline sheet="SHEET_ID" range="B2:B12"/> — a tiny inline trend line over a range.\n\n' +
@@ -428,7 +561,7 @@ export const toolDefs = {
 
   updateNote: {
     description:
-      'Use this to revise wording, add/remove a section, or swap a chart in a note you already created — it updates an existing report note in place. Provide `noteId` plus at least one of `content` or `color`. `content` REPLACES the entire Markdown body (read the note first with readNote, edit the whole text, then send it back — there is no append/patch mode). The same three live components are supported: <CellValue>, <CanvasChart>, <Sparkline>; unknown ids render inert. Errors if the noteId does not exist.',
+      'Use this to revise wording, add/remove a section, or swap a chart in a note you already created — it updates an existing report note in place. Provide `noteId` plus at least one of `content` or `color`. `content` REPLACES the entire Markdown body (read the note first with readNote, edit the whole text, then send it back — there is no append/patch mode). The same three live components are supported: <CellValue>, <CanvasChart>, <Sparkline>; unknown ids render inert. ```mermaid blocks render as diagrams — call validateDiagram on each before writing. Errors if the noteId does not exist.',
     inputSchema: z
       .object({
         noteId: z.string().min(1).describe('Id of the note to update.'),
@@ -554,6 +687,100 @@ export const toolDefs = {
       brief: QueryBriefSchema,
       title: z.string().min(1).max(120).optional(),
     }),
+  },
+
+  createDiagram: {
+    description:
+      'Use this to draw an editable hand-drawn diagram on the canvas: an org chart, a flow chart, an annotated curve (e.g. the Dunning-Kruger curve), free drawing, or an xkcd-style comic. For orgchart/flow/curve describe meaning, not geometry — layout is automatic. The user can then freely edit shapes, text and colors. ' +
+      'Specs by kind: orgchart {nodes:[{id,label,parentId?,color?}]}; flow {nodes:[{id,label,shape?:rect|diamond|ellipse}], edges:[{from,to,label?}], direction?:TB|LR}; curve {points:[{x,y}], annotations?:[{id,at:x,label}], axes?:{x?,y?}}; ' +
+      'freeform {width?,height?, shapes:[{id, type:rect|ellipse|diamond|line|arrow|text|freedraw, x,y, width?,height?, points?:[[x,y],...] relative to x,y (line/arrow/freedraw), text?, fontSize?, textAlign?, color?, fill?, strokeWidth?, strokeStyle?:solid|dashed, roughness?:0|1|2, roundness?}]} (y grows down; max 500 shapes); ' +
+      'comic {panels:[{id, width?=400, height?=300, border?, items:[...]}], layout?:row|grid}: coordinates are optional (panel-relative, y down) — auto-layout puts the floor at 85% height, scales figures to the panel, snaps monitor/laptop onto a desk/table, seats sit/type characters on a chair facing the desk, stacks speech above its speaker, keeps text inside the panel, routes tails around text/figures/props, grows the panel when speech needs headroom (adjustments come back as warnings). ' +
+      'Items: character {id, pose?:stand|sit|type|wave, facing?, x?, y? (floor under hips), on?:chairId, scale?, offPanel? (draws nothing; tail points off-panel, side?:left|right|top, default behind the on-panel character)}; speech {id, text, speaker:characterId|{x,y}, x?,y? (text centre), tail?:line|bubble}; prop {id, kind:desk|monitor|chair|laptop|bed|door|table, on?:deskId, x?,y?, scale?, facing?}; caption {id,text}; shape {id, shape:<freeform type>, ...freeform fields}. List speech in reading order. ' +
+      'Comic example: {panels:[{id:"p1",items:[{type:"prop",id:"desk",kind:"desk"},{type:"prop",id:"pc",kind:"monitor",on:"desk"},{type:"prop",id:"chair",kind:"chair"},{type:"character",id:"me",pose:"type",on:"chair"},{type:"character",id:"wife",offPanel:true},{type:"speech",id:"s1",text:"Are you coming to bed?",speaker:"wife"},{type:"speech",id:"s2",text:"I can\'t. Someone is wrong on the internet.",speaker:"me"}]}]}. ' +
+      'Stick figures and speech can be added to ANY kind: pass extras (same items as addToDiagram, e.g. curve + extras:[{type:"character",id:"me",anchor:"pt:peak"},{type:"speech",id:"omg",text:"OMG",speaker:"me"}]) or call addToDiagram later; showTitle:true draws the title on the drawing. ' +
+      'Returns diagramId and elementIds: semantic ids such as "node:ceo", "edge:ceo->cto", "pt:peak", "curve:main", freeform shape ids, or comic ids like "panel:p1", "char:me:head", "speech:s1", "speech:s1:tail", "prop:desk" to use with updateDiagramElement.',
+    inputSchema: z
+      .object({
+        kind: z.enum(['orgchart', 'flow', 'curve', 'freeform', 'comic']).describe('Diagram kind; selects the spec shape.'),
+        title: z.string().min(1).max(120).optional().describe('Optional diagram title shown on the canvas card.'),
+        showTitle: z.boolean().optional().describe('Draw the title as hand-drawn text above the drawing (default false).'),
+        extras: DiagramExtrasSchema.optional().describe('Comic items (character, speech, prop, caption, shape, title) drawn on top of any kind; see addToDiagram.'),
+        style: z.enum(['clean', 'sketchy', 'rough']).optional().describe('Line style: clean, sketchy (one wobbly hand-drawn line, xkcd) or rough (double sketch strokes). Default: sketchy for comic, the kind\'s own look otherwise.'),
+        position: z.object({ x: z.number(), y: z.number() }).optional().describe('Optional canvas position; defaults to free space on the right.'),
+        // Validated per kind below, so errors name the exact field (e.g. spec.nodes.0.label).
+        spec: z.record(z.string(), z.unknown()).describe('Spec object matching kind (see tool description).'),
+      })
+      .superRefine((value, ctx) => {
+        const parsed = DIAGRAM_SPEC_SCHEMAS[value.kind].safeParse(value.spec);
+        if (parsed.success) return;
+        for (const issue of parsed.error.issues) {
+          const where = ['spec', ...issue.path].join('.');
+          ctx.addIssue({ code: 'custom', path: ['spec', ...issue.path], message: `${where}: ${issue.message} (kind "${value.kind}")` });
+        }
+      }),
+  },
+
+  updateDiagramElement: {
+    description:
+      'Use this to change one element of an existing diagram by its semantic id (from createDiagram or readDiagram), e.g. relabel "node:cto", recolor it, or remove it. Only the fields you pass change; the user\'s own position, size and style edits are kept. ' +
+      'patch fields: label, color, revealAt (0..1 scroll-reveal point), draw ([from,to] progress range, lines/arrows only), roughness (0 clean, 1 sketchy, 2 rough; not text), remove (true deletes the element plus its label and attached arrows). Fails while the user has the diagram open in the editor.',
+    inputSchema: z.object({
+      diagramId: z.string().min(1).describe('Diagram id from createDiagram or listDiagrams.'),
+      id: z.string().min(1).max(200).describe('Semantic element id, e.g. "node:ceo" or "edge:ceo->cto".'),
+      patch: z
+        .object({
+          label: z.string().min(1).max(200).optional(),
+          color: DiagramColor.optional(),
+          revealAt: z.number().min(0).max(1).optional(),
+          draw: z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)]).optional(),
+          roughness: z.union([z.literal(0), z.literal(1), z.literal(2)]).optional(),
+          remove: z.boolean().optional(),
+        })
+        .refine((v) => Object.keys(v).length > 0, { message: 'patch must set at least one field' }),
+    }),
+  },
+
+  readDiagram: {
+    description:
+      'Use this before updateDiagramElement to see a diagram as the user left it (they may have edited it). Returns its elements by semantic id with type, label, color, from/to for arrows, and revealAt/draw. Geometry is omitted unless includeGeometry is true.',
+    inputSchema: z.object({
+      diagramId: z.string().min(1).describe('Diagram id from createDiagram or listDiagrams.'),
+      includeGeometry: z.boolean().optional().describe('Include x/y/width/height per element. Default false.'),
+    }),
+  },
+
+  addToDiagram: {
+    description:
+      'Use this to add stick figures, speech, props, captions, shapes or a title to ANY existing diagram (org chart, flow, curve, freeform or comic), e.g. a stick man on a curve\'s peak shouting "OMG". ' +
+      'items: same as comic items (character, speech, prop, caption, shape) plus title {id,text}. Place each by scene x/y or by anchor: an existing semantic element id (from createDiagram/readDiagram) with placement above|below|left|right|on (default: figures/props stand on it, speech goes above) and optional offset {x,y}. ' +
+      'Speech is placed clear of existing text/shapes and the drawing grows if needed. Example: items:[{type:"character",id:"me",anchor:"pt:peak"},{type:"speech",id:"omg",text:"OMG",speaker:"me"}]. Returns the new elementIds. Fails while the user has the diagram open in the editor.',
+    inputSchema: z.object({
+      diagramId: z.string().min(1).describe('Diagram id from createDiagram or listDiagrams.'),
+      items: DiagramExtrasSchema,
+    }),
+  },
+
+  listDiagrams: {
+    description:
+      'Use this to discover diagram ids on the canvas. Returns each diagramId, title, kind and element count. Returns an empty list if there are none.',
+    inputSchema: z.object({}),
+  },
+
+  // ── Mermaid (note) diagrams — executed in the browser via @tektrg/diagram-kit
+  // (src/agent/diagramKitTools.ts). Read-only; schemas mirror the kit's agentTools.
+  validateDiagram: {
+    description:
+      'Check Mermaid diagram source before putting it in a note. ALWAYS call this before writing a ```mermaid block with createNote/updateNote. ' +
+      'Returns {valid:true,type} or {valid:false,errors:[{message,line,column,hint}]}; fix the source using the hint and call again until valid. Pass only the text inside the fence.',
+    inputSchema: z.object({
+      source: z.string().describe('Mermaid source, without the ```mermaid fence.'),
+    }),
+  },
+
+  listDiagramTypes: {
+    description:
+      'List the Mermaid diagram types notes can render, each with a description and a minimal example that renders. Use it to pick a type and copy its syntax; then call validateDiagram on your source.',
+    inputSchema: z.object({}),
   },
 } as const;
 

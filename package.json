@@ -11,6 +11,8 @@
     "tmux:capture": "node scripts/tmux-run-capture.mjs",
     "agent:eval": "node scripts/agent-eval.mjs",
     "webmcp:smoke": "node scripts/webmcp-smoke.mjs",
+    "plugin:setup": "node scripts/setup-chatgpt-plugin.mjs",
+    "plugin:build:public": "node scripts/build-public-plugin.mjs",
     "build": "vite build",
     "seo:gsc": "node scripts/search-console-report.mjs",
     "seo:gsc:smoke": "node scripts/search-console-report-smoke.mjs",
@@ -19,6 +21,7 @@
     "seo:deploy:smoke": "node scripts/seo-deploy-preflight-smoke.mjs",
     "seo:live:root": "node scripts/seo-live-root-check.mjs",
     "seo:live:support": "node scripts/seo-live-support-check.mjs",
+    "seo:marketing": "node scripts/generate-marketing-pages.mjs",
     "seo:llms": "node scripts/generate-llms.mjs",
     "seo:rss": "node scripts/generate-rss.mjs",
     "seo:sitemap": "node scripts/generate-sitemap.mjs",
@@ -30,7 +33,10 @@
   "dependencies": {
     "@ai-sdk/google": "^3.0.79",
     "@ai-sdk/react": "^3.0.193",
+    "@dagrejs/dagre": "^3.1.1",
+    "@excalidraw/excalidraw": "^0.18.1",
     "@tanstack/react-virtual": "3.14.10",
+    "@tektrg/diagram-kit": "0.1.0",
     "@tektrg/table-core": "file:../../table-core",
     "@zumer/snapdom": "^2.16.0",
     "ai": "^6.0.191",
@@ -43,6 +49,7 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "recharts": "2.15.0",
+    "roughjs": "^4.6.4",
     "xlsx": "0.18.5",
     "zod": "^4.4.3",
     "zustand": "4.5.0"
@@ -50,6 +57,7 @@
   "devDependencies": {
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "jsdom": "^25.0.1",
     "typescript": "~5.8.2",
     "vite": "^6.2.0",
     "vitest": "^4.1.8",

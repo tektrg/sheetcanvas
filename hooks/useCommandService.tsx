@@ -18,7 +18,7 @@ interface UseCommandServiceProps {
   onAddTable: () => void;
   onAddNote: () => void;
   onImport: () => void;
-  onConnectData: () => void;
+  onConnectData?: () => void;
   onConnectAgent: () => void;
   onCopyImage: () => void;
   onInitChart: (sheetId: string, colIndex?: number, selectedCols?: number[], initialType?: ChartType) => void;
@@ -87,7 +87,7 @@ export const useCommandService = ({
         subLabel: 'Google Sheets, Analytics',
         category: 'Data',
         icon: <Database size={18} />,
-        action: onConnectData
+        action: onConnectData ?? (() => {})
       },
       {
         id: 'connect-agent',
@@ -615,7 +615,7 @@ export const useCommandService = ({
     }
 
     // Return combined list: Base Commands + Dynamic Navigation Commands
-    return [...baseCommands, ...navCommands];
+    return [...baseCommands.filter(command => command.id !== 'connect-data' || !!onConnectData), ...navCommands];
   }, [
     darkMode, setDarkMode, selectedIds.size, activeSelection,
     onAddTable, onAddNote, onImport, onConnectData, onConnectAgent, onCopyImage,

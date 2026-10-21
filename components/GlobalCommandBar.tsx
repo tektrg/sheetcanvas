@@ -13,7 +13,7 @@ interface GlobalCommandBarProps {
   onAddTable: () => void;
   onAddNote: () => void;
   onImport: () => void;
-  onConnectData: () => void;
+  onConnectData?: () => void;
   onConnectAgent: () => void;
   onCopyImage: () => void;
   onInitChart: (sheetId: string, colIndex?: number, selectedCols?: number[], initialType?: ChartType) => void;

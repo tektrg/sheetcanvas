@@ -18,7 +18,7 @@ const RSS_FEED_URL = `${SITE_ORIGIN}/rss.xml`;
 const ROUTE_GROUPS = [
   {
     heading: 'Start here',
-    routes: ['/', '/learn/', '/docs/', '/blog/'],
+    routes: ['/', '/about/', '/learn/', '/docs/', '/blog/'],
     extraLinks: [
       { label: 'RSS feed', url: RSS_FEED_URL },
       { label: 'Pages published by SheetCanvas users', url: PUBLISHED_PAGES_LLMS_URL },
@@ -45,6 +45,11 @@ const ROUTE_GROUPS = [
       '/alternatives/excel/',
       '/alternatives/google-sheets/',
       '/alternatives/airtable/',
+      '/compare/sheetcanvas-vs-excel/',
+      '/compare/sheetcanvas-vs-google-sheets/',
+      '/compare/sheetcanvas-vs-notion/',
+      '/compare/sheetcanvas-vs-tableau/',
+      '/support/',
       '/privacy/',
       '/terms/',
     ],
@@ -183,7 +188,7 @@ function buildLlmsText(pagesByRoute) {
   return [
     '# SheetCanvas',
     '',
-    '> SheetCanvas is a browser-based spreadsheet canvas for local CSV/XLSX files, canvas objects, and shipped connector-backed sheets. The live app stays at https://sheetcanvas.com/.',
+    '> SheetCanvas is a free visual canvas for spreadsheets, charts and notes, where you analyze data and publish shareable data pages. It is a browser-based spreadsheet canvas: free core, with optional paid add-ons planned (as of Oct 2026). Optional: connect your own AI agent over MCP. The live app stays at https://sheetcanvas.com/.',
     '',
     ...ROUTE_GROUPS.map((group) => renderGroup(group, pagesByRoute)),
     '## Product boundaries',

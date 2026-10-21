@@ -1,5 +1,5 @@
 // WebMCP verification harness — validates `document.modelContext` registration
-// and execution behaviour for the 26 canvas tools (agent/tools.ts) exposed by
+// and execution behaviour for the canvas tools (agent/tools.ts; 30 incl. 4 diagram tools) exposed by
 // src/agent/webmcp/*.
 //
 // FORKED from scripts/agent-eval.mjs: the Chrome-launch helpers, the raw-CDP

@@ -1,6 +1,8 @@
 
 
 import React from 'react';
+import type { DiagramElement, DiagramSpec } from './diagram/types';
+import type { DiagramPreview } from './diagram/preview';
 
 export interface Position {
   x: number;
@@ -341,6 +343,23 @@ export interface NotePublishSettings {
   // Author-reviewed TL;DR + Q&A shown under the page title (AI drafts only land here after "Use this").
   answerBox?: { summary?: string; faq?: Array<{ q: string; a: string }> };
   lastError?: string;
+}
+
+// Agent-native diagram: an Excalidraw scene drawn as a canvas item. Element
+// semantics live in element.customData (see diagram/types.ts).
+export interface DiagramData {
+  id: string;
+  position: Position;
+  size: Size; // In pixels
+  title?: string;
+  elements: DiagramElement[];
+  appState?: { viewBackgroundColor?: string };
+  // The spec the agent created it from (reference only; elements are the truth).
+  spec?: DiagramSpec;
+  // Excalidraw's own SVG export of the scene (fonts embedded); the canvas card
+  // shows this so it matches the editor exactly. Regenerated when `key` goes stale.
+  preview?: DiagramPreview;
+  version: 1;
 }
 
 export interface SelectionContext {

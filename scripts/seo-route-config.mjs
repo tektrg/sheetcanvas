@@ -4,6 +4,7 @@ export const EXCLUDED_PUBLIC_DIRS = new Set(['landing-page-design']);
 
 export const ROUTE_ORDER = [
   '/',
+  '/about/',
   '/learn/',
   '/docs/',
   '/blog/',
@@ -20,6 +21,11 @@ export const ROUTE_ORDER = [
   '/alternatives/excel/',
   '/alternatives/google-sheets/',
   '/alternatives/airtable/',
+  '/compare/sheetcanvas-vs-excel/',
+  '/compare/sheetcanvas-vs-google-sheets/',
+  '/compare/sheetcanvas-vs-notion/',
+  '/compare/sheetcanvas-vs-tableau/',
+  '/support/',
   '/privacy/',
   '/terms/',
 ];
@@ -29,6 +35,7 @@ const ROUTE_METADATA = {
   '/learn/': { changefreq: 'monthly', priority: '0.7' },
   '/docs/': { changefreq: 'monthly', priority: '0.6' },
   '/blog/': { changefreq: 'weekly', priority: '0.55' },
+  '/support/': { changefreq: 'monthly', priority: '0.5' },
   '/privacy/': { changefreq: 'yearly', priority: '0.3' },
   '/terms/': { changefreq: 'yearly', priority: '0.3' },
 };

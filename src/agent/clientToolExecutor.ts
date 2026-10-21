@@ -30,6 +30,15 @@ import {
   type BasicConnection,
 } from './gaMcpTools';
 import {
+  handleCreateDiagram,
+  handleListDiagrams,
+  handleReadDiagram,
+  handleUpdateDiagramElement,
+  handleAddToDiagram,
+} from './diagramTools';
+import { runDiagramKitTool } from './diagramKitTools';
+import { DIAGRAM_TOOL_NAMES, diagramsEnabled } from './diagramsFlag';
+import {
   handleCreateQuerySheet,
   handleCreateQuerySheetFromResult,
   handleQueryConnection,
@@ -389,6 +398,10 @@ export async function executeClientTool(
   resolver: SelectionResolver,
 ): Promise<ToolResult> {
   const store = useStore.getState();
+
+  if ((DIAGRAM_TOOL_NAMES as readonly string[]).includes(name) && !diagramsEnabled()) {
+    return { ok: false, error: 'diagrams disabled' };
+  }
 
   try {
     switch (name) {
@@ -1089,6 +1102,25 @@ export async function executeClientTool(
       case 'createGaTrendBySource': {
         return createGaTrendBySourceSheet({ input, store, generateId }) as Promise<ToolResult>;
       }
+
+      case 'createDiagram':
+        return handleCreateDiagram(input);
+
+      case 'updateDiagramElement':
+        return handleUpdateDiagramElement(input);
+
+      case 'addToDiagram':
+        return handleAddToDiagram(input);
+
+      case 'readDiagram':
+        return handleReadDiagram(input);
+
+      case 'listDiagrams':
+        return handleListDiagrams();
+
+      case 'validateDiagram':
+      case 'listDiagramTypes':
+        return runDiagramKitTool(name, input);
 
       default:
         return { ok: false, error: `Unknown tool: ${name}` };

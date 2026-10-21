@@ -3,6 +3,7 @@ import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { ToolMode, CanvasTransform } from '../types';
 import { MIN_SCALE, MAX_SCALE, COLOR_PALETTE } from '../constants';
 import { useStore } from '../store';
+import { findWheelScrollTarget, isWheelMarkedForCanvasPan } from '../utils/wheelScrollChain';
 
 interface CanvasProps {
   children: React.ReactNode;
@@ -102,13 +103,23 @@ export const Canvas: React.FC<CanvasProps> = ({ children, darkMode, onDoubleClic
   }, [setTransform]);
 
   const handleWheel = (e: WheelEvent) => {
+    const isZoom = e.ctrlKey || e.metaKey;
+    // Let a card's own scroller take the wheel while it can still scroll that way.
+    if (
+      !isZoom &&
+      !isWheelMarkedForCanvasPan(e) &&
+      containerRef.current &&
+      findWheelScrollTarget(e.target, containerRef.current, e.deltaX, e.deltaY)
+    ) {
+      return;
+    }
     e.preventDefault();
     
     // Calculate new state based on current ref
     let newScale = transformRef.current.scale;
     let newOffset = { ...transformRef.current.offset };
 
-    if (e.ctrlKey || e.metaKey) {
+    if (isZoom) {
       const zoomIntensity = 0.001;
       newScale = Math.min(Math.max(transformRef.current.scale - e.deltaY * zoomIntensity, MIN_SCALE), MAX_SCALE);
 

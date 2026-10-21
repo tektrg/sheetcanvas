@@ -39,7 +39,7 @@
             "name": "SheetCanvas Terms",
             "url": "https://sheetcanvas.com/terms/",
             "description": "Terms and product-specific usage notes for SheetCanvas.",
-            "dateModified": "2026-05-27",
+            "dateModified": "2026-10-01",
             "isPartOf": {
               "@type": "WebSite",
               "@id": "https://sheetcanvas.com/#website",
@@ -372,11 +372,24 @@
         <p class="eyebrow">Terms</p>
         <h1 id="hero-title">Terms for using SheetCanvas.</h1>
         <p class="hero-copy">SheetCanvas is a live browser app for local spreadsheet files, canvas-based analysis objects, and shipped connector-backed sheets. These terms describe practical usage boundaries for the current product.</p>
-        <p class="reviewed">Last reviewed: May 27, 2026</p>
+        <p class="reviewed">Last reviewed: October 1, 2026</p>
         <div class="actions">
           <a class="button button-primary" href="/">Open SheetCanvas</a>
           <a class="button button-secondary" href="/privacy/">Read privacy notes</a>
         </div>
+      </section>
+
+      <section class="section" aria-labelledby="plugin-title">
+        <p class="eyebrow">ChatGPT plugin</p>
+        <h2 id="plugin-title">Plugin actions are limited to the open SheetCanvas workspace.</h2>
+        <p class="lede">The public plugin uses an anonymous, short-lived session to relay approved tool calls between ChatGPT and the SheetCanvas workspace you open. You remain responsible for reviewing requested changes, maintaining backups, and deciding which data is appropriate to share with an AI service.</p>
+        <ul class="list">
+          <li><strong>No account promise:</strong> the anonymous plugin session is not a user account or lasting storage service. A temporary snapshot can restore the canvas during its two-hour session, but it is not a backup guarantee.</li>
+          <li><strong>Ephemeral workspace:</strong> a public plugin session starts empty and does not load or save the browser's normal SheetCanvas workspace. Export anything you need before closing it.</li>
+          <li><strong>Connector boundary:</strong> anonymous public plugin sessions cannot list or query configured Google Analytics, Google Sheets, or ClickHouse connections.</li>
+          <li><strong>Third-party terms:</strong> your use of ChatGPT, Cloudflare-hosted services, and connected data sources is also subject to those providers' terms and permissions.</li>
+          <li><strong>Prohibited use:</strong> do not use SheetCanvas to violate law, others' rights, source-system restrictions, or security controls, or to distribute malware or abusive automated traffic.</li>
+        </ul>
       </section>
 
       <section class="section" aria-labelledby="use-title">
@@ -410,6 +423,18 @@
         <h2 id="availability-title">The product may change as SheetCanvas evolves.</h2>
         <p class="lede">Features, connectors, and support pages may be revised as the product changes. Product-sensitive pages include visible reviewed dates so you can tell when the public guidance was last checked.</p>
       </section>
+
+      <section class="section" aria-labelledby="legal-title">
+        <p class="eyebrow">Service terms</p>
+        <h2 id="legal-title">Availability, suspension, warranties, and liability.</h2>
+        <ul class="list">
+          <li><strong>Availability:</strong> SheetCanvas may be changed, interrupted, or discontinued. Access may be limited or terminated for abuse, security risk, or violation of these terms.</li>
+          <li><strong>No warranty:</strong> to the extent permitted by law, SheetCanvas is provided “as is” and “as available,” without warranties of accuracy, availability, fitness for a particular purpose, or non-infringement.</li>
+          <li><strong>Liability:</strong> to the extent permitted by law, The Indie App is not liable for indirect, incidental, special, consequential, or lost-data damages arising from use of SheetCanvas. Non-waivable consumer rights remain unaffected.</li>
+          <li><strong>Governing rules:</strong> these terms are governed by the laws applicable at the publisher's principal place of business, without overriding mandatory consumer protections that apply to you.</li>
+          <li><strong>Contact:</strong> questions about these terms can be sent to <a href="mailto:yourfriend@theindie.app">yourfriend@theindie.app</a> or through the <a href="/support/">support page</a>.</li>
+        </ul>
+      </section>
     </main>
 
     <footer class="site-footer">
@@ -418,6 +443,7 @@
         <a href="/">Open app</a>
         <a href="/learn/">Learn</a>
         <a href="/docs/">Docs</a>
+        <a href="/support/">Support</a>
         <a href="/privacy/">Privacy</a>
         <a href="/terms/">Terms</a>
       </nav>

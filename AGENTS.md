@@ -45,6 +45,10 @@ After deployment, smoke check at minimum:
 
 Known-good reference from the May 27, 2026 deploy: project `sheetcanvas`, source commit `021c60c`, deployment `c1980e27-a5fe-44e0-8757-ca5ba3604029`, preview `https://c1980e27.sheetcanvas.pages.dev`.
 
+Backend worker (`cd backend && npx wrangler deploy`, Air needs `CLOUDFLARE_ACCOUNT_ID`; rollback via `npx wrangler deployments list` + `npx wrangler rollback <id>`). Known-good reference from the Oct 20, 2026 deploy: worker `flexsheet-backend`, source commit `377d499`, version `fdd1d3e1-d513-4a77-b4a1-9612946ded8d` (previous `dc585bdd-9aa8-41cb-b2f0-a97611a403c0`).
+
+Latest known-good (Oct 20, 2026, merge of `feat/agent-diagrams` + `main` embed/publish): source commit `07cabd2`, deployment `338f95d7-6576-4c4a-9d0e-3ad42a02af9c`, preview `https://338f95d7.sheetcanvas.pages.dev`. Wrangler on the Air needs `CLOUDFLARE_ACCOUNT_ID=9cd49d097f431e967341161edc370cfb` (two accounts visible; non-interactive shells otherwise fail). Worker NOT redeployed in that run — the live Worker was built from `main` (98dda89) and lacks the branch's public-MCP changes.
+
 ## Two-Machine Dev (Pro + Air)
 
 Dev also runs on a second Mac ("Air"): `ssh trungs-air`, path `~/01_Project/SheetCanvas/flexsheet` (same relative layout as Pro). Air has a reverse alias back to this Mac: `ssh mbp-m4` (tailscale IP, user `trungluong`) — no such alias existed from Pro to Air as of Sep 2026, so reach Air only via `trungs-air`. On Air, always `source ~/.nvm/nvm.sh` and put its bin dir **ahead of** `/usr/local/bin` on `PATH` before running anything Node-related — Air also has a stray system Node that otherwise shadows the pinned `.nvmrc` version and breaks native deps like `rollup`'s platform binary.
@@ -172,3 +176,9 @@ changes or when the user asks.
 - Open questions (UNCONFIRMED if needed):
 - Working set (files/ids/commands):
 
+
+## Marketing / answer-engine pages
+
+- Copy lives in `scripts/marketing/content.mjs` (positioning, `/about/` page with FAQ, `/compare/*` pages). Only shipped features; date competitor facts. Bump `REVIEWED_ON` when re-checked.
+- Run `npm run seo:marketing` after editing it **and commit the output** (deploy:pages and seo:audit do NOT regenerate it; their commands are locked by the audit, so `public/` must already be current): writes `public/about/index.html` and `public/compare/<slug>/index.html`. The homepage (`index.html`) is the app; it only links to these in `<noscript>`, never hidden copy. Then `npm run seo:audit`. New routes also need `ROUTE_ORDER` (`seo-route-config.mjs`) and a `ROUTE_GROUPS` entry in `generate-llms.mjs`.
+- **Testimonials**: never invent. Add real, permitted quotes to `marketing/testimonials.json` as `{ "quote", "name", "role"?, "company"?, "sourceUrl"?, "date", "consent": true }`, then `npm run seo:marketing`. The section renders nothing until at least one entry has `consent: true`.

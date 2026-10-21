@@ -3,21 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SheetCanvas - Connect your agent to a business data canvas</title>
-    <meta name="description" content="Connect Claude, Codex, or another MCP-capable agent to SheetCanvas so messy business data becomes durable tables, charts, pivots, notes, and dashboards.">
+    <title>SheetCanvas - Free visual canvas for spreadsheets, charts and notes</title>
+    <meta name="description" content="A free visual canvas for spreadsheets, charts and notes, where you analyze data and publish shareable data pages. Optionally connect Claude or Codex over MCP.">
     <link rel="canonical" href="https://sheetcanvas.com/">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="SheetCanvas">
-    <meta property="og:title" content="SheetCanvas - Connect your agent to a business data canvas">
-    <meta property="og:description" content="Connect Claude, Codex, or another MCP-capable agent to SheetCanvas so messy business data becomes durable tables, charts, pivots, notes, and dashboards.">
+    <meta property="og:title" content="SheetCanvas - Free visual canvas for spreadsheets, charts and notes">
+    <meta property="og:description" content="A free visual canvas for spreadsheets, charts and notes, where you analyze data and publish shareable data pages. Optionally connect Claude or Codex over MCP.">
     <meta property="og:url" content="https://sheetcanvas.com/">
     <meta property="og:image" content="https://sheetcanvas.com/brand/sheetcanvas-og.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta property="og:image:alt" content="SheetCanvas spreadsheet canvas preview">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="SheetCanvas - Connect your agent to a business data canvas">
-    <meta name="twitter:description" content="Connect Claude, Codex, or another MCP-capable agent to SheetCanvas so messy business data becomes durable tables, charts, pivots, notes, and dashboards.">
+    <meta name="twitter:title" content="SheetCanvas - Free visual canvas for spreadsheets, charts and notes">
+    <meta name="twitter:description" content="A free visual canvas for spreadsheets, charts and notes, where you analyze data and publish shareable data pages. Optionally connect Claude or Codex over MCP.">
     <meta name="twitter:image" content="https://sheetcanvas.com/brand/sheetcanvas-og.png">
     <meta name="theme-color" content="#0f766e">
     <link rel="alternate" type="application/rss+xml" title="SheetCanvas Blog RSS" href="https://sheetcanvas.com/rss.xml">
@@ -58,7 +58,7 @@
           {
             "@type": "SoftwareApplication",
             "name": "SheetCanvas",
-            "description": "SheetCanvas is a local-first spreadsheet canvas and agent-native workspace for connecting Claude, Codex, or another MCP-capable agent to messy business data and turning it into durable tables, charts, pivots, notes, and dashboards.",
+            "description": "SheetCanvas is a free visual canvas for spreadsheets, charts and notes, where you analyze data and publish shareable data pages. It is a local-first spreadsheet canvas: workspaces stay private in your browser, and you can optionally connect Claude, Codex, or another MCP-capable agent.",
             "applicationCategory": "BusinessApplication",
             "applicationSubCategory": "Spreadsheet",
             "operatingSystem": "Web",
@@ -68,7 +68,10 @@
               "Local CSV and spreadsheet file analysis",
               "Canvas-based tables, charts, pivots, and notes",
               "Connected-sheet workflows for ClickHouse and Google Analytics",
-              "MCP access for Claude and Codex"
+              "MCP access for Claude and Codex",
+              "Google Sheets connector",
+              "Notes and diagrams on the canvas",
+              "Publish pages and embed charts"
             ],
             "publisher": {
               "@type": "Organization",
@@ -80,8 +83,9 @@
             "@type": "WebPage",
             "name": "SheetCanvas app",
             "url": "https://sheetcanvas.com/",
-            "description": "SheetCanvas is the live agent-native spreadsheet canvas for durable business data tables, charts, pivots, and notes.",
-            "dateModified": "2026-06-21",
+            "description": "SheetCanvas app: a free visual canvas for spreadsheets, charts and notes, where you analyze data and publish shareable data pages.",
+            "datePublished": "2026-10-20",
+            "dateModified": "2026-10-20",
             "mainEntity": {
               "@type": "SoftwareApplication",
               "name": "SheetCanvas",
@@ -162,6 +166,8 @@
         --color-accent-hover: #0d9488; /* teal-600 */
         --color-accent-muted: rgba(20, 184, 166, 0.2);
       }
+
+
 
       body {
         font-family: 'Inter', sans-serif;
@@ -295,12 +301,14 @@
   <body>
     <noscript>
       <p style="margin:16px;font:14px/1.5 Inter,system-ui,sans-serif;color:#525252">
-        SheetCanvas is an agent-native spreadsheet canvas. Enable JavaScript to open the app, or
-        <a href="/learn/">learn how SheetCanvas works</a>, read the
-        <a href="/docs/">SheetCanvas docs</a>, or
-        <a href="/connect-agent/">connect Claude or Codex</a>. You can also review the
-        <a href="/privacy/">privacy notes</a> and
-        <a href="/terms/">terms</a>.
+        SheetCanvas is a free visual canvas for spreadsheets, charts and notes, where you analyze data and publish shareable data pages.
+        Enable JavaScript to open the app, or read <a href="/about/">about SheetCanvas</a>,
+        compare <a href="/compare/sheetcanvas-vs-excel/">SheetCanvas vs Excel</a>,
+        <a href="/compare/sheetcanvas-vs-google-sheets/">vs Google Sheets</a>,
+        <a href="/compare/sheetcanvas-vs-notion/">vs Notion</a>, and
+        <a href="/compare/sheetcanvas-vs-tableau/">vs Tableau</a>, see
+        <a href="/learn/">how SheetCanvas works</a>, the <a href="/docs/">docs</a>, or
+        <a href="/connect-agent/">connect Claude or Codex</a>. Also: <a href="/privacy/">privacy</a> and <a href="/terms/">terms</a>.
       </p>
     </noscript>
     <div id="root"></div>

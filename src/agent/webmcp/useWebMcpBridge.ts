@@ -49,6 +49,7 @@ function writeStoredEnabled(enabled: boolean): void {
 
 export interface UseWebMcpBridgeOptions {
   getSelection: () => SelectionContext;
+  ready?: boolean;
 }
 
 export interface WebMcpBridgeApi {
@@ -59,7 +60,7 @@ export interface WebMcpBridgeApi {
   registeredTools: ToolName[];
 }
 
-export function useWebMcpBridge({ getSelection }: UseWebMcpBridgeOptions): WebMcpBridgeApi {
+export function useWebMcpBridge({ getSelection, ready = true }: UseWebMcpBridgeOptions): WebMcpBridgeApi {
   const supported = getModelContext() !== null;
   const selectionRef = useRef(getSelection);
   selectionRef.current = getSelection;
@@ -96,10 +97,10 @@ export function useWebMcpBridge({ getSelection }: UseWebMcpBridgeOptions): WebMc
   // Fires on mount (covering "reconcile on mount") and again on every
   // enable/disable toggle — one effect satisfies both triggers from the brief.
   useEffect(() => {
-    setRegistryEnabled(enabled);
+    setRegistryEnabled(enabled && ready);
     writeStoredEnabled(enabled);
     runReconcile(enabled ? 'enabled' : 'disabled');
-  }, [enabled, runReconcile]);
+  }, [enabled, ready, runReconcile]);
 
   // Reconcile when durable gating facts change (sheet/note/connection/result
   // counts), debounced so a burst of store writes collapses into one pass.

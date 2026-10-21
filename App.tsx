@@ -4,6 +4,8 @@ import { Canvas } from './components/Canvas';
 import { SheetNode } from './components/SheetNode';
 import { ChartNode } from './components/ChartNode';
 import { NoteNode } from './components/NoteNode';
+import { DiagramNode } from './components/DiagramNode';
+import { DiagramEditor } from './components/DiagramEditor';
 import { Toolbar } from './components/Toolbar';
 import { Toast } from './components/Toast';
 import { GlobalCommandBar } from './components/GlobalCommandBar';
@@ -25,11 +27,14 @@ import { Upload, Moon, Sun, Table, StickyNote, Undo2, Redo2, Grid3X3, BarChart3,
 import { useStore, AppState } from './store';
 import { useChartPalette } from './hooks/useChartPalette';
 import { useFrameRateLogger } from './hooks/useFrameRateLogger';
+import { useDiagramPreviews } from './hooks/useDiagramPreviews';
 import { getChartPalette } from './utils/chartColorSchemes';
 import { buildChartSeriesDisplayNames } from './utils/chartDisplay';
 import AgentChatPanel from './src/components/AgentChatPanel';
 import { AgentEvalBridge } from './src/agent/AgentEvalBridge';
 import { useMcpBridge } from './src/agent/useMcpBridge';
+import { isPublicPluginLaunch } from './src/agent/mcpPluginBootstrap';
+import { isPublicCanvasReady } from './src/agent/publicCanvasSession';
 import { usePublishSync } from './hooks/usePublishSync';
 import { useWebMcpBridge } from './src/agent/webmcp/useWebMcpBridge';
 import { AgentActivityPanel } from './src/components/AgentActivityPanel';
@@ -51,8 +56,21 @@ const ONBOARDING_DISMISSED_KEY = 'sheetcanvas:onboarding-dismissed:v4';
 // runs exactly once per page load, before any door can dispatch a tool call.
 installTrailObserver();
 
+
+// Canvas items render with DOM ids `<type>-<id>`; drag code moves them directly.
+const findCanvasItemElement = (id: string): HTMLElement | null =>
+  document.getElementById(`sheet-${id}`) ||
+  document.getElementById(`chart-${id}`) ||
+  document.getElementById(`note-${id}`) ||
+  document.getElementById(`diagram-${id}`);
+
 const App: React.FC = () => {
   useFrameRateLogger();
+  useDiagramPreviews();
+
+  const [isEphemeralPluginSession] = useState(() =>
+    typeof window !== 'undefined' && isPublicPluginLaunch(window.location.href, window.history.state)
+  );
 
   const [darkMode, setDarkMode] = useState(() =>
     typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches
@@ -82,6 +100,9 @@ const App: React.FC = () => {
   const addNote = useStore((state: AppState) => state.addNote);
   const updateNote = useStore((state: AppState) => state.updateNote);
   const deleteNote = useStore((state: AppState) => state.deleteNote);
+  const updateDiagram = useStore((state: AppState) => state.updateDiagram);
+  const diagramIds = useStore((state: AppState) => state.diagramIds);
+  const editingDiagramId = useStore((state: AppState) => state.editingDiagramId);
   
   const undo = useStore((state: AppState) => state.undo);
   const redo = useStore((state: AppState) => state.redo);
@@ -92,7 +113,7 @@ const App: React.FC = () => {
   
   const [isCommandBarOpen, setIsCommandBarOpen] = useState(false);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(() =>
-    typeof window !== 'undefined' && window.localStorage.getItem(ONBOARDING_DISMISSED_KEY) !== 'true'
+    !isEphemeralPluginSession && typeof window !== 'undefined' && window.localStorage.getItem(ONBOARDING_DISMISSED_KEY) !== 'true'
   );
   const [dataConnectorState, setDataConnectorState] = useState<{ isOpen: boolean; initialType?: ConnectorType }>({ isOpen: false });
 
@@ -141,7 +162,8 @@ const App: React.FC = () => {
   const [agentPanelOpen, setAgentPanelOpen] = useState(false);
   const [connectAgentOpen, setConnectAgentOpen] = useState(false);
   const mcpBridge = useMcpBridge({ getSelection: () => activeSelectionRef.current });
-  const webmcpBridge = useWebMcpBridge({ getSelection: () => activeSelectionRef.current });
+  const publicCanvasPending = isEphemeralPluginSession && mcpBridge.connectionStatus !== 'connected';
+  const webmcpBridge = useWebMcpBridge({ getSelection: () => activeSelectionRef.current, ready: !publicCanvasPending });
   usePublishSync();
   const openConnectAgent = useCallback(() => {
     setAgentPanelOpen(false);
@@ -179,10 +201,11 @@ const App: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    initStore();
-  }, []);
+    initStore({ ephemeral: isEphemeralPluginSession });
+  }, [initStore, isEphemeralPluginSession]);
 
   useEffect(() => {
+    if (isEphemeralPluginSession) return;
     const params = new URLSearchParams(window.location.search);
     if (params.get('code') || params.get('error')) {
       const callbackState = params.get('state');
@@ -284,7 +307,10 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isEphemeralPluginSession && !isPublicCanvasReady()) return;
       const target = e.target as HTMLElement;
+      // The diagram editor owns the keyboard (its own undo/delete) while open.
+      if (useStore.getState().editingDiagramId) return;
 
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
           e.preventDefault();
@@ -693,9 +719,7 @@ const App: React.FC = () => {
           Object.entries(dragInitialPositions.current).forEach(([id, initialPos]) => {
               // Explicit cast to Position to avoid 'unknown' type errors
               const pos = initialPos as Position;
-              let el = document.getElementById(`sheet-${id}`);
-              if (!el) el = document.getElementById(`chart-${id}`);
-              if (!el) el = document.getElementById(`note-${id}`);
+              const el = findCanvasItemElement(id);
 
               if (el) {
                   el.style.left = `${pos.x + deltaX}px`;
@@ -764,21 +788,18 @@ const App: React.FC = () => {
                 const newPos = { x: pos.x + deltaX, y: pos.y + deltaY };
                 
                 // Cleanup DOM hints
-                let el = document.getElementById(`sheet-${id}`);
-                if (!el) el = document.getElementById(`chart-${id}`);
-                if (!el) el = document.getElementById(`note-${id}`);
+                const el = findCanvasItemElement(id);
                 if (el) el.style.willChange = 'auto';
 
                 if (s.sheets[id]) updateSheet(id, { position: newPos });
                 else if (s.charts[id]) updateChart(id, { position: newPos });
                 else if (s.notes[id]) updateNote(id, { position: newPos });
+                else if (s.diagrams[id]) updateDiagram(id, { position: newPos });
             });
         } else {
             // Even if no movement, cleanup will-change
             Object.keys(dragInitialPositions.current).forEach(id => {
-                let el = document.getElementById(`sheet-${id}`);
-                if (!el) el = document.getElementById(`chart-${id}`);
-                if (!el) el = document.getElementById(`note-${id}`);
+                const el = findCanvasItemElement(id);
                 if (el) el.style.willChange = 'auto';
             });
         }
@@ -794,9 +815,9 @@ const App: React.FC = () => {
       window.removeEventListener('mouseup', handleGlobalMouseUp);
       dragListenersAttached.current = false;
     }
-  }, [selectionBox, transform, select, saveSnapshot, updateSheet, updateChart, updateNote, handleGlobalMouseMoveOptimized]);
+  }, [selectionBox, transform, select, saveSnapshot, updateSheet, updateChart, updateNote, updateDiagram, handleGlobalMouseMoveOptimized]);
 
-  const handleItemMouseDown = useCallback((e: React.MouseEvent, id: string, type: 'sheet' | 'chart' | 'note') => {
+  const handleItemMouseDown = useCallback((e: React.MouseEvent, id: string, type: 'sheet' | 'chart' | 'note' | 'diagram') => {
     e.stopPropagation();
     dragStartSnapshot.current = true;
 
@@ -830,6 +851,7 @@ const App: React.FC = () => {
         if (updatedState.sheets[selId]) pos = updatedState.sheets[selId].position;
         else if (updatedState.charts[selId]) pos = updatedState.charts[selId].position;
         else if (updatedState.notes[selId]) pos = updatedState.notes[selId].position;
+        else if (updatedState.diagrams[selId]) pos = updatedState.diagrams[selId].position;
 
         if (pos) {
             newDragPositions[selId] = { ...pos };
@@ -842,6 +864,7 @@ const App: React.FC = () => {
          if (type === 'sheet') pos = updatedState.sheets[id].position;
          else if (type === 'chart') pos = updatedState.charts[id].position;
          else if (type === 'note') pos = updatedState.notes[id].position;
+         else if (type === 'diagram') pos = updatedState.diagrams[id].position;
          if (pos) newDragPositions[id] = { ...pos };
     }
 
@@ -849,7 +872,7 @@ const App: React.FC = () => {
 
     // OPTIMIZATION: Set will-change once at start of drag
     Object.keys(newDragPositions).forEach(key => {
-        const el = document.getElementById(`sheet-${key}`) || document.getElementById(`chart-${key}`) || document.getElementById(`note-${key}`);
+        const el = findCanvasItemElement(key);
         if (el) el.style.willChange = 'left, top';
     });
 
@@ -864,7 +887,7 @@ const App: React.FC = () => {
   handleItemMouseDownRef.current = handleItemMouseDown;
   const itemMouseDownHandlersRef = useRef(new Map<string, (e: React.MouseEvent) => void>());
 
-  const getItemMouseDownHandler = useCallback((id: string, type: 'sheet' | 'chart' | 'note') => {
+  const getItemMouseDownHandler = useCallback((id: string, type: 'sheet' | 'chart' | 'note' | 'diagram') => {
     const key = `${type}:${id}`;
     const existingHandler = itemMouseDownHandlersRef.current.get(key);
     if (existingHandler) return existingHandler;
@@ -1065,6 +1088,7 @@ const App: React.FC = () => {
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setIsDraggingFile(false);
+    if (isEphemeralPluginSession && !isPublicCanvasReady()) return;
     const files: File[] = Array.from(e.dataTransfer.files);
     if (files.length === 0) return;
     const x = (e.clientX - transform.offset.x) / transform.scale;
@@ -1072,6 +1096,7 @@ const App: React.FC = () => {
     await processImportedFiles(files, { x, y });
   };
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (isEphemeralPluginSession && !isPublicCanvasReady()) return;
       if (e.target.files && e.target.files.length > 0) {
           await processImportedFiles(Array.from(e.target.files));
       }
@@ -1080,7 +1105,9 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const handleGlobalPaste = (e: ClipboardEvent) => {
+        if (isEphemeralPluginSession && !isPublicCanvasReady()) return;
         const target = e.target as HTMLElement;
+        if (useStore.getState().editingDiagramId) return; // paste belongs to the diagram editor
         if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
         if (activeView === 'library') return;
 
@@ -1224,7 +1251,7 @@ const App: React.FC = () => {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div className="w-full h-full bg-neutral-100 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 relative">
+      <div inert={publicCanvasPending ? true : undefined} className="w-full h-full bg-neutral-100 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 relative">
         <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileSelect} multiple accept=".csv,.xlsx,.xls"/>
         {isDraggingFile && (
             <div className="absolute inset-0 z-[100] bg-teal-500/10 backdrop-blur-sm m-4 rounded-xl border-4 border-dashed border-teal-500 flex flex-col items-center justify-center text-teal-600 dark:text-teal-400 pointer-events-none">
@@ -1250,6 +1277,11 @@ const App: React.FC = () => {
         {activeView === 'library' && <LibraryView onOpenPage={handleOpenPage} />}
 
         <Toast message={toast.message} isVisible={toast.visible} onClose={() => setToast({ ...toast, visible: false })} />
+        {isEphemeralPluginSession && mcpBridge.recoveryError && (
+            <div role="alert" className="fixed top-4 left-4 right-4 z-[1000] mx-auto max-w-2xl rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 shadow-lg dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
+                {mcpBridge.recoveryError}
+            </div>
+        )}
 
         {/* Agent controls — same pill style as the Toolbar nav bar */}
         <div
@@ -1304,7 +1336,7 @@ const App: React.FC = () => {
             onAddTable={addTable}
             onAddNote={handleAddNote}
             onImport={() => fileInputRef.current?.click()}
-            onConnectData={() => setDataConnectorState({ isOpen: true })}
+            onConnectData={isEphemeralPluginSession ? undefined : () => setDataConnectorState({ isOpen: true })}
             onConnectAgent={openConnectAgent}
             onCopyImage={handleCopySelectionAsImage}
             onInitChart={handleInitChart}
@@ -1312,7 +1344,7 @@ const App: React.FC = () => {
             onInitSparkline={handleInitSparkline}
         />
         
-        {dataConnectorState.isOpen && (
+        {!isEphemeralPluginSession && dataConnectorState.isOpen && (
             <DataConnectorDialog
                 onClose={() => setDataConnectorState({ isOpen: false })}
                 onImport={handleDataConnectImport}
@@ -1378,13 +1410,23 @@ const App: React.FC = () => {
                   onMouseDown={getItemMouseDownHandler(id, 'note')}
               />
           ))}
+          {diagramIds.map(id => (
+              <DiagramNode
+                  key={id}
+                  id={id}
+                  darkMode={darkMode}
+                  isPendingDelete={selectedIds.has(id) && deleteConfirmPending}
+                  onMouseDown={getItemMouseDownHandler(id, 'diagram')}
+              />
+          ))}
         </Canvas>
+        {editingDiagramId && <DiagramEditor id={editingDiagramId} darkMode={darkMode} />}
         
         <Toolbar 
             onAddTable={addTable}
             onAddNote={handleAddNote}
             onImport={() => fileInputRef.current?.click()}
-            onConnectData={() => setDataConnectorState({ isOpen: true })}
+            onConnectData={isEphemeralPluginSession ? undefined : () => setDataConnectorState({ isOpen: true })}
             darkMode={darkMode}
             toggleDarkMode={() => setDarkMode(!darkMode)}
             onOpenCommandBar={() => setIsCommandBarOpen(true)}
@@ -1392,6 +1434,14 @@ const App: React.FC = () => {
             hidden={isCommandBarOpen || isOnboardingOpen || activeView === 'library'}
         />
       </div>
+      {publicCanvasPending && (
+        <div role="status" aria-live="polite" className="fixed inset-0 z-[1100] flex items-center justify-center bg-neutral-100/90 p-6 text-neutral-900 backdrop-blur-sm dark:bg-neutral-900/90 dark:text-neutral-100">
+          <div className="max-w-md rounded-xl border border-neutral-200 bg-white p-5 text-center shadow-lg dark:border-neutral-700 dark:bg-neutral-800">
+            <p className="font-medium">{mcpBridge.connectionStatus === 'replaced' ? 'This canvas is open in another view.' : 'Connecting and restoring your temporary canvas…'}</p>
+            <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-300">Keep this canvas open. If it stays disconnected or the session has expired, ask ChatGPT to open SheetCanvas again.</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

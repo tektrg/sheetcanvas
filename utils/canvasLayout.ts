@@ -16,7 +16,7 @@
 // Placement reads LIVE positions, so it adapts to manual drags and each call
 // sees objects added earlier in the same turn.
 
-import type { SheetData, ChartData, NoteData } from '../types';
+import type { SheetData, ChartData, NoteData, DiagramData } from '../types';
 import { CELL_WIDTH, CELL_HEIGHT, HEADER_COL_WIDTH, HEADER_ROW_HEIGHT } from '../constants';
 
 export interface Position {
@@ -30,6 +30,7 @@ export interface CanvasSnapshot {
   sheets: Record<string, SheetData>;
   charts: Record<string, ChartData>;
   notes: Record<string, NoteData>;
+  diagrams?: Record<string, DiagramData>;
 }
 
 // Gaps between objects, in canvas (unscaled) pixels.
@@ -57,7 +58,7 @@ const sheetBox = (s: SheetData): Box => ({
   bottom: s.position.y + sheetPixelHeight(s),
 });
 
-const rectBox = (o: ChartData | NoteData): Box => ({
+const rectBox = (o: ChartData | NoteData | DiagramData): Box => ({
   left: o.position.x,
   top: o.position.y,
   right: o.position.x + o.size.width,
@@ -77,6 +78,7 @@ const collectAllBoxes = (snap: CanvasSnapshot): Box[] => [
   ...allSheets(snap).map(sheetBox),
   ...allCharts(snap).map(rectBox),
   ...allNotes(snap).map(rectBox),
+  ...Object.values(snap.diagrams ?? {}).map(rectBox),
 ];
 
 const spansOverlap = (aTop: number, aBottom: number, bTop: number, bBottom: number): boolean =>

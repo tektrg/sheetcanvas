@@ -1,5 +1,5 @@
 import type { ToolName } from '../../../agent/tools';
-import type { WebMcpAnnotations } from './modelContext';
+export { TOOL_ANNOTATIONS } from '../../../agent/toolAnnotations';
 
 // WebMCP tool copy, budgeted for a general-purpose model with no SheetCanvas
 // system prompt and no priors about this app — unlike the descriptions in
@@ -214,55 +214,49 @@ export const SHORT_TOOL_COPY: Record<ToolName, ShortToolCopy> = {
     description:
       'Runs a full Google Analytics daily-trend-by-source workflow in one step: queries date + hostName + source + medium + one metric, creates the raw connected sheet, then a grouped sparkline trend table by source. Requires schemaToken from describeConnection for the same GA connection/property, plus a structured brief for the raw sheet. If the report returns no rows, no sheet is created and the response includes diagnostics (propertyId, date range, host filter, top hostnames) to adjust and retry.',
   },
+
+  // ── Diagrams ─────────────────────────────────────────────────────────────
+  createDiagram: {
+    title: 'Create Diagram',
+    description:
+      'Draws an editable hand-drawn diagram: orgchart, flow {nodes,edges}, curve {points,annotations}, freeform {shapes}, or xkcd comic {panels:[{id,items}]}. extras:[...] adds stick figures/speech to ANY kind (e.g. curve + stick man at "pt:peak" saying "OMG"); showTitle draws the title. Returns diagramId and semantic elementIds for updateDiagramElement/addToDiagram.',
+  },
+
+  updateDiagramElement: {
+    title: 'Update Diagram Element',
+    description:
+      "Changes one diagram element by semantic id (from createDiagram/readDiagram). patch: label, color, revealAt (0..1), draw ([from,to], lines only), roughness (0-2), remove. Only these fields change; the user's own layout and style edits are kept. Fails while the user has the diagram open in the editor.",
+  },
+
+  addToDiagram: {
+    title: 'Add To Diagram',
+    description:
+      'Adds stick figures, speech, props, captions, shapes or a title to ANY diagram (curve, flow, org chart, comic...). Place items by x/y or anchor:<element id> + placement above|below|left|right|on. Example: [{type:"character",id:"me",anchor:"pt:peak"},{type:"speech",id:"omg",text:"OMG",speaker:"me"}]. Speech avoids existing text.',
+  },
+
+  readDiagram: {
+    title: 'Read Diagram',
+    description:
+      'Reads a diagram as the user left it: elements by semantic id with type, label, color, arrow from/to, revealAt/draw. Pass includeGeometry for x/y/size. Use before updateDiagramElement.',
+  },
+
+  listDiagrams: {
+    title: 'List Diagrams',
+    description: 'Lists diagrams on the canvas with diagramId, title, kind and element count.',
+  },
+
+  // ── Mermaid diagrams in notes ───────────────────────────────────────────
+  validateDiagram: {
+    title: 'Validate Mermaid Diagram',
+    description:
+      'Checks Mermaid source before you put it in a note as a ```mermaid block. ALWAYS call before createNote/updateNote with mermaid. Returns {valid,type} or {valid:false,errors:[{message,line,column,hint}]}; fix using hint and retry until valid. Pass only the text inside the fence.',
+  },
+
+  listDiagramTypes: {
+    title: 'List Mermaid Diagram Types',
+    description: 'Lists Mermaid diagram types notes can render, each with a description and a working example. Then call validateDiagram.',
+  },
 };
 
-// WebMCP has exactly two annotation hints: `readOnlyHint` and
-// `untrustedContentHint`. There is no `destructiveHint` in the spec — do not
-// add one.
-//
-// `readOnlyHint: true` — the tool makes no observable change to canvas state.
-// `describeConnection` and `queryConnection` look read-only but are
-// DELIBERATELY EXCLUDED: `describeConnection` mutates the store
-// (`setConnectionSchemaToken`/`setGaMetadata`, see
-// `src/agent/clientToolExecutor.ts:1025,1036-1038`) and `queryConnection`
-// calls `store.addPrivateQueryResult` (`src/agent/querySheetTools.ts:216`).
-// The next tool in the connector flow (queryConnection/createQuerySheet)
-// depends on that mutation having happened, so a client that treats these as
-// read-only and caches/dedupes/replays them would silently break the flow.
-//
-// `untrustedContentHint: true` — the tool's result can carry text authored by
-// a user or a third-party warehouse (imported CSV values, typed cell/note
-// content, or rows returned from ClickHouse/GA/Google Sheets) that could
-// smuggle instructions ("ignore previous instructions...") into a model's
-// context when the result is read back. Applies to every read tool plus the
-// connector tools whose payload is warehouse-controlled data.
-export const TOOL_ANNOTATIONS: Record<ToolName, WebMcpAnnotations> = {
-  listSheets: { readOnlyHint: true, untrustedContentHint: true },
-  describeSheet: { readOnlyHint: true, untrustedContentHint: true },
-  getSelection: { readOnlyHint: true, untrustedContentHint: true },
-  getRange: { readOnlyHint: true, untrustedContentHint: true },
-  querySheet: { readOnlyHint: true, untrustedContentHint: true },
-  setCells: {},
-  createSheet: {},
-  applyFilter: {},
-  applySort: {},
-  applyFormat: {},
-  createChart: {},
-  createPivot: {},
-  createSparkline: {},
-  createNote: {},
-  listNotes: { readOnlyHint: true, untrustedContentHint: true },
-  readNote: { readOnlyHint: true, untrustedContentHint: true },
-  updateNote: {},
-  deleteNote: {},
-  listConnections: { readOnlyHint: true, untrustedContentHint: true },
-  listConnectionProperties: { readOnlyHint: true, untrustedContentHint: true },
-  // Mutates store state as a side effect — see comment above. Not read-only.
-  describeConnection: { untrustedContentHint: true },
-  createQuerySheet: { untrustedContentHint: true },
-  // Mutates store state as a side effect (addPrivateQueryResult) — see comment above. Not read-only.
-  queryConnection: { untrustedContentHint: true },
-  createQuerySheetFromResult: { untrustedContentHint: true },
-  updateQuerySheet: { untrustedContentHint: true },
-  createGaTrendBySource: { untrustedContentHint: true },
-};
+// Safety hints live in the shared agent/toolAnnotations.ts module so WebMCP
+// and the remote MCP transport expose the same trust model.

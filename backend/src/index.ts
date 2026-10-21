@@ -166,8 +166,17 @@ app.use(
       if (!origin) return allowed[0] ?? "http://localhost:5173";
       return allowed.includes(origin) ? origin : "";
     },
-    allowHeaders: ["Content-Type", "Authorization", "x-session-id", "x-edit-key"],
-    exposeHeaders: ["x-agent-quota-used", "x-agent-quota-limit"],
+    allowHeaders: [
+      "Content-Type",
+      "Accept",
+      "Authorization",
+      "MCP-Protocol-Version",
+      "Mcp-Session-Id",
+      "Last-Event-ID",
+      "x-session-id",
+      "x-edit-key"
+    ],
+    exposeHeaders: ["Mcp-Session-Id", "x-agent-quota-used", "x-agent-quota-limit"],
     allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     maxAge: 86400
   })

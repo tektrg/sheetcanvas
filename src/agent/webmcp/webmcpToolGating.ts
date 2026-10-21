@@ -1,4 +1,4 @@
-// Decides which of the 26 canvas tools to expose over WebMCP right now.
+// Decides which of the canvas tools to expose over WebMCP right now.
 //
 // IMPORTANT: this gate is an optimization, never a security boundary. An
 // un-gated call still degrades to a clean `{ok:false, error}` from
@@ -14,10 +14,13 @@
 // exist, does a note exist, ...), not on conversational history.
 import type { AppState } from '../../../store';
 import { TOOL_NAMES, type ToolName } from '../../../agent/tools';
+import { DIAGRAM_TOOL_NAMES, diagramsEnabled } from '../diagramsFlag';
+import { isPublicCanvasTool } from '../../../agent/publicToolPolicy';
 
 export interface GatingState {
   hasSheet: boolean;
   hasNote: boolean;
+  hasDiagram: boolean;
   hasSchemaToken: boolean;
   hasPrivateResult: boolean;
   hasConnectorSheet: boolean;
@@ -33,6 +36,9 @@ const NEVER_GATED: readonly ToolName[] = [
   'createSheet',
   'createNote',
   'listNotes',
+  'createDiagram',
+  'validateDiagram',
+  'listDiagramTypes',
   'listConnections',
   'listConnectionProperties',
   'describeConnection',
@@ -52,6 +58,8 @@ const SHEET_GATED: readonly ToolName[] = [
 ];
 
 const NOTE_GATED: readonly ToolName[] = ['readNote', 'updateNote', 'deleteNote'];
+
+const DIAGRAM_GATED: readonly ToolName[] = ['listDiagrams', 'readDiagram', 'updateDiagramElement', 'addToDiagram'];
 
 // Their failure message literally says "run describeConnection first and
 // pass its schemaToken" — gating turns a guaranteed wasted round trip into a
@@ -81,6 +89,7 @@ export function readGatingState(state: AppState): GatingState {
   return {
     hasSheet: state.sheetIds.length > 0,
     hasNote: state.noteIds.length > 0,
+    hasDiagram: state.diagramIds.length > 0,
     // `connections.length` is deliberately NOT used anywhere in this module:
     // `connections` is lazily loaded (clientToolExecutor.ts calls
     // loadConnections only when it's empty), so 0 means "not fetched yet",
@@ -93,13 +102,16 @@ export function readGatingState(state: AppState): GatingState {
   };
 }
 
-export function computeDesiredTools(gating: GatingState): Set<ToolName> {
+export function computeDesiredTools(gating: GatingState, publicCanvas = false): Set<ToolName> {
   const desired = new Set<ToolName>(NEVER_GATED);
   if (gating.hasSheet) SHEET_GATED.forEach((name) => desired.add(name));
   if (gating.hasNote) NOTE_GATED.forEach((name) => desired.add(name));
+  if (gating.hasDiagram) DIAGRAM_GATED.forEach((name) => desired.add(name));
   if (gating.hasSchemaToken) SCHEMA_TOKEN_GATED.forEach((name) => desired.add(name));
   if (gating.hasPrivateResult) PRIVATE_RESULT_GATED.forEach((name) => desired.add(name));
   if (gating.hasConnectorSheet) CONNECTOR_SHEET_GATED.forEach((name) => desired.add(name));
+  if (!diagramsEnabled()) DIAGRAM_TOOL_NAMES.forEach((name) => desired.delete(name));
+  if (publicCanvas) for (const name of desired) if (!isPublicCanvasTool(name)) desired.delete(name);
   return desired;
 }
 
@@ -114,6 +126,7 @@ export function gatingKey(state: AppState): string {
   return [
     state.sheetIds.length,
     state.noteIds.length,
+    state.diagramIds.length,
     Object.keys(state.connectionSchemaTokens).length,
     state.privateQueryResultIds.length,
     gating.hasConnectorSheet ? 1 : 0,

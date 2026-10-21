@@ -18,4 +18,6 @@ export type Env = {
   ANSWER_BOX_FAKE?: string;
   /** theindie-api base URL (accounts); default https://api.theindie.app. */
   THEINDIE_API_URL?: string;
+  // "true" exposes the agent diagram tools on private /mcp/:token canvases.
+  DIAGRAMS_ENABLED?: string;
 };
