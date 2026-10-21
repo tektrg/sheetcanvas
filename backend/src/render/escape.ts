@@ -12,7 +12,6 @@ export const jsonForScript = (value: unknown): string =>
   JSON.stringify(value).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026');
 
 const numberFormatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
-const compactFormatter = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
 
 export const formatNumber = (value: number | null): string => (value === null ? '' : numberFormatter.format(value));
-export const formatCompact = (value: number): string => compactFormatter.format(value);
+export { formatCompact } from '../../../shared/numberFormat';

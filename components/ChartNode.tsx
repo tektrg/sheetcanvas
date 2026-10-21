@@ -6,7 +6,7 @@ import {
 import { ChartData, SheetData, ChartType, ChartConfig, CellFormat } from '../types';
 import { extractChartData, getSheetHeaders } from '../utils/chartHelpers';
 import { computeChartAdvisories } from '../utils/chartDefaults';
-import { formatValue } from '../utils/formatting';
+import { formatValue, formatAxisTick } from '../utils/formatting';
 import { getCellId } from '../utils/formulas';
 import { ChartColorSettings } from '../types';
 import { buildMonoRamp, buildSeriesPalette, getChartPrimaryColor, getEffectiveChartPalette, getEffectiveChartScheme } from '../utils/chartColorSchemes';
@@ -30,7 +30,7 @@ import {
   getAreaGradientStops,
   getChartVisualTheme,
 } from '../utils/chartVisualTheme';
-import { getPaddedChartAxisMax } from '../utils/chartAxis';
+import { getChartAxisScale, ChartAxisScale } from '../utils/chartAxis';
 
 interface ChartNodeProps {
   id: string;
@@ -461,27 +461,38 @@ const ChartNodeComponent: React.FC<ChartNodeProps> = ({
   };
 
   const maxDataValues = useMemo(() => {
-    if (!processedData || processedData.length === 0) return { left: 'auto', right: 'auto' };
+    if (!processedData || processedData.length === 0) {
+        const empty: ChartAxisScale = { domain: [0, 'auto'] };
+        return { left: empty, right: empty };
+    }
     
     let maxLeft = 0;
     let maxRight = 0;
+    let minLeft = 0;
+    let minRight = 0;
 
     processedData.forEach((row: any) => {
         let leftStack = 0;
         let rightStack = 0;
         let rowMaxLeft = 0;
         let rowMaxRight = 0;
+        // Negative values stack downward separately from positive ones.
+        let leftNegStack = 0;
+        let rightNegStack = 0;
+        let rowMinLeft = 0;
+        let rowMinRight = 0;
 
         if (data.config.mode === 'group') {
              if (dynamicSeriesKeys) {
                  dynamicSeriesKeys.forEach(k => {
                      const val = Number(row[k]) || 0;
-                     if (data.config.stacked) leftStack += val;
-                     else rowMaxLeft = Math.max(rowMaxLeft, val);
+                     if (data.config.stacked) { if (val < 0) leftNegStack += val; else leftStack += val; }
+                     else { rowMaxLeft = Math.max(rowMaxLeft, val); rowMinLeft = Math.min(rowMinLeft, val); }
                  });
              } else {
                  const val = Number(row['value_0']) || 0;
                  rowMaxLeft = Math.max(rowMaxLeft, val);
+                 rowMinLeft = Math.min(rowMinLeft, val);
              }
         } else {
             data.config.dataColumns.forEach((colId, i) => {
@@ -492,15 +503,17 @@ const ChartNodeComponent: React.FC<ChartNodeProps> = ({
 
                 if (isRight) {
                     if (isStacked) {
-                        rightStack += val;
+                        if (val < 0) rightNegStack += val; else rightStack += val;
                     } else {
                         rowMaxRight = Math.max(rowMaxRight, val);
+                        rowMinRight = Math.min(rowMinRight, val);
                     }
                 } else {
                     if (isStacked) {
-                        leftStack += val;
+                        if (val < 0) leftNegStack += val; else leftStack += val;
                     } else {
                         rowMaxLeft = Math.max(rowMaxLeft, val);
+                        rowMinLeft = Math.min(rowMinLeft, val);
                     }
                 }
             });
@@ -508,11 +521,13 @@ const ChartNodeComponent: React.FC<ChartNodeProps> = ({
 
         maxLeft = Math.max(maxLeft, leftStack, rowMaxLeft);
         maxRight = Math.max(maxRight, rightStack, rowMaxRight);
+        minLeft = Math.min(minLeft, leftNegStack, rowMinLeft);
+        minRight = Math.min(minRight, rightNegStack, rowMinRight);
     });
 
     return {
-        left: getPaddedChartAxisMax(maxLeft),
-        right: getPaddedChartAxisMax(maxRight)
+        left: getChartAxisScale(minLeft, maxLeft),
+        right: getChartAxisScale(minRight, maxRight)
     };
   }, [processedData, data.config, dynamicSeriesKeys]);
 
@@ -1017,11 +1032,12 @@ const ChartNodeComponent: React.FC<ChartNodeProps> = ({
         <YAxis 
             yAxisId="left" 
             tick={{fontSize: 11, fill: textColor}} 
-            domain={[0, maxDataValues.left]} 
+            domain={maxDataValues.left.domain}
+            ticks={maxDataValues.left.ticks} 
             axisLine={false} 
             tickLine={false} 
             dx={-10}
-            tickFormatter={(val) => formatValue(val, axisFormatLeft)}
+            tickFormatter={(val) => formatAxisTick(val, axisFormatLeft)}
             key="yaxis-left"
         />
     );
@@ -1031,11 +1047,12 @@ const ChartNodeComponent: React.FC<ChartNodeProps> = ({
                 yAxisId="right" 
                 orientation="right" 
                 tick={{fontSize: 11, fill: textColor}} 
-                domain={[0, maxDataValues.right]} 
+                domain={maxDataValues.right.domain}
+                ticks={maxDataValues.right.ticks} 
                 axisLine={false} 
                 tickLine={false} 
                 dx={10} 
-                tickFormatter={(val) => formatValue(val, axisFormatRight)}
+                tickFormatter={(val) => formatAxisTick(val, axisFormatRight)}
                 key="yaxis-right"
             />
         );
