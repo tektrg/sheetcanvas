@@ -2,7 +2,7 @@
 
 import { CellFormat } from '../types';
 import { format as d3Format } from 'd3-format';
-import { formatCompact, toChartNumber } from '../shared/numberFormat';
+import { formatAxisNumber, toChartNumber } from '../shared/numberFormat';
 
 // Maps the simple string prop authors write (format="currency") to the app's
 // richer CellFormat. Anything unknown falls back to the cell's own stored format.
@@ -104,7 +104,7 @@ export const formatValue = (value: string | number | null, format?: CellFormat):
 };
 
 /**
- * Value-axis tick label. Plain/number columns use the compact format the server
+ * Value-axis tick label. Plain/number columns use compact thousands like the server
  * renderer uses (1.2K, 3.4M): full-length ticks overflow the fixed-width axis and
  * get clipped from the left, showing only their tail digits. Explicit currency,
  * percent, date and d3 formats keep their own formatting.
@@ -113,5 +113,5 @@ export const formatAxisTick = (value: unknown, format?: CellFormat): string => {
   const num = toChartNumber(value);
   if (num === null) return value == null ? '' : String(value);
   const usesOwnFormat = format && ((format as any).d3Format || (format.type && format.type !== 'number' && format.type !== 'text'));
-  return usesOwnFormat ? formatValue(num, format) : formatCompact(num);
+  return usesOwnFormat ? formatValue(num, format) : formatAxisNumber(num);
 };

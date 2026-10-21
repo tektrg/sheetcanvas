@@ -12,7 +12,11 @@ describe('formatAxisTick', () => {
   });
   it('handles decimals, float noise and negatives', () => {
     expect(formatAxisTick(0.1 + 0.2)).toBe('0.3');
-    expect(formatAxisTick(0.77)).toBe('0.8');
+    expect(formatAxisTick(0.75)).toBe('0.75');
+    expect(formatAxisTick(0.8)).toBe('0.8');
+    expect(formatAxisTick(0.0025)).toBe('0.0025');
+    expect(formatAxisTick(-12.5)).toBe('-12.5');
+    expect(formatAxisTick(999)).toBe('999');
     expect(formatAxisTick(-2500)).toBe('-2.5K');
     expect(formatAxisTick(0)).toBe('0');
   });
@@ -26,6 +30,15 @@ describe('formatAxisTick', () => {
   });
   it('matches the server renderer formatter', () => {
     expect(serverFormatCompact).toBe(formatCompact);
+  });
+});
+
+describe('server compact formatter (published charts)', () => {
+  it('is unchanged', () => {
+    expect(formatCompact(3800000)).toBe('3.8M');
+    expect(formatCompact(0.77)).toBe('0.8');
+    expect(formatCompact(1234)).toBe('1.2K');
+    expect(formatCompact(-2500)).toBe('-2.5K');
   });
 });
 
