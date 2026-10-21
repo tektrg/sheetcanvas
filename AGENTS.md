@@ -30,6 +30,17 @@ Deploy the frontend with Wrangler Pages, not Vercel. Build first, then deploy th
 - `npx wrangler pages deploy dist --project-name sheetcanvas --branch main` – deploy the built frontend to production.
 - `npx wrangler pages deployment list --project-name sheetcanvas` – confirm the latest production deployment source commit and preview URL.
 
+### Release runbook: accounts/profiles + AEO pages (order matters)
+
+All commands from the Air (or Pro) with `export CLOUDFLARE_ACCOUNT_ID=9cd49d097f431e967341161edc370cfb` (two accounts visible; non-interactive Wrangler fails without it).
+
+1. **theindie-api deployed first** (owner, separate repo): the `/v1/me` + Google sign-in contract in `shared/theindieAccounts.ts` must be live at `https://api.theindie.app`, with `https://sheetcanvas.com` (+ `www`) in its CORS list. Without it sign-in fails; anonymous publish still works.
+2. **Google OAuth client**: `VITE_GOOGLE_CLIENT_ID` is public and committed in `.env.production` / `.env.development` (`.env.local` overrides). Authorized JS origins must include `https://sheetcanvas.com`, `https://www.sheetcanvas.com`, `http://localhost:5173`; other localhost ports show the GSI button but Google rejects the origin.
+3. **D1 migration**: `cd backend && npx wrangler d1 migrations apply DB --remote` (applies `0001_page_owner`; do the checks in the next section first).
+4. **Backend Worker**: `cd backend && npx wrangler deploy` (adds `/@*` profile routes alongside `/p/*`, `/e/*`, `/og/*`). `THEINDIE_API_URL` defaults to `https://api.theindie.app` in `wrangler.toml`.
+5. **Frontend**: `npm run deploy:pages` (runs `seo:audit` + preflight + Pages deploy + live smoke). Run from a checkout that has `.env.production`.
+6. Smoke: `/`, `/about/`, `/compare/sheetcanvas-vs-excel/`, `/robots.txt` (AI crawlers allowed), a `/p/` page with answer box, a `/@handle` page after signing in.
+
 Backend D1 migrations (before deploying a backend that reads `owner_user_id`):
 
 - Production tables were created from `backend/schema.sql`, never through Wrangler's tracker, so remote D1 has no `d1_migrations` table yet. `backend/migrations/` holds only `0001_page_owner.sql`, so the first `--remote` apply creates the tracker and runs just that file.
