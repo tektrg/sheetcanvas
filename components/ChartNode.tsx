@@ -6,7 +6,7 @@ import {
 import { ChartData, SheetData, ChartType, ChartConfig, CellFormat } from '../types';
 import { extractChartData, getSheetHeaders } from '../utils/chartHelpers';
 import { computeChartAdvisories } from '../utils/chartDefaults';
-import { formatValue } from '../utils/formatting';
+import { formatValue, formatAxisTick } from '../utils/formatting';
 import { getCellId } from '../utils/formulas';
 import { ChartColorSettings } from '../types';
 import { buildMonoRamp, buildSeriesPalette, getChartPrimaryColor, getEffectiveChartPalette, getEffectiveChartScheme } from '../utils/chartColorSchemes';
@@ -1021,7 +1021,7 @@ const ChartNodeComponent: React.FC<ChartNodeProps> = ({
             axisLine={false} 
             tickLine={false} 
             dx={-10}
-            tickFormatter={(val) => formatValue(val, axisFormatLeft)}
+            tickFormatter={(val) => formatAxisTick(val, axisFormatLeft)}
             key="yaxis-left"
         />
     );
@@ -1035,7 +1035,7 @@ const ChartNodeComponent: React.FC<ChartNodeProps> = ({
                 axisLine={false} 
                 tickLine={false} 
                 dx={10} 
-                tickFormatter={(val) => formatValue(val, axisFormatRight)}
+                tickFormatter={(val) => formatAxisTick(val, axisFormatRight)}
                 key="yaxis-right"
             />
         );
