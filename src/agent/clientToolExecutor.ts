@@ -36,6 +36,7 @@ import {
   handleUpdateDiagramElement,
   handleAddToDiagram,
 } from './diagramTools';
+import { runDiagramKitTool } from './diagramKitTools';
 import { DIAGRAM_TOOL_NAMES, diagramsEnabled } from './diagramsFlag';
 import {
   handleCreateQuerySheet,
@@ -1116,6 +1117,10 @@ export async function executeClientTool(
 
       case 'listDiagrams':
         return handleListDiagrams();
+
+      case 'validateDiagram':
+      case 'listDiagramTypes':
+        return runDiagramKitTool(name, input);
 
       default:
         return { ok: false, error: `Unknown tool: ${name}` };

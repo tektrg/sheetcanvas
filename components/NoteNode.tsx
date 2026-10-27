@@ -1,5 +1,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { LiveBadge, PublishMenu } from './publish/PublishMenu';
+import { isPublished } from '../utils/publish';
 import { NoteData } from '../types';
 import { GripVertical, Trash2, Bold, Italic, Underline, List, ListOrdered, StickyNote, MoreHorizontal, Copy, Download } from 'lucide-react';
 import { useStore } from '../store';
@@ -136,17 +138,6 @@ const NoteNodeComponent: React.FC<NoteNodeProps> = ({ id, darkMode, initialEditi
       if (rafId !== null) cancelAnimationFrame(rafId);
     };
   }, [resizing, data.id, updateNote]);
-
-  // Scrolling inside the note must not reach the canvas's wheel listener (pan/zoom),
-  // which is bound natively on an ancestor and fires before React's onWheel delegation.
-  useEffect(() => {
-    const stopWheelPropagation = (e: WheelEvent) => e.stopPropagation();
-    const els = [editorRef.current, markdownEditorRef.current, markdownDisplayRef.current].filter(
-      (el): el is HTMLElement => el !== null
-    );
-    els.forEach(el => el.addEventListener('wheel', stopWheelPropagation, { passive: true }));
-    return () => els.forEach(el => el.removeEventListener('wheel', stopWheelPropagation));
-  });
 
   // Close options menu when clicking outside
   useEffect(() => {
@@ -325,6 +316,12 @@ const NoteNodeComponent: React.FC<NoteNodeProps> = ({ id, darkMode, initialEditi
         `}
         style={{ backgroundColor: darkMode ? '#1e1e1e' : '#ffffff' }}
       >
+        {/* Always-visible published marker; the hover bar carries the full control. */}
+        {!isEditing && isPublished(data.publish ?? {}) && (
+          <div data-export-exclude data-testid="note-live-indicator" className="pointer-events-none absolute top-1.5 right-2 z-10 transition-opacity duration-150 group-hover:opacity-0">
+            <LiveBadge paused={data.publish?.paused} />
+          </div>
+        )}
         {/* ── Top control bar (shown on hover or when editing) ── */}
         <div
           data-export-exclude
@@ -358,6 +355,7 @@ const NoteNodeComponent: React.FC<NoteNodeProps> = ({ id, darkMode, initialEditi
 
           {/* Right cluster: options menu + delete */}
           <div className="flex items-center gap-0.5 flex-shrink-0">
+            <PublishMenu noteId={data.id} />
             {/* Options / more menu */}
             <div className="relative" ref={optionsMenuRef}>
               <button

@@ -8,12 +8,20 @@
   },
   "dependencies": {
     "@ai-sdk/google": "^3.0.79",
+    "@resvg/resvg-wasm": "^2.6.2",
     "ai": "^6.0.191",
+    "d3-hierarchy": "^3.1.2",
+    "d3-scale": "^4.0.2",
+    "d3-shape": "^3.2.0",
     "hono": "^4.9.0",
+    "marked": "^15.0.12",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250710.0",
+    "@types/d3-hierarchy": "^3.1.7",
+    "@types/d3-scale": "^4.0.9",
+    "@types/d3-shape": "^3.2.0",
     "typescript": "~5.8.2",
     "wrangler": "^4.45.2"
   }

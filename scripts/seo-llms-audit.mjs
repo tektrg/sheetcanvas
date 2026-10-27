@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join, sep } from 'node:path';
-import { SITE_ORIGIN } from './seo-route-config.mjs';
+import { PUBLISHED_PAGES_LLMS_URL, SITE_ORIGIN } from './seo-route-config.mjs';
 
 const RSS_FEED_URL = `${SITE_ORIGIN}/rss.xml`;
 
@@ -31,7 +31,7 @@ export function auditLlmsText(rootPath, pages, context) {
   }
 
   const expectedUrls = new Set(pages.map((page) => `${SITE_ORIGIN}${page.urlPath}`));
-  const allowedUrls = new Set([...expectedUrls, RSS_FEED_URL]);
+  const allowedUrls = new Set([...expectedUrls, RSS_FEED_URL, PUBLISHED_PAGES_LLMS_URL]);
   const foundUrls = [...llmsText.matchAll(/https:\/\/sheetcanvas\.com\/[^\s)]+/g)]
     .map((match) => match[0].replace(/[.,;:]+$/, ''));
   const seenUrls = new Set();

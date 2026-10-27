@@ -30,6 +30,24 @@ Deploy the frontend with Wrangler Pages, not Vercel. Build first, then deploy th
 - `npx wrangler pages deploy dist --project-name sheetcanvas --branch main` – deploy the built frontend to production.
 - `npx wrangler pages deployment list --project-name sheetcanvas` – confirm the latest production deployment source commit and preview URL.
 
+### Release runbook: accounts/profiles + AEO pages (order matters)
+
+All commands from the Air (or Pro) with `export CLOUDFLARE_ACCOUNT_ID=9cd49d097f431e967341161edc370cfb` (two accounts visible; non-interactive Wrangler fails without it).
+
+1. **theindie-api deployed first** (owner, separate repo): the `/v1/me` + Google sign-in contract in `shared/theindieAccounts.ts` must be live at `https://api.theindie.app`, with `https://sheetcanvas.com` (+ `www`) in its CORS list. Without it sign-in fails; anonymous publish still works.
+2. **Google OAuth client**: `VITE_GOOGLE_CLIENT_ID` is public and committed in `.env.production` / `.env.development` (`.env.local` overrides). Authorized JS origins must include `https://sheetcanvas.com`, `https://www.sheetcanvas.com`, `http://localhost:5173`; other localhost ports show the GSI button but Google rejects the origin.
+3. **D1 migration**: `cd backend && npx wrangler d1 migrations apply DB --remote` (applies `0001_page_owner`; do the checks in the next section first).
+4. **Backend Worker**: `cd backend && npx wrangler deploy` (adds `/@*` profile routes alongside `/p/*`, `/e/*`, `/og/*`). `THEINDIE_API_URL` defaults to `https://api.theindie.app` in `wrangler.toml`.
+5. **Frontend**: `npm run deploy:pages` (runs `seo:audit` + preflight + Pages deploy + live smoke). Run from a checkout that has `.env.production`.
+6. Smoke: `/`, `/about/`, `/compare/sheetcanvas-vs-excel/`, `/robots.txt` (AI crawlers allowed), a `/p/` page with answer box, a `/@handle` page after signing in.
+
+Backend D1 migrations (before deploying a backend that reads `owner_user_id`):
+
+- Production tables were created from `backend/schema.sql`, never through Wrangler's tracker, so remote D1 has no `d1_migrations` table yet. `backend/migrations/` holds only `0001_page_owner.sql`, so the first `--remote` apply creates the tracker and runs just that file.
+- Check first: `npx wrangler d1 migrations list DB --remote` (from `backend/`) must list only `0001_page_owner.sql`, and `npx wrangler d1 execute DB --remote --command "PRAGMA table_info(published_pages)"` must NOT show `owner_user_id` (if it does, the ALTER would fail with "duplicate column").
+- Then: `npx wrangler d1 migrations apply DB --remote`, then deploy the backend Worker. The migration is additive (nullable column + index); the old Worker keeps working against it.
+- Never paste `0001_page_owner.sql` into `d1 execute` by hand; it is not idempotent and the tracker would re-run it later.
+
 After deployment, smoke check at minimum:
 
 - `https://sheetcanvas.com/`
@@ -37,6 +55,10 @@ After deployment, smoke check at minimum:
 - any newly added static SEO route, such as `https://sheetcanvas.com/connectors/google-analytics/`
 
 Known-good reference from the May 27, 2026 deploy: project `sheetcanvas`, source commit `021c60c`, deployment `c1980e27-a5fe-44e0-8757-ca5ba3604029`, preview `https://c1980e27.sheetcanvas.pages.dev`.
+
+Backend worker (`cd backend && npx wrangler deploy`, Air needs `CLOUDFLARE_ACCOUNT_ID`; rollback via `npx wrangler deployments list` + `npx wrangler rollback <id>`). Known-good reference from the Oct 20, 2026 deploy: worker `flexsheet-backend`, source commit `377d499`, version `fdd1d3e1-d513-4a77-b4a1-9612946ded8d` (previous `dc585bdd-9aa8-41cb-b2f0-a97611a403c0`).
+
+Latest known-good (Oct 20, 2026, merge of `feat/agent-diagrams` + `main` embed/publish): source commit `07cabd2`, deployment `338f95d7-6576-4c4a-9d0e-3ad42a02af9c`, preview `https://338f95d7.sheetcanvas.pages.dev`. Wrangler on the Air needs `CLOUDFLARE_ACCOUNT_ID=9cd49d097f431e967341161edc370cfb` (two accounts visible; non-interactive shells otherwise fail). Worker NOT redeployed in that run — the live Worker was built from `main` (98dda89) and lacks the branch's public-MCP changes.
 
 ## Two-Machine Dev (Pro + Air)
 
@@ -165,3 +187,9 @@ changes or when the user asks.
 - Open questions (UNCONFIRMED if needed):
 - Working set (files/ids/commands):
 
+
+## Marketing / answer-engine pages
+
+- Copy lives in `scripts/marketing/content.mjs` (positioning, `/about/` page with FAQ, `/compare/*` pages). Only shipped features; date competitor facts. Bump `REVIEWED_ON` when re-checked.
+- Run `npm run seo:marketing` after editing it **and commit the output** (deploy:pages and seo:audit do NOT regenerate it; their commands are locked by the audit, so `public/` must already be current): writes `public/about/index.html` and `public/compare/<slug>/index.html`. The homepage (`index.html`) is the app; it only links to these in `<noscript>`, never hidden copy. Then `npm run seo:audit`. New routes also need `ROUTE_ORDER` (`seo-route-config.mjs`) and a `ROUTE_GROUPS` entry in `generate-llms.mjs`.
+- **Testimonials**: never invent. Add real, permitted quotes to `marketing/testimonials.json` as `{ "quote", "name", "role"?, "company"?, "sourceUrl"?, "date", "consent": true }`, then `npm run seo:marketing`. The section renders nothing until at least one entry has `consent: true`.

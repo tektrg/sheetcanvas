@@ -11,7 +11,7 @@ import { getBackendBaseUrl } from '../../utils/backendApi';
 // Stored in localStorage so all conversations share a single quota bucket.
 const ROOT_SESSION_KEY = 'sheetcanvas:agent:rootSessionId';
 
-function getOrCreateSessionId(): string {
+export function getOrCreateSessionId(): string {
   try {
     const cached = localStorage.getItem(ROOT_SESSION_KEY);
     if (cached) return cached;
@@ -23,7 +23,7 @@ function getOrCreateSessionId(): string {
   }
 }
 
-function getBearer(): string | null {
+export function getBearer(): string | null {
   const t = (import.meta as any).env?.VITE_API_BEARER_TOKEN as string | undefined;
   return t && t.trim() ? t.trim() : null;
 }

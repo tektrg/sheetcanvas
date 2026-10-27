@@ -2,7 +2,7 @@
 
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
-import { EXCLUDED_PUBLIC_DIRS, ROUTE_ORDER, SITE_ORIGIN } from './seo-route-config.mjs';
+import { EXCLUDED_PUBLIC_DIRS, PUBLISHED_PAGES_LLMS_URL, ROUTE_ORDER, SITE_ORIGIN } from './seo-route-config.mjs';
 import {
   findSchemaObjectsByType,
   getJsonLdBlocks,
@@ -18,8 +18,11 @@ const RSS_FEED_URL = `${SITE_ORIGIN}/rss.xml`;
 const ROUTE_GROUPS = [
   {
     heading: 'Start here',
-    routes: ['/', '/learn/', '/docs/', '/blog/'],
-    extraLinks: [{ label: 'RSS feed', url: RSS_FEED_URL }],
+    routes: ['/', '/about/', '/learn/', '/docs/', '/blog/'],
+    extraLinks: [
+      { label: 'RSS feed', url: RSS_FEED_URL },
+      { label: 'Pages published by SheetCanvas users', url: PUBLISHED_PAGES_LLMS_URL },
+    ],
   },
   {
     heading: 'Product-specific guides',
@@ -42,6 +45,10 @@ const ROUTE_GROUPS = [
       '/alternatives/excel/',
       '/alternatives/google-sheets/',
       '/alternatives/airtable/',
+      '/compare/sheetcanvas-vs-excel/',
+      '/compare/sheetcanvas-vs-google-sheets/',
+      '/compare/sheetcanvas-vs-notion/',
+      '/compare/sheetcanvas-vs-tableau/',
       '/support/',
       '/privacy/',
       '/terms/',
@@ -181,7 +188,7 @@ function buildLlmsText(pagesByRoute) {
   return [
     '# SheetCanvas',
     '',
-    '> SheetCanvas is a browser-based spreadsheet canvas for local CSV/XLSX files, canvas objects, and shipped connector-backed sheets. The live app stays at https://sheetcanvas.com/.',
+    '> SheetCanvas is a free visual canvas for spreadsheets, charts and notes, where you analyze data and publish shareable data pages. It is a browser-based spreadsheet canvas: free core, with optional paid add-ons planned (as of Oct 2026). Optional: connect your own AI agent over MCP. The live app stays at https://sheetcanvas.com/.',
     '',
     ...ROUTE_GROUPS.map((group) => renderGroup(group, pagesByRoute)),
     '## Product boundaries',

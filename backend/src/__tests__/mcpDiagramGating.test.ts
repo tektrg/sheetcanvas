@@ -4,7 +4,7 @@ import type { Env } from '../env';
 
 const DIAGRAM_TOOLS = ['createDiagram', 'updateDiagramElement', 'addToDiagram', 'readDiagram', 'listDiagrams'];
 // scripts/mcp-production-preflight.mjs expects this many public tools (incl. the launcher).
-const PUBLIC_TOOL_COUNT = 19;
+const PUBLIC_TOOL_COUNT = 21; // includes read-only validateDiagram + listDiagramTypes
 const TOKEN = 'b'.repeat(48);
 const ORG_ARGS = { kind: 'orgchart', spec: { nodes: [{ id: 'ceo', label: 'CEO' }] } };
 

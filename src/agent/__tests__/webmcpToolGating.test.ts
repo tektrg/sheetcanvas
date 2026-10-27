@@ -36,6 +36,8 @@ const NEVER_GATED: ToolName[] = [
   'createNote',
   'listNotes',
   'createDiagram',
+  'validateDiagram',
+  'listDiagramTypes',
   'listConnections',
   'listConnectionProperties',
   'describeConnection',

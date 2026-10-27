@@ -4,6 +4,7 @@ export const EXCLUDED_PUBLIC_DIRS = new Set(['landing-page-design']);
 
 export const ROUTE_ORDER = [
   '/',
+  '/about/',
   '/learn/',
   '/docs/',
   '/blog/',
@@ -20,6 +21,10 @@ export const ROUTE_ORDER = [
   '/alternatives/excel/',
   '/alternatives/google-sheets/',
   '/alternatives/airtable/',
+  '/compare/sheetcanvas-vs-excel/',
+  '/compare/sheetcanvas-vs-google-sheets/',
+  '/compare/sheetcanvas-vs-notion/',
+  '/compare/sheetcanvas-vs-tableau/',
   '/support/',
   '/privacy/',
   '/terms/',
@@ -46,3 +51,8 @@ export function metadataForRoute(routePath) {
   }
   return ROUTE_METADATA[routePath] ?? DEFAULT_ROUTE_METADATA;
 }
+
+// Served dynamically by the backend Worker (backend/src/publish.ts), not by Pages:
+// user-published pages at /p/<slug>-<id>.
+export const PUBLISHED_PAGES_SITEMAP_URL = `${SITE_ORIGIN}/sitemap-pages.xml`;
+export const PUBLISHED_PAGES_LLMS_URL = `${SITE_ORIGIN}/llms-pages.txt`;

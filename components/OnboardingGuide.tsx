@@ -111,13 +111,17 @@ export const OnboardingGuide: React.FC<OnboardingGuideProps> = ({ isOpen, onClos
         aria-modal="true"
         aria-label="SheetCanvas welcome"
       >
-        <iframe
-          ref={frameRef}
-          className="bottom-sheet-welcome__frame"
-          title="SheetCanvas welcome design"
-          src={designFrameSrc}
-          onLoad={wireDesignControls}
-        />
+        {/* Clip lives on an inner wrapper so the close button is not inside the iframe's
+            rounded overflow:hidden layer (WebKit lets that composited layer swallow clicks). */}
+        <div className="bottom-sheet-welcome__clip">
+          <iframe
+            ref={frameRef}
+            className="bottom-sheet-welcome__frame"
+            title="SheetCanvas welcome design"
+            src={designFrameSrc}
+            onLoad={wireDesignControls}
+          />
+        </div>
         <button
           type="button"
           className="bottom-sheet-welcome__close"

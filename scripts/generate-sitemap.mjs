@@ -4,6 +4,7 @@ import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from '
 import { dirname, join, relative, sep } from 'node:path';
 import {
   EXCLUDED_PUBLIC_DIRS,
+  PUBLISHED_PAGES_SITEMAP_URL,
   ROUTE_ORDER,
   SITE_ORIGIN,
   metadataForRoute,
@@ -175,6 +176,9 @@ function buildSitemapIndex(latestLastmod) {
     '  <sitemap>',
     `    <loc>${SITE_ORIGIN}/sitemap.xml</loc>`,
     `    <lastmod>${latestLastmod}</lastmod>`,
+    '  </sitemap>',
+    '  <sitemap>',
+    `    <loc>${PUBLISHED_PAGES_SITEMAP_URL}</loc>`,
     '  </sitemap>',
     '</sitemapindex>',
     '',

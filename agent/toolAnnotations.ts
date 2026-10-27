@@ -47,6 +47,8 @@ export const TOOL_ANNOTATIONS: Record<ToolName, SharedToolAnnotations> = {
   addToDiagram: {},
   readDiagram: { readOnlyHint: true, untrustedContentHint: true },
   listDiagrams: { readOnlyHint: true, untrustedContentHint: true },
+  validateDiagram: { readOnlyHint: true },
+  listDiagramTypes: { readOnlyHint: true },
 };
 
 /**
@@ -85,4 +87,6 @@ export const MCP_TOOL_ANNOTATIONS: Record<ToolName, McpToolAnnotations> = {
   addToDiagram: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   readDiagram: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   listDiagrams: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+  validateDiagram: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+  listDiagramTypes: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
 };

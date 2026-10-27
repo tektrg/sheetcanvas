@@ -3,6 +3,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { SheetData, CellData, CellFormat, CellCoordinate, FilterCondition, SparklineConfig, SelectionContext } from '../types';
 import { getCellId, parseCellId, computeSheet } from '../utils/formulas';
 import { formatValue } from '../utils/formatting';
+import { markWheelForCanvasPan } from '../utils/wheelScrollChain';
 import { parseClipboardData } from '../utils/clipboard';
 import { getFilteredRows } from '../utils/dataAnalysis';
 import { serializeSheetSelection } from '../utils/sheetClipboard';
@@ -280,8 +281,9 @@ const SheetNodeComponent: React.FC<SheetNodeProps> = ({ id, onAddChart, onAddPiv
         hasOpenSheetControl ||
         scaleRef.current > SHEET_CANVAS_SCROLL_PASSTHROUGH_SCALE;
 
-      if (shouldKeepSheetScroll) {
-        e.stopPropagation();
+      // Kept wheels scroll the grid until its edge, then chain to the board (Canvas decides).
+      if (!shouldKeepSheetScroll) {
+        markWheelForCanvasPan(e);
       }
     };
     node.addEventListener('wheel', handleWheel, { passive: true });

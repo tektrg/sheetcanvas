@@ -4,6 +4,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import {
   EXCLUDED_PUBLIC_DIRS,
+  PUBLISHED_PAGES_SITEMAP_URL,
   ROUTE_ORDER,
   SITE_ORIGIN,
   metadataForRoute,
@@ -23,6 +24,7 @@ import {
   schemaUrlMatches,
   schemaUrlValue,
 } from './seo-html.mjs';
+import { auditRobotsTxt } from './seo-ai-crawlers.mjs';
 import { auditLlmsGeneratorScript, auditLlmsText } from './seo-llms-audit.mjs';
 import { auditRssFeed } from './seo-rss-audit.mjs';
 import {
@@ -475,12 +477,14 @@ function auditSitemap(rootPath, pages) {
     }
   }
 
-  if (!robots.includes(`Sitemap: ${SITE_ORIGIN}/sitemap-index.xml`)) {
-    reportError(label, 'robots.txt must point at the sitemap index.');
-  }
+  auditRobotsTxt(robots, SITE_ORIGIN).forEach((problem) => reportError(label, problem));
 
   if (!sitemapIndex.includes(`<loc>${SITE_ORIGIN}/sitemap.xml</loc>`)) {
     reportError(label, 'sitemap-index.xml must include sitemap.xml.');
+  }
+
+  if (!sitemapIndex.includes(`<loc>${PUBLISHED_PAGES_SITEMAP_URL}</loc>`)) {
+    reportError(label, 'sitemap-index.xml must include the dynamic published-pages sitemap.');
   }
 
   const latestSitemapLastmod = [...sitemapEntriesByPath.values()]

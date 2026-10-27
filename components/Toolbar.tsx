@@ -174,6 +174,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                       <span className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">Guide</span>
                     </button>
 
+                    <nav aria-label="About SheetCanvas" className="flex flex-wrap gap-x-3 gap-y-1 px-1 text-xs text-neutral-500 dark:text-neutral-400">
+                      <a href="/about/" target="_blank" rel="noopener" className="hover:text-neutral-800 hover:underline dark:hover:text-neutral-100">About</a>
+                      <a href="/compare/sheetcanvas-vs-excel/" target="_blank" rel="noopener" className="hover:text-neutral-800 hover:underline dark:hover:text-neutral-100">Compare</a>
+                      <a href="/docs/" target="_blank" rel="noopener" className="hover:text-neutral-800 hover:underline dark:hover:text-neutral-100">Docs</a>
+                    </nav>
+
                     <div className="h-px bg-neutral-100 dark:bg-neutral-800" />
 
                     {/* Shortcuts / Info */}

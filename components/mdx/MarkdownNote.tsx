@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { Suspense, lazy, useMemo } from 'react';
 import Markdown, { MarkdownToJSX } from 'markdown-to-jsx';
 import { CellValue } from './CellValue';
 import { CanvasChart } from './CanvasChart';
@@ -47,6 +47,25 @@ const createElement: MarkdownToJSX.Options['createElement'] = (tag, props, ...ch
   return React.createElement(tag, safeProps, ...children);
 };
 
+// ```mermaid fences render as diagrams; lazy so the renderer stays out of the main chunk.
+const MermaidBlock = lazy(() => import('./MermaidBlock'));
+
+const MERMAID_CLASS = /\b(?:lang|language)-mermaid\b/;
+
+/** `pre` override: a mermaid code child becomes a diagram, every other block renders unchanged. */
+const CodeBlock: React.FC<React.HTMLAttributes<HTMLPreElement>> = ({ children, ...rest }) => {
+  const child = React.Children.toArray(children)[0];
+  if (React.isValidElement<{ className?: string; children?: React.ReactNode }>(child) && MERMAID_CLASS.test(child.props.className ?? '')) {
+    const source = React.Children.toArray(child.props.children).join('');
+    return (
+      <Suspense fallback={<pre {...rest}>{children}</pre>}>
+        <MermaidBlock source={source} />
+      </Suspense>
+    );
+  }
+  return <pre {...rest}>{children}</pre>;
+};
+
 interface MarkdownNoteProps {
   content: string;
   darkMode?: boolean;
@@ -65,6 +84,7 @@ export const MarkdownNote: React.FC<MarkdownNoteProps> = ({ content, darkMode })
         CellValue: { component: CellValue },
         CanvasChart: { component: CanvasChart, props: { darkMode } },
         Sparkline: { component: Sparkline },
+        pre: { component: CodeBlock },
       },
     }),
     [darkMode]
