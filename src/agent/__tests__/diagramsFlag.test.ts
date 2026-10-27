@@ -23,6 +23,31 @@ describe('browser diagrams flag', () => {
     expect(realDiagramsEnabled).toBeTypeOf('function');
   });
 
+  it('enables diagrams via ?diagrams=1 or localStorage', () => {
+    const originalWindow = (globalThis as any).window;
+
+    try {
+      const storage = new Map<string, string>();
+      (globalThis as any).window = {
+        location: new URL('https://sheetcanvas.com/?diagrams=1'),
+        localStorage: {
+          getItem: (k: string) => storage.get(k) ?? null,
+          setItem: (k: string, v: string) => storage.set(k, v),
+          removeItem: (k: string) => storage.delete(k),
+        },
+      };
+      expect(actualFlag({ DEV: false })).toBe(true);
+
+      (globalThis as any).window.location = new URL('https://sheetcanvas.com/');
+      expect(actualFlag({ DEV: false })).toBe(false);
+
+      (globalThis as any).window.localStorage.setItem('diagrams_enabled', 'true');
+      expect(actualFlag({ DEV: false })).toBe(true);
+    } finally {
+      (globalThis as any).window = originalWindow;
+    }
+  });
+
   it('when off: WebMCP hides every diagram tool and the executor refuses them', async () => {
     flag.enabled = false;
     const desired = gating(['d1']);
