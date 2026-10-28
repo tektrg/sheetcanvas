@@ -340,7 +340,7 @@ async function checkLiveMcpRoutes() {
         recordPass('/mcp launcher reports opening until connected and keeps the session in widget-only metadata.');
       }
 
-      const resourceUri = 'ui://sheetcanvas/workspace-public-v1.html';
+      const resourceUri = 'ui://sheetcanvas/workspace-public-v2.html';
       const resource = await rpc(4, 'resources/read', { uri: resourceUri });
       const resourceBody = resource.body?.result?.contents?.[0];
       if (

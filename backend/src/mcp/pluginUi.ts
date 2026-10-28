@@ -1,5 +1,6 @@
 export const SHEETCANVAS_APP_RESOURCE_URI = 'ui://sheetcanvas/workspace-v1.html';
-export const SHEETCANVAS_PUBLIC_APP_RESOURCE_URI = 'ui://sheetcanvas/workspace-public-v1.html';
+// The host caches HTML by URI; bump this when the public bootstrap changes.
+export const SHEETCANVAS_PUBLIC_APP_RESOURCE_URI = 'ui://sheetcanvas/workspace-public-v2.html';
 export const SHEETCANVAS_APP_TOOL_NAME = 'openSheetCanvas';
 
 export const SHEETCANVAS_APP_TOOL = {

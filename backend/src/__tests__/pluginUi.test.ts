@@ -52,6 +52,14 @@ function runPublicWidget(metadata: unknown) {
 }
 
 describe('SheetCanvas ChatGPT app surface', () => {
+  it('versions the corrected public bootstrap separately from the private resource', () => {
+    // Resource URIs are host cache keys: the corrected bootstrap must not reuse v1.
+    expect(SHEETCANVAS_PUBLIC_APP_RESOURCE_URI).toBe('ui://sheetcanvas/workspace-public-v2.html');
+    expect(SHEETCANVAS_PUBLIC_APP_TOOL._meta.ui.resourceUri).toBe(SHEETCANVAS_PUBLIC_APP_RESOURCE_URI);
+    expect(buildPublicSheetCanvasAppResource().uri).toBe(SHEETCANVAS_PUBLIC_APP_RESOURCE_URI);
+    expect(SHEETCANVAS_APP_RESOURCE_URI).toBe('ui://sheetcanvas/workspace-v1.html');
+  });
+
   it('advertises a fullscreen global entrypoint linked to its MCP App resource', () => {
     expect(SHEETCANVAS_APP_TOOL).toMatchObject({
       name: 'openSheetCanvas',
