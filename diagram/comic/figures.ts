@@ -52,8 +52,8 @@ export function stickFigure(input: FigureInput): Figure {
   const pose = POSES[input.pose ?? 'stand'];
   const base = `char:${input.id}`;
   const group = { group: base };
-  // Wobbly limbs and a slightly lopsided head read hand-made at any roughness.
-  const limb = (part: string, pts: Pt[]) => polyline(`${base}:${part}`, wobble(pts, `${base}:${part}`), { ...group, roundness: true });
+  // Natural limbs and a slightly lopsided head; Excalidraw built-in roughness renders the hand-drawn effect.
+  const limb = (part: string, pts: Pt[]) => polyline(`${base}:${part}`, pts, { ...group, roundness: true });
   const head = { ...at(pose.head), r: HEAD_R * scale };
   return {
     head,

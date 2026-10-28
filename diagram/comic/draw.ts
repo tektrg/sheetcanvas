@@ -27,25 +27,10 @@ export function box(id: string, a: Pt, b: Pt, extra: Partial<SceneShape> = {}): 
   return { id, type: 'rect', x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), width: Math.abs(b.x - a.x), height: Math.abs(b.y - a.y), ...extra };
 }
 
-const WOBBLE = 0.035;
-const MAX_WOBBLE = 2.5;
-
 /**
- * Hand-made wobble: splits each segment in thirds and nudges the inner points
- * sideways a little (deterministic per `key`), so even clean strokes look drawn.
+ * Passes points through directly; Excalidraw's built-in sloppiness/roughness
+ * engine renders the hand-drawn effect without subdividing into extra points.
  */
-export function wobble(pts: Pt[], key: string): Pt[] {
-  const out: Pt[] = [pts[0]];
-  for (let i = 1; i < pts.length; i++) {
-    const a = pts[i - 1];
-    const b = pts[i];
-    const len = Math.hypot(b.x - a.x, b.y - a.y);
-    const n = len ? { x: -(b.y - a.y) / len, y: (b.x - a.x) / len } : { x: 0, y: 0 };
-    for (const t of [1 / 3, 2 / 3]) {
-      const amp = Math.min(MAX_WOBBLE, len * WOBBLE) * (((hashSeed(`${key}:${i}:${t}`) % 200) / 100) - 1);
-      out.push({ x: a.x + (b.x - a.x) * t + n.x * amp, y: a.y + (b.y - a.y) * t + n.y * amp });
-    }
-    out.push(b);
-  }
-  return out;
+export function wobble(pts: Pt[], _key?: string): Pt[] {
+  return pts;
 }

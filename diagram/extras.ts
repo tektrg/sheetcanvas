@@ -6,7 +6,7 @@ import type { ComicItem, DiagramElement, DiagramExtraItem, ItemAnchor } from './
 import { growPanel, shift, type LayoutOptions } from './comic/compile';
 import type { Box } from './comic/geometry';
 import { shapesToElements } from './freeform';
-import { sketchify } from './sketch';
+import { applyStyle } from './style';
 import { sceneBounds } from './scene';
 import { findBySemanticId, semanticIdOf } from './patch';
 
@@ -82,7 +82,7 @@ export function addItems(elements: DiagramElement[], items: DiagramExtraItem[], 
     const obstacles: Box[] = live.flatMap(obstacleBoxes).map((b) => ({ ...b, x: b.x - origin.x, y: b.y - origin.y }));
     const options: LayoutOptions = { scale: EXTRA_SCALE, obstacles };
     const { layout } = growPanel({ id: 'extras', items: panelItems, border: false }, size, warnings, options);
-    added = sketchify(shapesToElements(shift(layout.shapes, { ...origin, width: 0, height: 0 })));
+    added = applyStyle(shapesToElements(shift(layout.shapes, { ...origin, width: 0, height: 0 })), 'sketchy');
   }
   const existing = itemIds(live);
   for (const el of added) {

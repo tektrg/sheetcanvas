@@ -36,7 +36,7 @@ describe('addItems (comic items on any diagram)', () => {
     expect(box(omg).b).toBeLessThan(box(get(els, 'char:me:head')).y);
     for (const text of CURVE.filter((el) => el.type === 'text')) expect(hit(box(omg), box(text))).toBe(false);
     expect(get(els, 'speech:omg:tail').type).toBe('line');
-    expect(get(els, 'char:me:arms').roughness).toBe(0); // single-stroke sketch style
+    expect(get(els, 'char:me:arms').roughness).toBe(1); // Excalidraw built-in artist sloppiness
   });
 
   it('adds a title above the whole drawing', () => {

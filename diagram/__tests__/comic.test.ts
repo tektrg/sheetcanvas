@@ -232,8 +232,8 @@ describe('comic kind', () => {
       const end = tail.points![tail.points!.length - 1];
       expect(tail.x + end[0]).toBeCloseTo(0); // character faces right, so the voice comes from the left edge
       const legs = byId(elements, 'char:me:legs');
-      expect(legs.points).toHaveLength(7); // one profile leg hip -> knee -> foot (+2 wobble points per segment), no doubled lines
-      const kneeX = legs.x + legs.points![3][0];
+      expect(legs.points).toHaveLength(3); // one profile leg hip -> knee -> foot, no doubled lines
+      const kneeX = legs.x + legs.points![1][0];
       const seat = byId(elements, 'prop:chair:seat');
       expect(kneeX).toBeGreaterThan(seat.x + seat.points![1][0]); // knee past the chair's front leg
       const right: ComicSpec = { panels: [{ id: 'p', items: [{ type: 'character', id: 'a' }, { type: 'character', id: 'b', offPanel: true, side: 'right' }, { type: 'speech', id: 's', text: 'Hey', speaker: 'b' }] }] };
@@ -255,11 +255,11 @@ describe('comic kind', () => {
 });
 
 describe('hand-drawn style', () => {
-  it('figures wobble deterministically and heads are slightly lopsided', async () => {
+  it('figures have clean geometry and heads are slightly lopsided', async () => {
     const a = specToScene({ kind: 'comic', spec: XKCD }).elements;
     const b = specToScene({ kind: 'comic', spec: XKCD }).elements;
     const body = byId(a, 'char:me:body');
-    expect(body.points!.length).toBe(4); // neck -> 2 wobble points -> hip
+    expect(body.points!.length).toBe(2); // neck -> hip
     expect(body.roundness).toEqual({ type: 2 });
     expect(byId(b, 'char:me:body').points).toEqual(body.points);
     const head = byId(a, 'char:me:head');
@@ -290,44 +290,31 @@ describe('hand-drawn style', () => {
 
 });
 
-describe('sketchy style (single wobbly stroke baked into geometry)', () => {
+describe('sketchy style (uses Excalidraw built-in roughness: 1 / Artist sloppiness)', () => {
   const load = () => import('../style');
 
-  it('turns comic strokes into roughness-0 curved lines, closed outlines for heads/props', async () => {
+  it('sets roughness 1 on non-text elements and preserves native shapes', async () => {
     const { applyStyle } = await load();
     const els = applyStyle(specToScene({ kind: 'comic', spec: XKCD }).elements, 'sketchy');
-    for (const el of els.filter((e) => e.type !== 'text')) expect(el.roughness).toBe(0);
+    for (const el of els.filter((e) => e.type !== 'text')) expect(el.roughness).toBe(1);
     const head = byId(els, 'char:me:head');
-    expect(head).toMatchObject({ type: 'line', roundness: { type: 2 } });
-    expect(head.points!.at(-1)).toEqual(head.points![0]); // closes exactly, no overlap loop
+    expect(head.type).toBe('ellipse');
     const panel = byId(els, 'panel:p1');
-    expect(panel.type).toBe('line');
-    expect(panel.points!.length).toBeGreaterThan(5); // subdivided edges
+    expect(panel.type).toBe('rectangle');
     const arms = byId(els, 'char:me:arms');
-    expect(arms.points!.length).toBeGreaterThanOrEqual(byId(specToScene({ kind: 'comic', spec: XKCD }).elements, 'char:me:arms').points!.length);
+    expect(arms.points!.length).toBe(byId(specToScene({ kind: 'comic', spec: XKCD }).elements, 'char:me:arms').points!.length);
     expect(applyStyle(specToScene({ kind: 'comic', spec: XKCD }).elements, 'sketchy')).toEqual(els); // deterministic
   });
 
-  it('wobble scales with length and keeps vertices exact', async () => {
-    const { wobblePoints } = await import('../sketch');
-    const long = wobblePoints([[0, 0], [400, 0]], 'k');
-    const short = wobblePoints([[0, 0], [30, 0]], 'k');
-    const maxOff = (pts: [number, number][]) => Math.max(...pts.map((p) => Math.abs(p[1])));
-    expect(long[0]).toEqual([0, 0]);
-    expect(long.at(-1)).toEqual([400, 0]);
-    expect(maxOff(long)).toBeLessThanOrEqual(1.5);
-    expect(maxOff(long)).toBeGreaterThan(maxOff(short));
-  });
-
-  it('keeps labelled / arrow-bound shapes as real shapes so text and bindings survive', async () => {
+  it('keeps labelled / arrow-bound shapes as real shapes with roughness 1', async () => {
     const { applyStyle } = await load();
     const els = applyStyle(specToScene({ kind: 'flow', spec: { nodes: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], edges: [{ from: 'a', to: 'b' }] } }).elements, 'sketchy');
-    expect(byId(els, 'node:a')).toMatchObject({ type: 'rectangle', roughness: 0 });
-    expect(byId(els, 'edge:a->b')).toMatchObject({ type: 'arrow', roughness: 0 });
+    expect(byId(els, 'node:a')).toMatchObject({ type: 'rectangle', roughness: 1 });
+    expect(byId(els, 'edge:a->b')).toMatchObject({ type: 'arrow', roughness: 1 });
   });
 
   it('seated profile: one arm stroke and one leg stroke', () => {
     const els = specToScene({ kind: 'comic', spec: XKCD }).elements;
-    expect(byId(els, 'char:me:arms').points).toHaveLength(7); // shoulder -> elbow -> hand, + wobble
+    expect(byId(els, 'char:me:arms').points).toHaveLength(3); // shoulder -> elbow -> hand
   });
 });
