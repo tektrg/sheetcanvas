@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { mcpApp } from '../mcp/route';
 import {
   SHEETCANVAS_APP_RESOURCE_URI,
@@ -35,21 +35,32 @@ async function rpc(method: string, params?: Record<string, unknown>) {
 }
 
 function createPublicEnv(browserConnected = false) {
-  let active = false;
-  const stub = {
-    getStatus: async () => ({ browserConnected }),
-    initializePublicSession: async () => { active = true; },
-    isPublicSessionActive: async () => active,
-    terminatePublicSession: async () => { active = false; },
+  const sessions = new Map<string, { active: boolean; connected: boolean; calls: string[] }>();
+  const stateFor = (name: string) => {
+    if (!sessions.has(name)) sessions.set(name, { active: false, connected: browserConnected, calls: [] });
+    return sessions.get(name)!;
   };
   return {
     env: {
       CANVAS_BRIDGE: {
         idFromName: (name: string) => name,
-        get: () => stub,
+        get: (name: string) => {
+          const state = stateFor(name);
+          return {
+            getStatus: async () => ({ browserConnected: state.connected }),
+            initializePublicSession: async () => { state.active = true; },
+            isPublicSessionActive: async () => state.active,
+            terminatePublicSession: async () => { state.active = false; },
+            callTool: async (tool: string) => {
+              state.calls.push(tool);
+              return { ok: false, error: state.connected ? 'test-call-received' : 'not-connected' };
+            },
+          };
+        },
       },
     } as unknown as Env,
-    isActive: () => active,
+    isActive: () => [...sessions.values()].some((state) => state.active),
+    sessionState: (session: string) => stateFor(`public:${session}`),
   };
 }
 
@@ -75,6 +86,49 @@ async function publicRpc(
 }
 
 describe('ChatGPT MCP extension routes', () => {
+  it('keeps separate transport sessions isolated and preserves an explicitly reused session', async () => {
+    const { env, sessionState } = createPublicEnv();
+    const first = await publicRpc(env, 'initialize');
+    const second = await publicRpc(env, 'initialize');
+    const sessionA = first.response.headers.get('Mcp-Session-Id')!;
+    const sessionB = second.response.headers.get('Mcp-Session-Id')!;
+    expect(sessionA).not.toBe(sessionB);
+    sessionState(sessionA).connected = true;
+    const reopened = await publicRpc(env, 'initialize', undefined, sessionA);
+    expect(reopened.response.headers.get('Mcp-Session-Id')).toBe(sessionA);
+    const launch = (session: string) => publicRpc(env, 'tools/call', { name: SHEETCANVAS_APP_TOOL_NAME }, session);
+    expect((await launch(sessionA)).body.result.structuredContent.ready).toBe(true);
+    expect((await launch(sessionB)).body.result.structuredContent.ready).toBe(false);
+    await publicRpc(env, 'tools/call', { name: 'listSheets', arguments: {} }, sessionA);
+    expect(sessionState(sessionA).calls).toEqual(['listSheets']);
+    expect(sessionState(sessionB).calls).toEqual([]);
+  });
+
+  it('logs bounded correlation fingerprints without raw credentials, metadata or arguments', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    try {
+      const { env } = createPublicEnv();
+      const initialized = await publicRpc(env, 'initialize');
+      const session = initialized.response.headers.get('Mcp-Session-Id')!;
+      const metadata = { 'openai/session': 'host-secret-session', 'openai/subject': 'host-secret-subject', unknown: 'metadata-secret' };
+      await publicRpc(env, 'tools/call', { name: SHEETCANVAS_APP_TOOL_NAME, _meta: metadata, arguments: {} }, session);
+      await publicRpc(env, 'tools/call', { name: 'untrusted-secret-name', _meta: { 'openai/session': 'x'.repeat(513), 'openai/subject': {} }, arguments: { password: 'argument-secret' } }, session);
+      await publicRpc(env, 'tools/list', undefined, session);
+      const logs = info.mock.calls.filter(([prefix]) => prefix === '[sheetcanvas-public-session]');
+      expect(logs).toHaveLength(3);
+      expect(logs[1][1]).toMatchObject({ method: 'tools/call', toolName: SHEETCANVAS_APP_TOOL_NAME, hasHostSession: true, hasHostSubject: true });
+      expect(logs[1][1].sessionFingerprint).toMatch(/^[a-f0-9]{16}$/);
+      expect(logs[1][1].sessionFingerprint).toBe(logs[0][1].sessionFingerprint);
+      expect(logs[1][1].hostSessionFingerprint).toMatch(/^[a-f0-9]{16}$/);
+      expect(logs[2][1]).toMatchObject({ hasHostSession: false, hasHostSubject: false });
+      expect(logs[2][1]).not.toHaveProperty('toolName');
+      expect(logs[2][1]).not.toHaveProperty('hostSessionFingerprint');
+      const serialized = JSON.stringify(logs);
+      for (const secret of [session, ...Object.values(metadata), 'argument-secret', 'untrusted-secret-name']) expect(serialized).not.toContain(secret);
+    } finally {
+      info.mockRestore();
+    }
+  });
   it('reports ready only once the public workspace has connected', async () => {
     const { env } = createPublicEnv(true);
     const initialized = await publicRpc(env, 'initialize');

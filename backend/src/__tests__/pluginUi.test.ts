@@ -28,9 +28,16 @@ function runPublicWidget(metadata: unknown) {
   // An HTML iframe is not void: a self-closing iframe swallows the script as text.
   expect(scripts).toHaveLength(1);
   expect(scripts[0].parentNode).not.toMatchObject({ tagName: 'iframe' });
-  const iframe = { src: '' };
+  const navigations: string[] = [];
+  const iframe = {
+    get src() { return navigations.at(-1) ?? ''; },
+    set src(value: string) { navigations.push(value); },
+  };
   const listeners = new Map<string, (event: unknown) => void>();
+  const hostMessages: unknown[] = [];
+  const parent = { postMessage: (message: unknown) => hostMessages.push(message) };
   const window = {
+    parent,
     openai: { toolResponseMetadata: metadata },
     addEventListener: (name: string, listener: (event: unknown) => void) => listeners.set(name, listener),
   };
@@ -45,6 +52,11 @@ function runPublicWidget(metadata: unknown) {
   );
   return {
     iframe,
+    navigations,
+    hostMessages,
+    message: (data: unknown, trustedParent = true) => listeners.get('message')?.({
+      source: trustedParent ? parent : {}, data,
+    }),
     update: (nextMetadata: unknown) => listeners.get('openai:set_globals')?.({
       detail: { globals: { toolResponseMetadata: nextMetadata } },
     }),
@@ -53,8 +65,8 @@ function runPublicWidget(metadata: unknown) {
 
 describe('SheetCanvas ChatGPT app surface', () => {
   it('versions the corrected public bootstrap separately from the private resource', () => {
-    // Resource URIs are host cache keys: the corrected bootstrap must not reuse v1.
-    expect(SHEETCANVAS_PUBLIC_APP_RESOURCE_URI).toBe('ui://sheetcanvas/workspace-public-v2.html');
+    // Resource URIs are host cache keys: the standard bridge must not reuse v2.
+    expect(SHEETCANVAS_PUBLIC_APP_RESOURCE_URI).toBe('ui://sheetcanvas/workspace-public-v3.html');
     expect(SHEETCANVAS_PUBLIC_APP_TOOL._meta.ui.resourceUri).toBe(SHEETCANVAS_PUBLIC_APP_RESOURCE_URI);
     expect(buildPublicSheetCanvasAppResource().uri).toBe(SHEETCANVAS_PUBLIC_APP_RESOURCE_URI);
     expect(SHEETCANVAS_APP_RESOURCE_URI).toBe('ui://sheetcanvas/workspace-v1.html');
@@ -157,5 +169,58 @@ describe('SheetCanvas ChatGPT app surface', () => {
     expect(widget.iframe.src).toBe('');
     widget.update({ mcp_tool_result: { _meta: { bridgeSession: PUBLIC_SESSION } } });
     expect(widget.iframe.src).toBe(`https://sheetcanvas.com/?chatgpt_plugin=1#mcp_session=${PUBLIC_SESSION}`);
+  });
+
+  it('initializes the standard host bridge before acknowledging readiness', () => {
+    const widget = runPublicWidget(undefined);
+    expect(widget.hostMessages).toEqual([{
+      jsonrpc: '2.0', id: 'sheetcanvas-initialize', method: 'ui/initialize',
+      params: {
+        appInfo: { name: 'sheetcanvas-widget', version: '1.0.1' },
+        appCapabilities: {}, protocolVersion: '2026-01-26',
+      },
+    }]);
+    widget.message({ jsonrpc: '2.0', id: 'other', result: {} });
+    widget.message({ jsonrpc: '2.0', id: 'sheetcanvas-initialize', result: {} }, false);
+    expect(widget.hostMessages).toHaveLength(1);
+    widget.message({ jsonrpc: '2.0', id: 'sheetcanvas-initialize', result: {} });
+    widget.message({ jsonrpc: '2.0', id: 'sheetcanvas-initialize', result: {} });
+    expect(widget.hostMessages).toHaveLength(2);
+    expect(widget.hostMessages[1]).toEqual({
+      jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {},
+    });
+  });
+
+  it('switches an existing canvas only for valid parent tool-result hidden metadata', () => {
+    const widget = runPublicWidget({ bridgeSession: PUBLIC_SESSION });
+    const nextSession = `p_${'c'.repeat(64)}`;
+    const result = { jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: { _meta: { bridgeSession: nextSession } } };
+    widget.message(result, false);
+    widget.message({ ...result, jsonrpc: '1.0' });
+    widget.message({ ...result, method: 'ui/notifications/tool-input' });
+    widget.message({ ...result, id: 'unexpected-request' });
+    widget.message({ ...result, params: { structuredContent: { bridgeSession: nextSession } } });
+    widget.message({ ...result, params: { _meta: { bridgeSession: 'invalid' } } });
+    widget.message({ ...result, params: {} });
+    expect(widget.navigations).toHaveLength(1);
+    widget.message(result);
+    expect(widget.iframe.src).toBe(`https://sheetcanvas.com/?chatgpt_plugin=1#mcp_session=${nextSession}`);
+    widget.message(result);
+    expect(widget.navigations).toHaveLength(2);
+  });
+
+  it('boots without compatibility globals using a standard tool result', () => {
+    const widget = runPublicWidget(undefined);
+    widget.message({ jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: {
+      _meta: { bridgeSession: PUBLIC_SESSION },
+    } });
+    expect(widget.iframe.src).toBe(`https://sheetcanvas.com/?chatgpt_plugin=1#mcp_session=${PUBLIC_SESSION}`);
+  });
+
+  it('does not acknowledge a failed bridge initialization', () => {
+    const widget = runPublicWidget(undefined);
+    widget.message({ jsonrpc: '2.0', id: 'sheetcanvas-initialize', error: { code: -32601 } });
+    expect(widget.hostMessages).toHaveLength(1);
+    expect(widget.iframe.src).toBe('');
   });
 });

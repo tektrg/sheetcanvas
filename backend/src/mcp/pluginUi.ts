@@ -1,6 +1,6 @@
 export const SHEETCANVAS_APP_RESOURCE_URI = 'ui://sheetcanvas/workspace-v1.html';
 // The host caches HTML by URI; bump this when the public bootstrap changes.
-export const SHEETCANVAS_PUBLIC_APP_RESOURCE_URI = 'ui://sheetcanvas/workspace-public-v2.html';
+export const SHEETCANVAS_PUBLIC_APP_RESOURCE_URI = 'ui://sheetcanvas/workspace-public-v3.html';
 export const SHEETCANVAS_APP_TOOL_NAME = 'openSheetCanvas';
 
 export const SHEETCANVAS_APP_TOOL = {
@@ -117,6 +117,7 @@ export function buildPublicSheetCanvasAppResource() {
         var sessionPattern = /^p_[a-f0-9]{64}$/;
         var iframe = document.getElementById('sheetcanvas');
         var currentSession = '';
+        var initializationPending = true;
 
         function readBridgeSession(metadata) {
           if (!metadata || typeof metadata !== 'object') return '';
@@ -144,6 +145,33 @@ export function buildPublicSheetCanvasAppResource() {
           url.hash = new URLSearchParams({ mcp_session: bridgeSession }).toString();
           iframe.src = url.toString();
         }
+
+        // The host may deliver later tool results through MCP Apps rather than
+        // the ChatGPT compatibility globals. Only the embedding parent is trusted.
+        window.addEventListener('message', function (event) {
+          if (event.source !== window.parent) return;
+          var message = event.data;
+          if (!message || message.jsonrpc !== '2.0') return;
+          if (message.id === 'sheetcanvas-initialize' && initializationPending) {
+            initializationPending = false;
+            if (!message.error && message.result && typeof message.result === 'object') {
+              window.parent.postMessage({
+                jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {}
+              }, '*');
+            }
+            return;
+          }
+          if (message.id === undefined && message.method === 'ui/notifications/tool-result') {
+            render(message.params && message.params._meta);
+          }
+        }, { passive: true });
+        window.parent.postMessage({
+          jsonrpc: '2.0', id: 'sheetcanvas-initialize', method: 'ui/initialize',
+          params: {
+            appInfo: { name: 'sheetcanvas-widget', version: '1.0.1' },
+            appCapabilities: {}, protocolVersion: '2026-01-26'
+          }
+        }, '*');
 
         window.addEventListener('openai:set_globals', function (event) {
           var globals = event && event.detail && event.detail.globals;

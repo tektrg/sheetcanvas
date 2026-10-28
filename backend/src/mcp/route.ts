@@ -141,6 +141,35 @@ async function hashToken(token: string): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
+// Diagnostics deliberately exclude request bodies, URLs and raw capabilities.
+// Host identifiers are opaque hints only; never use these logs as authorization.
+async function logPublicSessionDiagnostic(session: string, request?: JsonRpcRequest) {
+  const method = request?.method ?? 'browser/connect';
+  if (!['initialize', 'tools/call', 'browser/connect'].includes(method)) return;
+  const metadata = request?.params?._meta;
+  const hints = metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+    ? metadata as Record<string, unknown> : {};
+  const readHint = (name: string) => {
+    const value = hints[name];
+    return typeof value === 'string' && value.length > 0 && value.length <= 512 ? value : null;
+  };
+  const hostSession = readHint('openai/session');
+  const hostSubject = readHint('openai/subject');
+  const requestedTool = request?.params?.name;
+  const toolName = requestedTool === SHEETCANVAS_APP_TOOL_NAME ||
+    (typeof requestedTool === 'string' && TOOL_NAMES.includes(requestedTool as ToolName))
+    ? requestedTool : undefined;
+  console.info('[sheetcanvas-public-session]', {
+    method,
+    ...(toolName ? { toolName } : {}),
+    sessionFingerprint: (await hashToken(session)).slice(0, 16),
+    hasHostSession: hostSession !== null,
+    hasHostSubject: hostSubject !== null,
+    ...(hostSession ? { hostSessionFingerprint: (await hashToken(`session:${hostSession}`)).slice(0, 16) } : {}),
+    ...(hostSubject ? { hostSubjectFingerprint: (await hashToken(`subject:${hostSubject}`)).slice(0, 16) } : {}),
+  });
+}
+
 async function recordMcpEvent(
   env: Env,
   event: {
@@ -411,6 +440,7 @@ mcpApp.get('/api/mcp/public-bridge/:session', async (c) => {
   if (c.req.header('Upgrade')?.toLowerCase() !== 'websocket') {
     return c.json({ error: { code: 'upgrade_required', message: 'Expected WebSocket upgrade' } }, 426);
   }
+  await logPublicSessionDiagnostic(session);
   return bridge.fetch(c.req.raw);
 });
 
@@ -450,6 +480,7 @@ mcpApp.post('/mcp', async (c) => {
 
   c.header('Mcp-Session-Id', session);
   c.header('Cache-Control', 'no-store');
+  await logPublicSessionDiagnostic(session, request);
   const response = await handleMcpRequest(
     c.env,
     {
