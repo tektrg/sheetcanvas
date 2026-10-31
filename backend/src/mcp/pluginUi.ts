@@ -1,6 +1,6 @@
 export const SHEETCANVAS_APP_RESOURCE_URI = 'ui://sheetcanvas/workspace-v1.html';
 // The host caches HTML by URI; bump this when the public bootstrap changes.
-export const SHEETCANVAS_PUBLIC_APP_RESOURCE_URI = 'ui://sheetcanvas/workspace-public-v3.html';
+export const SHEETCANVAS_PUBLIC_APP_RESOURCE_URI = 'ui://sheetcanvas/workspace-public-v4.html';
 export const SHEETCANVAS_APP_TOOL_NAME = 'openSheetCanvas';
 
 export const SHEETCANVAS_APP_TOOL = {
@@ -39,7 +39,22 @@ export const SHEETCANVAS_APP_TOOL = {
 
 export const SHEETCANVAS_PUBLIC_APP_TOOL = {
   ...SHEETCANVAS_APP_TOOL,
-  description: 'Open the interactive SheetCanvas workspace before calling canvas tools. ready=false means the workspace is opening; subsequent tools wait briefly for it to connect. Keep the workspace visible while working.',
+  description: 'Open the interactive SheetCanvas workspace before calling canvas tools. Reuse the active canvasHandle when reopening; omit it only to create a new canvas. Pass the returned canvasHandle to every canvas tool. ready=false means the workspace is opening. Keep it visible while working.',
+  inputSchema: {
+    type: 'object',
+    properties: { canvasHandle: { type: 'string', pattern: '^c_[a-f0-9]{64}$' } },
+    additionalProperties: false,
+  },
+  outputSchema: {
+    type: 'object',
+    properties: {
+      ready: { type: 'boolean' },
+      canvasHandle: { type: 'string', pattern: '^c_[a-f0-9]{64}$' },
+      expiresInSeconds: { type: 'number' },
+    },
+    required: ['ready', 'canvasHandle', 'expiresInSeconds'],
+    additionalProperties: false,
+  },
   _meta: {
     ...SHEETCANVAS_APP_TOOL._meta,
     ui: {
@@ -115,9 +130,14 @@ export function buildPublicSheetCanvasAppResource() {
     <script>
       (function () {
         var sessionPattern = /^p_[a-f0-9]{64}$/;
+        var handlePattern = /^c_[a-f0-9]{64}$/;
         var iframe = document.getElementById('sheetcanvas');
         var currentSession = '';
         var initializationPending = true;
+        var bridgeInitialized = false;
+        var currentHandle = '';
+        var publishedHandle = '';
+        var contextRequestId = 0;
 
         function readBridgeSession(metadata) {
           if (!metadata || typeof metadata !== 'object') return '';
@@ -130,14 +150,50 @@ export function buildPublicSheetCanvasAppResource() {
             mcpResult && mcpResult._meta, nestedMcpResult && nestedMcpResult._meta];
           for (var index = 0; index < candidates.length; index += 1) {
             var session = candidates[index] && candidates[index].bridgeSession;
-            if (typeof session === 'string' && sessionPattern.test(session)) return session;
+            if (typeof session === 'string' && sessionPattern.test(session)) return candidates[index];
           }
           return '';
         }
 
+        function modelContext() {
+          return {
+            canvasHandle: currentHandle,
+            instruction: 'This is the active SheetCanvas canvas. Pass this canvasHandle to every canvas tool, including openSheetCanvas when reopening. Do not create a new canvas while this handle is active. It grants access only to this temporary anonymous canvas, for at most two hours.'
+          };
+        }
+
+        function publishModelContext() {
+          if (!bridgeInitialized || !currentHandle || publishedHandle === currentHandle) return;
+          publishedHandle = currentHandle;
+          window.parent.postMessage({
+            jsonrpc: '2.0', id: 'sheetcanvas-context-' + (++contextRequestId),
+            method: 'ui/update-model-context',
+            params: { content: [{ type: 'text', text: JSON.stringify(modelContext()) }] }
+          }, '*');
+        }
+
         function render(metadata) {
-          var bridgeSession = readBridgeSession(metadata);
-          if (!bridgeSession) return;
+          var hidden = readBridgeSession(metadata);
+          if (!hidden) return;
+          var bridgeSession = hidden.bridgeSession;
+          var handle = hidden.canvasHandle;
+          if (handle !== undefined && (typeof handle !== 'string' || !handlePattern.test(handle))) return;
+          if (typeof handle === 'string' && handlePattern.test(handle) && handle !== currentHandle) {
+            currentHandle = handle;
+            // Persist the intentionally model-visible handle for later floating-chat turns.
+            // Never copy hidden metadata or the bridge session into widget state.
+            var openai = window.openai;
+            if (openai && typeof openai.setWidgetState === 'function') {
+              var previous = openai.widgetState;
+              var state = { modelContent: modelContext() };
+              if (previous && typeof previous === 'object') {
+                if (previous.privateContent !== undefined) state.privateContent = previous.privateContent;
+                if (previous.imageIds !== undefined) state.imageIds = previous.imageIds;
+              }
+              try { openai.setWidgetState(state); } catch (_) { /* Standard bridge remains available. */ }
+            }
+            publishModelContext();
+          }
           if (bridgeSession === currentSession) return;
           currentSession = bridgeSession;
           var url = new URL('https://sheetcanvas.com/');
@@ -155,9 +211,11 @@ export function buildPublicSheetCanvasAppResource() {
           if (message.id === 'sheetcanvas-initialize' && initializationPending) {
             initializationPending = false;
             if (!message.error && message.result && typeof message.result === 'object') {
+              bridgeInitialized = true;
               window.parent.postMessage({
                 jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {}
               }, '*');
+              publishModelContext();
             }
             return;
           }

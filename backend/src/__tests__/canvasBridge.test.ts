@@ -24,6 +24,20 @@ function setup() {
 afterEach(() => vi.useRealTimers());
 
 describe('public canvas readiness', () => {
+  it('stores handle pointers across recreation and deletes them on expiry without renewal', async () => {
+    vi.useFakeTimers();
+    const { bridge, ctx, values } = setup();
+    const session = `p_${'a'.repeat(64)}`;
+    const expiresAtMs = Date.now() + 7_200_000;
+    await bridge.registerPublicCanvasHandle(session, expiresAtMs);
+    const recreated = new CanvasBridge(ctx as any, {});
+    expect(await recreated.resolvePublicCanvasHandle(Date.now())).toEqual({ session, expiresAtMs });
+    await expect(recreated.registerPublicCanvasHandle(session, expiresAtMs + 1)).rejects.toThrow('already registered');
+    await vi.advanceTimersByTimeAsync(7_200_000);
+    await recreated.alarm();
+    expect(await recreated.resolvePublicCanvasHandle(Date.now())).toBeNull();
+    expect(values.has('public-canvas-pointer')).toBe(false);
+  });
   it('waits for restoration before dispatching a public call', async () => {
     vi.useFakeTimers();
     const { bridge, sockets } = setup();

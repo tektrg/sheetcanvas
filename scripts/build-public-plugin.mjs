@@ -9,7 +9,7 @@ import { promisify } from 'node:util';
 const execFileAsync = promisify(execFile);
 const ORIGIN = 'https://sheetcanvas.com';
 const MCP_URL = `${ORIGIN}/mcp`;
-const PLUGIN_VERSION = '1.0.1';
+const PLUGIN_VERSION = '1.0.2';
 const PACKAGE_DIR = path.join(homedir(), 'plugins', 'sheetcanvas-public');
 const ZIP_PATH = path.join(homedir(), 'plugins', 'sheetcanvas-public-plugin.zip');
 const DEMO_PATH = new URL('../public/plugin-review/demo.webm', import.meta.url);
@@ -18,7 +18,7 @@ const interfaceMetadata = {
   displayName: 'SheetCanvas',
   shortDescription: 'Visual spreadsheet analysis',
   longDescription:
-    'Create, inspect, format, and arrange sheets, charts, pivots, and notes on an interactive spreadsheet canvas. The public plugin uses an anonymous, short-lived browser session and does not sign in to a SheetCanvas account. Keep the workspace open while ChatGPT works; session-local canvas data is not a cloud backup.',
+    'Create, inspect, format, and arrange sheets, charts, pivots, and notes on an interactive spreadsheet canvas. The public plugin uses an isolated anonymous canvas for up to two hours, without SheetCanvas account sign-in. A temporary canvas handle appears in tool messages and lets ChatGPT continue working across calls. Keep the workspace open while ChatGPT works; temporary canvas data is not a cloud backup.',
   developerName: 'The Indie App',
   category: 'Productivity',
   capabilities: ['Read spreadsheets', 'Edit cells', 'Create charts', 'Create notes'],
@@ -43,31 +43,31 @@ const review = {
         description: 'Open the interactive spreadsheet canvas',
         prompt: 'Open SheetCanvas so I can work on a spreadsheet canvas.',
         tools_triggered: 'openSheetCanvas',
-        expected_behavior: 'Display the SheetCanvas workspace. While the browser connects, report that it is opening rather than claiming it is ready. After connection, canvas tools can read the workspace.',
+        expected_behavior: 'Display the SheetCanvas workspace. Retain the returned canvasHandle and pass it to subsequent canvas tools, including launcher retries; do not create a replacement canvas merely because an MCP connection changes. While the browser connects, report that it is opening rather than claiming it is ready. After connection, canvas tools can read the workspace.',
       },
       {
         description: 'Create and populate a small sheet',
         prompt: 'In SheetCanvas, create a sheet named Quarterly Plan with headers Quarter and Target, then add Q1 120 and Q2 150.',
         tools_triggered: 'openSheetCanvas, createSheet, getRange',
-        expected_behavior: 'Create one sheet with the requested title and exactly six populated cells: two headers plus Q1, 120, Q2, and 150.',
+        expected_behavior: 'Use the launcher canvasHandle in every subsequent canvas tool. Create one sheet with the requested title and exactly six populated cells: two headers plus Q1, 120, Q2, and 150.',
       },
       {
         description: 'Calculate an exact change from a fresh fixture',
         prompt: 'In a fresh SheetCanvas workspace, create a sheet named Growth Check with Month and Revenue headers, Jan 100 and Feb 130. Read A1:B3 and tell me exactly how much revenue increased.',
         tools_triggered: 'openSheetCanvas, createSheet, getRange',
-        expected_behavior: 'Create the fixture, read its exact range, and report that revenue increased by 30 from Jan to Feb.',
+        expected_behavior: 'Open a fresh canvas and use its returned canvasHandle throughout. Create the fixture, read its exact range, and report that revenue increased by 30 from Jan to Feb.',
       },
       {
         description: 'Create a chart from a fresh fixture',
         prompt: 'In a fresh SheetCanvas workspace, create a sheet named Chart Fixture with Quarter and Target headers, Q1 120 and Q2 150. Then create a bar chart titled Target by Quarter using Quarter as labels and Target as values.',
         tools_triggered: 'openSheetCanvas, createSheet, createChart',
-        expected_behavior: 'Create the two-row fixture and one bar chart titled Target by Quarter using the fixture columns.',
+        expected_behavior: 'Open a fresh canvas and use its returned canvasHandle throughout. Create the two-row fixture and one bar chart titled Target by Quarter using the fixture columns.',
       },
       {
         description: 'Add a note with an exact sourced calculation',
         prompt: 'In a fresh SheetCanvas workspace, create a sheet named Note Fixture with Quarter and Target headers, Q1 120 and Q2 150. Read A1:B3, then add a note titled Plan takeaway saying Q2 exceeds Q1 by 30, including both values.',
         tools_triggered: 'openSheetCanvas, createSheet, getRange, createNote',
-        expected_behavior: 'Create the fixture and one note titled Plan takeaway that includes 120, 150, and the exact difference of 30.',
+        expected_behavior: 'Open a fresh canvas and use its returned canvasHandle throughout. Create the fixture and one note titled Plan takeaway that includes 120, 150, and the exact difference of 30.',
       },
     ],
     negative: [
@@ -91,7 +91,7 @@ const review = {
 
 const publication = {
   release_notes:
-    'Review remediation: reports actual workspace readiness, waits for browser connection and restoration before canvas tools, and recovers an isolated temporary canvas when the workspace reloads within its two-hour session.',
+    'Review remediation: separates the anonymous canvas lifetime from MCP transport connections. The launcher returns a temporary two-hour canvasHandle for subsequent canvas tools; the browser bridge credential stays widget-only. Reports actual readiness and preserves isolated canvas recovery within its expiry. Real ChatGPT review-case verification is required before resubmission.',
 };
 
 function portableManifest() {
@@ -163,6 +163,7 @@ async function validatePackage() {
 
   if (mcp.mcpServers?.sheetcanvas?.url !== MCP_URL) throw new Error('Public MCP URL is not canonical.');
   if (/\/mcp\/[a-f0-9]{48}/.test(serialized)) throw new Error('A private capability leaked into the public package.');
+  if (/\b[cp]_[a-f0-9]{64}\b/.test(serialized)) throw new Error('A temporary canvas capability leaked into the public package.');
   if (positives?.length !== 5 || negatives?.length !== 3) throw new Error('Review metadata must contain exactly 5 positive and 3 negative cases.');
   if (!positives.every((item) => item.description && item.prompt && item.tools_triggered && item.expected_behavior)) {
     throw new Error('Every positive review case must be complete.');

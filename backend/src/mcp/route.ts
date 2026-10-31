@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { toolDefs, TOOL_NAMES, type ToolName } from '../../../agent/tools';
 import type { Env } from '../env';
 import type { BridgeCallResult, BridgeStatus } from './bridge';
+import { mintPublicCapability, PUBLIC_CANVAS_HANDLE_PATTERN, PUBLIC_CANVAS_TTL_MS,
+  publicCanvasInputSchema, type PublicCanvasPointer } from './publicCanvasHandle';
 import { requireBearerToken } from '../auth';
 import { ANALYSIS_PLAYBOOK, PUBLIC_ANALYSIS_PLAYBOOK } from '../agent/analysisPlaybook';
 import { MCP_TOOL_ANNOTATIONS } from '../../../agent/toolAnnotations';
@@ -35,7 +37,6 @@ const SUPPORTED_PROTOCOL_VERSIONS = ['2025-06-18'];
 const SERVER_INFO = { name: 'sheetcanvas', version: '1.0.1' };
 const TOKEN_PATTERN = /^[a-f0-9]{48}$/;
 const PUBLIC_SESSION_PATTERN = /^p_[a-f0-9]{64}$/;
-const PUBLIC_SESSION_TTL_MS = 2 * 60 * 60 * 1_000;
 const MCP_EVENT_TYPES = {
   tokenGenerated: 'token_generated',
   exposeEnabled: 'expose_enabled',
@@ -79,7 +80,10 @@ function privateToolNames(env: Env): readonly ToolName[] {
 const PUBLIC_TOOL_NAMES = TOOL_NAMES.filter(
   (name) => !PUBLIC_CONNECTOR_TOOL_NAMES.has(name) && !PRIVATE_ONLY_TOOL_NAMES.has(name),
 );
-const PUBLIC_MCP_TOOL_LIST = [SHEETCANVAS_PUBLIC_APP_TOOL, ...PUBLIC_TOOL_NAMES.map(toMcpTool)];
+const PUBLIC_MCP_TOOL_LIST = [SHEETCANVAS_PUBLIC_APP_TOOL, ...PUBLIC_TOOL_NAMES.map((name) => {
+  const tool = toMcpTool(name);
+  return { ...tool, inputSchema: publicCanvasInputSchema(tool.inputSchema) };
+})];
 
 interface McpConnection {
   bridgeKey: string;
@@ -109,13 +113,6 @@ function mintToken(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-function mintPublicSession(): string {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  const value = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
-  return `p_${value}`;
-}
-
 // Hand-written stub surface: workers-types' generated RPC types blow up
 // TypeScript's instantiation depth (TS2589) on these signatures.
 interface CanvasBridgeStub {
@@ -125,6 +122,8 @@ interface CanvasBridgeStub {
   initializePublicSession(expiresAtMs: number): Promise<void>;
   isPublicSessionActive(nowMs: number): Promise<boolean>;
   terminatePublicSession(): Promise<void>;
+  registerPublicCanvasHandle(session: string, expiresAtMs: number): Promise<void>;
+  resolvePublicCanvasHandle(nowMs: number): Promise<PublicCanvasPointer | null>;
 }
 
 function bridgeStubForToken(env: Env, token: string): CanvasBridgeStub {
@@ -229,19 +228,48 @@ async function handleToolsCall(env: Env, connection: McpConnection, request: Jso
   const id = request.id ?? null;
   const params = request.params ?? {};
   const toolName = params.name;
+  const suppliedArgs = params.arguments ?? {};
+  let publicCanvas: (PublicCanvasPointer & { canvasHandle: string }) | undefined;
+  if (connection.mode === 'public' && (toolName === SHEETCANVAS_APP_TOOL_NAME || PUBLIC_TOOL_NAMES.includes(toolName as ToolName))) {
+    if (!suppliedArgs || typeof suppliedArgs !== 'object' || Array.isArray(suppliedArgs)) {
+      return rpcError(id, -32602, 'Expected an arguments object');
+    }
+    if (toolName === SHEETCANVAS_APP_TOOL_NAME && Object.keys(suppliedArgs).some((key) => key !== 'canvasHandle')) {
+      return rpcError(id, -32602, 'openSheetCanvas accepts only an optional canvasHandle');
+    }
+    const handle = (suppliedArgs as Record<string, unknown>).canvasHandle;
+    if (toolName === SHEETCANVAS_APP_TOOL_NAME && handle === undefined) {
+      const session = mintPublicCapability('p');
+      const canvasHandle = mintPublicCapability('c');
+      const expiresAtMs = Date.now() + PUBLIC_CANVAS_TTL_MS;
+      await bridgeStubForToken(env, `public:${session}`).initializePublicSession(expiresAtMs);
+      await bridgeStubForToken(env, `public-canvas:${canvasHandle}`).registerPublicCanvasHandle(session, expiresAtMs);
+      publicCanvas = { session, canvasHandle, expiresAtMs };
+    } else {
+      if (typeof handle !== 'string' || !PUBLIC_CANVAS_HANDLE_PATTERN.test(handle)) {
+        return rpcError(id, -32602, 'A valid canvasHandle returned by openSheetCanvas is required. No canvas changes were made.');
+      }
+      const pointer = await bridgeStubForToken(env, `public-canvas:${handle}`).resolvePublicCanvasHandle(Date.now());
+      if (!pointer || !(await bridgeStubForToken(env, `public:${pointer.session}`).isPublicSessionActive(Date.now()))) {
+        return rpcError(id, -32602, 'Canvas handle is unknown or expired. Open a new SheetCanvas workspace. No canvas changes were made.');
+      }
+      publicCanvas = { ...pointer, canvasHandle: handle };
+    }
+  }
   if (toolName === SHEETCANVAS_APP_TOOL_NAME) {
-    const args = params.arguments ?? {};
-    if (!args || Array.isArray(args) || typeof args !== 'object' || Object.keys(args).length > 0) {
+    const args = suppliedArgs;
+    if (!args || Array.isArray(args) || typeof args !== 'object' || Object.keys(args).some((key) => key !== 'canvasHandle' || connection.mode !== 'public')) {
       return rpcError(id, -32602, `${SHEETCANVAS_APP_TOOL_NAME} does not accept arguments`);
     }
     const ready = connection.mode === 'private' ||
-      (await bridgeStubForToken(env, connection.bridgeKey).getStatus()).browserConnected;
+      (await bridgeStubForToken(env, `public:${publicCanvas!.session}`).getStatus()).browserConnected;
     return rpcResult(id, {
       content: [{ type: 'text', text: ready ? 'SheetCanvas is ready in the interactive workspace.' :
         'SheetCanvas is opening in the interactive workspace. Canvas tools wait briefly for it to connect; keep the workspace visible.' }],
-      structuredContent: { ready },
+      structuredContent: { ready, ...(publicCanvas ? { canvasHandle: publicCanvas.canvasHandle,
+        expiresInSeconds: Math.max(0, Math.floor((publicCanvas.expiresAtMs - Date.now()) / 1000)) } : {}) },
       ...(connection.mode === 'public'
-        ? { _meta: { bridgeSession: connection.publicSession } }
+        ? { _meta: { bridgeSession: publicCanvas!.session, canvasHandle: publicCanvas!.canvasHandle } }
         : {}),
     });
   }
@@ -255,13 +283,15 @@ async function handleToolsCall(env: Env, connection: McpConnection, request: Jso
     return rpcError(id, -32602, `Unknown tool: ${toolName}`);
   }
 
-  const args = params.arguments ?? {};
+  const args = connection.mode === 'public'
+    ? Object.fromEntries(Object.entries(suppliedArgs as Record<string, unknown>).filter(([key]) => key !== 'canvasHandle'))
+    : suppliedArgs;
   const parsed = toolDefs[toolName as ToolName].inputSchema.safeParse(args);
   if (!parsed.success) {
     return rpcError(id, -32602, `Invalid arguments for ${toolName}: ${parsed.error.message}`);
   }
 
-  const bridge = bridgeStubForToken(env, connection.bridgeKey);
+  const bridge = bridgeStubForToken(env, publicCanvas ? `public:${publicCanvas.session}` : connection.bridgeKey);
   const callResult = await bridge.callTool(toolName, parsed.data as Record<string, unknown>);
   if (!callResult.ok) {
     return rpcResult(id, {
@@ -292,7 +322,7 @@ function handleInitialize(request: JsonRpcRequest, mode: McpConnection['mode']) 
     serverInfo: SERVER_INFO,
     instructions:
       (mode === 'public'
-        ? 'Open the SheetCanvas workspace before using canvas tools. This public plugin uses an anonymous, short-lived session and does not access a SheetCanvas account. '
+        ? 'Call openSheetCanvas before canvas tools. Save its canvasHandle and pass that exact handle with every canvas tool call, including after transport reconnection. Reopen the same workspace by passing the handle to openSheetCanvas; omit it only to create a new canvas. Handles grant access only to an anonymous canvas and expire after two hours without extension. Never print or share handles with unrelated tools. This plugin does not access a SheetCanvas account. '
         : 'Tools execute inside a live SheetCanvas browser tab. If a call fails with "Canvas not connected", ask the user to open their SheetCanvas tab and enable "Expose to agents" in the Copilot panel. ') +
       'If a write tool times out, verify with a read (e.g. getRange) before retrying — the write may already have been applied.\n\n' +
       (mode === 'public' ? PUBLIC_ANALYSIS_PLAYBOOK : ANALYSIS_PLAYBOOK),
@@ -464,9 +494,9 @@ mcpApp.post('/mcp', async (c) => {
       if (!(await bridge.isPublicSessionActive(Date.now()))) session = '';
     }
     if (!session) {
-      session = mintPublicSession();
+      session = mintPublicCapability('p');
       bridge = bridgeStubForToken(c.env, `public:${session}`);
-      await bridge.initializePublicSession(Date.now() + PUBLIC_SESSION_TTL_MS);
+      await bridge.initializePublicSession(Date.now() + PUBLIC_CANVAS_TTL_MS);
     }
   } else {
     if (!PUBLIC_SESSION_PATTERN.test(session)) {

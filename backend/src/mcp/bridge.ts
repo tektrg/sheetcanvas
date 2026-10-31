@@ -1,4 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
+import type { PublicCanvasPointer } from './publicCanvasHandle';
 
 /**
  * CanvasBridge relays MCP tool calls to a live SheetCanvas browser tab.
@@ -14,6 +15,7 @@ const PUBLIC_SESSION_EXPIRES_AT_KEY = 'public-session-expires-at';
 const PUBLIC_SESSION_SNAPSHOT_KEY = 'public-session-snapshot';
 const PUBLIC_SESSION_MODE_KEY = 'public-session-mode';
 const PUBLIC_CONNECT_TIMEOUT_MS = 15_000;
+const PUBLIC_CANVAS_POINTER_KEY = 'public-canvas-pointer';
 const PUBLIC_SNAPSHOT_MAX_BYTES = 1_048_576;
 
 /** Close code telling an older tab it was replaced — the tab must NOT reconnect. */
@@ -153,6 +155,24 @@ export class CanvasBridge extends DurableObject {
     await this.ctx.storage.setAlarm(expiresAtMs);
   }
 
+  /** Called only on the separate public-canvas:<handle> pointer object. */
+  async registerPublicCanvasHandle(session: string, expiresAtMs: number): Promise<void> {
+    if (!/^p_[a-f0-9]{64}$/.test(session) || !Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+      throw new Error('Invalid public canvas pointer');
+    }
+    if (await this.ctx.storage.get(PUBLIC_CANVAS_POINTER_KEY)) throw new Error('Public canvas handle already registered');
+    await this.ctx.storage.put(PUBLIC_CANVAS_POINTER_KEY, { session, expiresAtMs });
+    await this.ctx.storage.setAlarm(expiresAtMs);
+  }
+
+  async resolvePublicCanvasHandle(nowMs: number): Promise<PublicCanvasPointer | null> {
+    const pointer = await this.ctx.storage.get<PublicCanvasPointer>(PUBLIC_CANVAS_POINTER_KEY);
+    if (!pointer) return null;
+    if (pointer.expiresAtMs > nowMs) return pointer;
+    await this.ctx.storage.delete(PUBLIC_CANVAS_POINTER_KEY);
+    return null;
+  }
+
   async isPublicSessionActive(nowMs: number): Promise<boolean> {
     const expiresAtMs = await this.ctx.storage.get<number>(PUBLIC_SESSION_EXPIRES_AT_KEY);
     if (typeof expiresAtMs !== 'number') return false;
@@ -176,6 +196,7 @@ export class CanvasBridge extends DurableObject {
   }
 
   async alarm(): Promise<void> {
+    await this.resolvePublicCanvasHandle(Date.now());
     await this.isPublicSessionActive(Date.now());
   }
 

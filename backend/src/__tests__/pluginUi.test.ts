@@ -11,6 +11,7 @@ import {
 
 const TOKEN = 'a'.repeat(48);
 const PUBLIC_SESSION = `p_${'b'.repeat(64)}`;
+const CANVAS_HANDLE = `c_${'a'.repeat(64)}`;
 
 function htmlElements(html: string) {
   const elements: DefaultTreeAdapterMap['element'][] = [];
@@ -35,10 +36,11 @@ function runPublicWidget(metadata: unknown) {
   };
   const listeners = new Map<string, (event: unknown) => void>();
   const hostMessages: unknown[] = [];
+  const widgetStates: unknown[] = [];
   const parent = { postMessage: (message: unknown) => hostMessages.push(message) };
   const window = {
     parent,
-    openai: { toolResponseMetadata: metadata },
+    openai: { toolResponseMetadata: metadata, widgetState: { privateContent: { view: 'canvas' } }, setWidgetState: (state: unknown) => widgetStates.push(state) },
     addEventListener: (name: string, listener: (event: unknown) => void) => listeners.set(name, listener),
   };
   const script = scripts[0].childNodes.map((node) => 'value' in node ? node.value : '').join('');
@@ -54,6 +56,7 @@ function runPublicWidget(metadata: unknown) {
     iframe,
     navigations,
     hostMessages,
+    widgetStates,
     message: (data: unknown, trustedParent = true) => listeners.get('message')?.({
       source: trustedParent ? parent : {}, data,
     }),
@@ -66,7 +69,7 @@ function runPublicWidget(metadata: unknown) {
 describe('SheetCanvas ChatGPT app surface', () => {
   it('versions the corrected public bootstrap separately from the private resource', () => {
     // Resource URIs are host cache keys: the standard bridge must not reuse v2.
-    expect(SHEETCANVAS_PUBLIC_APP_RESOURCE_URI).toBe('ui://sheetcanvas/workspace-public-v3.html');
+    expect(SHEETCANVAS_PUBLIC_APP_RESOURCE_URI).toBe('ui://sheetcanvas/workspace-public-v4.html');
     expect(SHEETCANVAS_PUBLIC_APP_TOOL._meta.ui.resourceUri).toBe(SHEETCANVAS_PUBLIC_APP_RESOURCE_URI);
     expect(buildPublicSheetCanvasAppResource().uri).toBe(SHEETCANVAS_PUBLIC_APP_RESOURCE_URI);
     expect(SHEETCANVAS_APP_RESOURCE_URI).toBe('ui://sheetcanvas/workspace-v1.html');
@@ -124,7 +127,7 @@ describe('SheetCanvas ChatGPT app surface', () => {
   it('keeps the public resource cache-safe and receives its bridge session from widget-only metadata', () => {
     expect(SHEETCANVAS_PUBLIC_APP_TOOL).toMatchObject({
       outputSchema: {
-        required: ['ready'],
+        required: ['ready', 'canvasHandle', 'expiresInSeconds'],
         additionalProperties: false,
       },
       _meta: {
@@ -222,5 +225,36 @@ describe('SheetCanvas ChatGPT app surface', () => {
     widget.message({ jsonrpc: '2.0', id: 'sheetcanvas-initialize', error: { code: -32601 } });
     expect(widget.hostMessages).toHaveLength(1);
     expect(widget.iframe.src).toBe('');
+  });
+
+  it('publishes only the active canvas handle after host initialization and persists model context', () => {
+    const widget = runPublicWidget({ bridgeSession: PUBLIC_SESSION, canvasHandle: CANVAS_HANDLE });
+    expect(widget.hostMessages).toHaveLength(1);
+    expect(widget.widgetStates).toMatchObject([{ modelContent: { canvasHandle: CANVAS_HANDLE }, privateContent: { view: 'canvas' } }]);
+    widget.message({ jsonrpc: '2.0', id: 'sheetcanvas-initialize', result: {} });
+    const context = widget.hostMessages.filter((message) => (message as { method?: string }).method === 'ui/update-model-context');
+    expect(context).toHaveLength(1);
+    expect(JSON.stringify(context)).toContain(CANVAS_HANDLE);
+    expect(JSON.stringify(context)).not.toContain(PUBLIC_SESSION);
+    widget.update({ bridgeSession: PUBLIC_SESSION, canvasHandle: CANVAS_HANDLE });
+    expect(widget.hostMessages).toHaveLength(3);
+    expect(widget.widgetStates).toHaveLength(1);
+    const nextSession = `p_${'d'.repeat(64)}`;
+    const nextHandle = `c_${'e'.repeat(64)}`;
+    widget.message({ jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: { _meta: { bridgeSession: nextSession, canvasHandle: nextHandle } } });
+    expect(widget.iframe.src).toContain(nextSession);
+    expect(JSON.stringify(widget.hostMessages.at(-1))).toContain(nextHandle);
+    expect(JSON.stringify(widget.hostMessages)).not.toMatch(/p_[a-f0-9]{64}/);
+  });
+
+  it('never publishes handles from untrusted or model-visible metadata', () => {
+    const widget = runPublicWidget(undefined);
+    widget.message({ jsonrpc: '2.0', id: 'sheetcanvas-initialize', result: {} });
+    widget.update({ structuredContent: { bridgeSession: PUBLIC_SESSION, canvasHandle: CANVAS_HANDLE } });
+    widget.update({ bridgeSession: PUBLIC_SESSION, canvasHandle: 'invalid' });
+    widget.message({ jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: { _meta: { bridgeSession: PUBLIC_SESSION, canvasHandle: CANVAS_HANDLE } } }, false);
+    expect(widget.widgetStates).toEqual([]);
+    expect(widget.hostMessages).toHaveLength(2);
+    expect(widget.navigations).toEqual([]);
   });
 });

@@ -291,12 +291,12 @@ async function checkLiveMcpRoutes() {
     } else {
       recordPass('/mcp public initialize returns an isolated no-store session.');
 
-      const rpc = async (id, method, params) => {
+      const rpc = async (id, method, params, transportSession = session) => {
         const result = await fetchText('/mcp', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Mcp-Session-Id': session,
+            'Mcp-Session-Id': transportSession,
           },
           body: JSON.stringify({ jsonrpc: '2.0', id, method, ...(params ? { params } : {}) }),
         });
@@ -311,6 +311,13 @@ async function checkLiveMcpRoutes() {
         recordFailure('/mcp tools/list exposed connector access to an anonymous session.');
       } else {
         recordPass('/mcp tools/list exposes canvas tools without connector access.');
+      }
+      const launcher = tools.body?.result?.tools?.find((tool) => tool.name === 'openSheetCanvas');
+      if (launcher?.inputSchema?.properties?.canvasHandle?.pattern !== '^c_[a-f0-9]{64}$' ||
+          !['ready', 'canvasHandle', 'expiresInSeconds'].every((field) => launcher?.outputSchema?.required?.includes(field))) {
+        recordFailure('/mcp launcher does not expose the temporary canvas handle contract.');
+      } else {
+        recordPass('/mcp launcher advertises reusable temporary canvas handles.');
       }
 
       for (const blockedTool of PUBLIC_BLOCKED_CONNECTOR_TOOLS) {
@@ -330,9 +337,15 @@ async function checkLiveMcpRoutes() {
         name: 'openSheetCanvas',
         arguments: {},
       });
+      const canvasHandle = opened.body?.result?.structuredContent?.canvasHandle;
+      const bridgeSession = opened.body?.result?._meta?.bridgeSession;
       if (
         opened.body?.result?.structuredContent?.ready !== false ||
-        opened.body?.result?._meta?.bridgeSession !== session ||
+        !/^p_[a-f0-9]{64}$/.test(bridgeSession ?? '') ||
+        !/^c_[a-f0-9]{64}$/.test(canvasHandle ?? '') ||
+        opened.body?.result?._meta?.canvasHandle !== canvasHandle ||
+        !(opened.body?.result?.structuredContent?.expiresInSeconds > 0) ||
+        JSON.stringify(opened.body?.result?.structuredContent ?? {}).includes(bridgeSession) ||
         'bridgeSession' in (opened.body?.result?.structuredContent ?? {})
       ) {
         recordFailure('/mcp launcher falsely reported readiness or failed widget-only session isolation.');
@@ -340,7 +353,33 @@ async function checkLiveMcpRoutes() {
         recordPass('/mcp launcher reports opening until connected and keeps the session in widget-only metadata.');
       }
 
-      const resourceUri = 'ui://sheetcanvas/workspace-public-v3.html';
+      // ChatGPT may create a new MCP transport for each call. Reopening must not
+      // silently replace the visible canvas just because its transport changed.
+      const independent = await fetchText('/mcp', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 101, method: 'initialize', params: {
+          protocolVersion: '2025-06-18', capabilities: {},
+          clientInfo: { name: 'sheetcanvas-preflight-independent', version: '1.0.1' },
+        } }),
+      });
+      const independentSession = independent.response.headers.get('mcp-session-id');
+      if (!independent.response.ok || !/^p_[a-f0-9]{64}$/.test(independentSession ?? '') || independentSession === session) {
+        recordFailure('/mcp independent initialize failed to create an isolated transport.');
+      } else {
+        try {
+          const reopened = await rpc(102, 'tools/call', { name: 'openSheetCanvas', arguments: { canvasHandle } }, independentSession);
+          if (reopened.body?.result?.structuredContent?.canvasHandle !== canvasHandle ||
+              reopened.body?.result?._meta?.bridgeSession !== bridgeSession) {
+            recordFailure('/mcp independent transport could not reopen the same logical canvas.');
+          } else {
+            recordPass('/mcp independent transport reopens the same logical canvas using its handle.');
+          }
+        } finally {
+          await fetchText('/mcp', { method: 'DELETE', headers: { 'Mcp-Session-Id': independentSession } });
+        }
+      }
+
+      const resourceUri = 'ui://sheetcanvas/workspace-public-v4.html';
       const resource = await rpc(4, 'resources/read', { uri: resourceUri });
       const resourceBody = resource.body?.result?.contents?.[0];
       if (
@@ -351,6 +390,20 @@ async function checkLiveMcpRoutes() {
         recordFailure('/mcp public app resource is missing, malformed, or contains its session.');
       } else {
         recordPass('/mcp public app resource is cache-safe.');
+      }
+
+      if (/^p_[a-f0-9]{64}$/.test(bridgeSession ?? '')) {
+        const canvasDeleted = await fetchText('/mcp', {
+          method: 'DELETE', headers: { 'Mcp-Session-Id': bridgeSession },
+        });
+        const afterDeletion = await rpc(103, 'tools/call', {
+          name: 'openSheetCanvas', arguments: { canvasHandle },
+        });
+        if (canvasDeleted.response.status !== 204 || !afterDeletion.body?.error) {
+          recordFailure('/mcp preflight logical canvas cleanup failed or its handle remained usable.');
+        } else {
+          recordPass('/mcp preflight logical canvas deleted and its handle invalidated.');
+        }
       }
 
       const terminated = await fetchText('/mcp', {
