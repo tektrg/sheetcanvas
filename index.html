@@ -123,34 +123,7 @@
       }
       window.gtag('config', 'G-FDXZ468S02', sheetCanvasGaConfig);
     </script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      /**
-       * Tailwind semantic colour aliases.
-       * Values come from CSS custom properties defined below in <style>,
-       * so a single variable change propagates to every utility class.
-       *
-       * Usage:  bg-accent  text-accent  border-accent  ring-accent
-       *         bg-accent-hover  text-accent-hover
-       *         bg-accent-muted  (low-opacity tint for selections / highlights)
-       */
-      tailwind.config = {
-        darkMode: 'class',
-        theme: {
-          extend: {
-            colors: {
-              neutral: {
-                850: '#1f1f1f', // Medium contrast dark
-              },
-              // ── Accent (brand teal) ──────────────────────────────────────
-              accent: 'var(--color-accent)',
-              'accent-hover': 'var(--color-accent-hover)',
-              'accent-muted': 'var(--color-accent-muted)',
-            }
-          }
-        }
-      }
-    </script>
+    <link rel="stylesheet" href="/styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
       /* ── Design system tokens ──────────────────────────────────────────
