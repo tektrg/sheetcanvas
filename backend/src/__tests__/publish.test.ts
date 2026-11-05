@@ -194,6 +194,27 @@ describe('renderers', () => {
     expect(html.match(/<\/script>/g)?.length).toBe(1);
   });
 
+  it('rejects hostile values in the chart-parity fields and escapes a valid-but-odd format', async () => {
+    const t = setup();
+    const base = snapshot().charts[0];
+    const hostile: Array<Record<string, unknown>> = [
+      { axisFormats: { left: { type: 'number', d3Format: '$(echo INJECTED)' } } },
+      { axisFormats: { left: { type: 'number', d3Format: '<script>INJECTED</script>' } } },
+      { axisFormats: { left: { type: 'number', d3Format: '9'.repeat(24) } } },
+      { categoryColors: ['#fff"/><script>INJECTED</script>'] },
+      { highlightIndex: -5 },
+    ];
+    for (const extra of hostile) {
+      const res = await t.publish(snapshot({ charts: [{ ...base, ...extra }] }));
+      expect(res.status, JSON.stringify(extra)).toBe(400);
+    }
+    // '<' is a legal d3 fill character: it must come out escaped in the inline SVG.
+    const ok = await (await t.publish(snapshot({ charts: [{ ...base, showLabels: true, rows: base.rows.slice(0, 3), axisFormats: { left: { type: 'number', d3Format: '<<9,.0f' } } }] }))).json() as { id: string; slug: string };
+    const html = await (await t.send(`/p/${ok.slug}-${ok.id}`)).text();
+    expect(html).toContain('&lt;&lt;');
+    expect(html).not.toMatch(/<<</);
+  });
+
   it('rate-limits reports per network', async () => {
     const t = setup();
     const { id } = await (await t.publish()).json() as { id: string };

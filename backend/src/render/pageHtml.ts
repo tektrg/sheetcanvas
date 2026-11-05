@@ -51,6 +51,7 @@ figure.chart .cs-text{fill:var(--chart-text)}
 figure.chart .cs-grid{stroke:var(--chart-grid)}
 figure.chart .cs-axis{stroke:var(--chart-axis)}
 figure.chart .cs-sep{stroke:var(--chart-bg)}
+figure.chart .cs-dot{fill:var(--chart-bg)}
 /* Two pre-laid-out variants (chartSvg.ts): compact viewBox on narrow screens keeps axis text >= ~10px. */
 figure.chart svg.cs-compact{display:none}
 @media (max-width:560px){figure.chart svg.cs-wide{display:none}figure.chart svg.cs-compact{display:block}}
