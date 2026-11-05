@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ChartData, NoteData, SheetData } from '../types';
-import { buildPublishSnapshot, createDebouncedRunner, hashSnapshot } from '../utils/publish';
+import type { CellFormat, ChartData, NoteData, SheetData } from '../types';
+import { buildPublishSnapshot, createDebouncedRunner, hashSnapshot, toPublishedFormat } from '../utils/publish';
 import { DEFAULT_CHART_COLOR_SETTINGS } from '../utils/chartColorSchemes';
 import { publishSnapshotSchema } from '../shared/publishSnapshot';
 
@@ -125,5 +125,72 @@ describe('buildPublishSnapshot — AEO fields', () => {
     const connected = { ...sheet, connectorConfig: { lastRefreshedAt: 1_760_000_000_000 } } as unknown as SheetData;
     const live = buildPublishSnapshot(note(), { ...source, sheets: { s1: connected } }, DEFAULT_CHART_COLOR_SETTINGS);
     expect(live.charts[0].dataAsOf).toBe(1_760_000_000_000);
+  });
+});
+
+describe('buildPublishSnapshot — chart parity fields', () => {
+  const wide: SheetData = {
+    ...sheet,
+    size: { width: 3, height: 3 },
+    cells: {
+      A1: { raw: 'Month', value: 'Month' }, B1: { raw: 'Revenue', value: 'Revenue' }, C1: { raw: 'Rate', value: 'Rate' },
+      A2: { raw: 'Jan', value: 'Jan' }, B2: { raw: '48000', value: 48000, format: { type: 'currency', decimals: 0 } }, C2: { raw: '0.02', value: 0.02, format: { type: 'percent', decimals: 1 } },
+      A3: { raw: 'Feb', value: 'Feb' }, B3: { raw: '61000', value: 61000 }, C3: { raw: '0.03', value: 0.03 },
+    },
+  };
+  const build = (config: Partial<ChartData['config']>, sheets: Record<string, SheetData> = { s1: wide }) => {
+    const c: ChartData = { ...chart, config: { ...chart.config, dataColumns: ['B', 'C'], ...config } };
+    const snapshot = buildPublishSnapshot(note(), { charts: { c1: c }, sheets }, DEFAULT_CHART_COLOR_SETTINGS);
+    expect(publishSnapshotSchema.parse(snapshot)).toBeTruthy();
+    return snapshot.charts[0];
+  };
+
+  it('a chart that uses none of the new features keeps its exact old shape (hash unchanged)', () => {
+    const published = buildPublishSnapshot(note(), source, DEFAULT_CHART_COLOR_SETTINGS).charts[0];
+    expect(Object.keys(published).sort()).toEqual(['id', 'rows', 'series', 'title', 'type']);
+    expect(Object.keys(published.series[0]).sort()).toEqual(['color', 'key', 'label']);
+  });
+
+  it('carries right-axis series and per-axis number formats', () => {
+    const published = build({ rightAxisColumns: ['C'], seriesTypes: { C: 'line' } });
+    expect(published.series.map(s => s.axis)).toEqual([undefined, 'right']);
+    expect(published.axisFormats).toEqual({ left: { type: 'currency', decimals: 0 }, right: { type: 'percent', decimals: 1 } });
+  });
+
+  it('ignores right-axis columns in group mode and on pie/treemap (the renderer draws one scale there)', () => {
+    expect(build({ type: 'pie', rightAxisColumns: ['C'] }).series.every(s => s.axis === undefined)).toBe(true);
+  });
+
+  it('emits showLabels / highlightIndex only when they apply', () => {
+    const plain = build({});
+    expect(plain).not.toHaveProperty('showLabels');
+    expect(plain).not.toHaveProperty('highlightIndex');
+    expect(build({ highlightIndex: 5 })).not.toHaveProperty('highlightIndex'); // beyond the last row
+    const on = build({ showLabels: true, highlightIndex: 1 });
+    expect(on.showLabels).toBe(true);
+    expect(on.highlightIndex).toBe(1);
+  });
+
+  it('pie and treemap carry the canvas palette; mono bars use the ramp', () => {
+    const pie = build({ type: 'pie', dataColumns: ['B'] });
+    expect(pie.categoryColors?.length).toBeGreaterThan(1);
+    expect(pie.categoryColors?.[0]).toBe(pie.series[0].color);
+    expect(build({ type: 'treemap', dataColumns: ['B'] }).categoryColors).toBeTruthy();
+    const c: ChartData = { ...chart, config: { ...chart.config, dataColumns: ['B', 'C'], colorScheme: 'mono' } };
+    const [first, second] = buildPublishSnapshot(note(), { charts: { c1: c }, sheets: { s1: wide } }, DEFAULT_CHART_COLOR_SETTINGS).charts[0].series.map(s => s.color);
+    expect(first).toBe('#000000'); // ramp: base colour first, then lightening
+    expect(second).toBe('#d9d9d9');
+  });
+
+  it('maps cell formats to the small wire format (numeric only, bounded)', () => {
+    expect(toPublishedFormat({ type: 'currency', decimals: 0 })).toEqual({ type: 'currency', decimals: 0 });
+    expect(toPublishedFormat({ type: 'percent', decimals: 99 })).toEqual({ type: 'percent', decimals: 10 });
+    expect(toPublishedFormat({ type: 'number', d3Format: ',.1f' } as CellFormat)).toEqual({ type: 'number', d3Format: ',.1f' });
+    expect(toPublishedFormat({ type: 'text', d3Format: '.2s' } as CellFormat)).toEqual({ type: 'number', d3Format: '.2s' });
+    // generic / non-numeric / invalid => no descriptor (compact numbers), so snapshots stay small and stable
+    expect(toPublishedFormat(undefined)).toBeUndefined();
+    expect(toPublishedFormat({ type: 'number' })).toBeUndefined();
+    expect(toPublishedFormat({ type: 'date' })).toBeUndefined();
+    expect(toPublishedFormat({ type: 'number', d3Format: 'zzz' } as CellFormat)).toBeUndefined();
   });
 });

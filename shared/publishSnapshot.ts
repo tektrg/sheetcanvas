@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isSafeD3Format, MAX_D3_FORMAT_CHARS, MAX_FORMAT_DECIMALS, VALUE_FORMAT_TYPES } from './valueFormat';
 
 // Wire contract for "anonymous publish": the frozen page snapshot the browser
 // sends to POST/PUT /api/pages and the backend renders without any DOM or
@@ -8,11 +9,22 @@ export const MAX_PUBLISH_BODY_BYTES = 512 * 1024;
 export const MAX_PUBLISHED_CHARTS = 20;
 export const PUBLISHED_CHART_TYPES = ['line', 'bar', 'pie', 'area', 'scatter', 'treemap'] as const;
 
+const hexColorSchema = z.string().regex(/^#[0-9a-fA-F]{3,8}$/);
+
+/** Axis/label number format: a small enum + bounded numbers/strings, never free-form markup. */
+export const publishedFormatSchema = z.object({
+  type: z.enum(VALUE_FORMAT_TYPES),
+  decimals: z.number().int().min(0).max(MAX_FORMAT_DECIMALS).optional(),
+  d3Format: z.string().max(MAX_D3_FORMAT_CHARS).refine(isSafeD3Format, 'invalid d3 format').optional(),
+});
+
 export const publishedSeriesSchema = z.object({
   key: z.string().max(200),
   label: z.string().max(200),
-  color: z.string().regex(/^#[0-9a-fA-F]{3,8}$/),
+  color: hexColorSchema,
   type: z.enum(PUBLISHED_CHART_TYPES).optional(),
+  // Dual-axis charts: series plotted against the right-hand Y scale. Absent = left.
+  axis: z.literal('right').optional(),
 });
 
 export const publishedRowSchema = z.object({
@@ -30,6 +42,14 @@ export const publishedChartSchema = z.object({
   dataAsOf: z.number().int().positive().optional(),
   series: z.array(publishedSeriesSchema).min(1).max(50),
   rows: z.array(publishedRowSchema).max(20_000),
+  // Formats for the left / right value axis (and the data labels drawn against them). Absent = generic compact.
+  axisFormats: z.object({ left: publishedFormatSchema.optional(), right: publishedFormatSchema.optional() }).optional(),
+  // Draw formatted value labels on the marks.
+  showLabels: z.boolean().optional(),
+  // Row index drawn in the highlight colour (bar / dot / pie slice).
+  highlightIndex: z.number().int().min(0).max(20_000).optional(),
+  // Pie/treemap slice colours as the canvas palette resolved them (mono ramp etc.); cycled by row. Absent = derived from series.
+  categoryColors: z.array(hexColorSchema).min(1).max(32).optional(),
 });
 
 // "Answer box": author-reviewed TL;DR + Q&A shown under the title for AI answer engines.
@@ -57,6 +77,7 @@ export const publishSnapshotSchema = z.object({
   ...answerBoxSchema.shape,
 });
 
+export type PublishedFormat = z.infer<typeof publishedFormatSchema>;
 export type PublishedSeries = z.infer<typeof publishedSeriesSchema>;
 export type PublishedRow = z.infer<typeof publishedRowSchema>;
 export type PublishedChart = z.infer<typeof publishedChartSchema>;
