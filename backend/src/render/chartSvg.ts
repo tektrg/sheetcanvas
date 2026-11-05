@@ -192,19 +192,34 @@ const barShape = (x: number, yTop: number, yBottom: number, width: number, radiu
   return `<path d="${d}" ${attrs}/>`;
 };
 
-/** Value labels that never overlap each other (first placed wins) or leave the drawing. */
+type Box = { l: number; r: number; t: number; b: number };
+const overlaps = (a: Box, o: Box, gap = 0) => a.l < o.r + gap && a.r > o.l - gap && a.t < o.b && a.b > o.t;
+
+/**
+ * Value labels that never overlap each other (first placed wins) or leave the drawing.
+ * `place(cx, baseline | candidates, text, { fill, avoidBlockers })` tries each candidate baseline in
+ * order and draws the first that fits, else nothing (skipping beats an ugly overlap). Blockers
+ * (e.g. bar bodies, via `place.block`) are only avoided by labels that ask for it: text drawn over a
+ * bar is unreadable, text drawn inside a stacked segment is meant to be.
+ */
 const createLabelPlacer = (layout: ChartLayout, bounds: { left: number; right: number; top: number }) => {
   const size = Math.max(9, layout.fontSize - 3);
-  const boxes: Array<{ l: number; r: number; t: number; b: number }> = [];
-  return (cx: number, baseline: number, text: string, fill?: string): string => {
+  const boxes: Box[] = [];
+  const blockers: Box[] = [];
+  const place = (cx: number, baselines: number | number[], text: string, options: { fill?: string; avoidBlockers?: boolean } = {}): string => {
     const half = (text.length * size * CHAR_WIDTH_RATIO) / 2;
-    const box = { l: cx - half, r: cx + half, t: baseline - size, b: baseline + 2 };
-    if (box.l < bounds.left || box.r > bounds.right || box.t < bounds.top) return '';
-    if (boxes.some(o => box.l < o.r + 2 && box.r > o.l - 2 && box.t < o.b && box.b > o.t)) return '';
-    boxes.push(box);
-    const color = fill ? `fill="${fill}"` : `class="cs-text" fill="${TEXT_COLOR}"`;
-    return `<text x="${cx}" y="${baseline}" text-anchor="middle" font-size="${size}" font-weight="500" ${color}>${escapeHtml(text)}</text>`;
+    for (const baseline of Array.isArray(baselines) ? baselines : [baselines]) {
+      const box = { l: cx - half, r: cx + half, t: baseline - size, b: baseline + 2 };
+      if (box.l < bounds.left || box.r > bounds.right || box.t < bounds.top) continue;
+      if (boxes.some(o => overlaps(box, o, 2))) continue;
+      if (options.avoidBlockers && blockers.some(o => overlaps(box, o))) continue;
+      boxes.push(box);
+      const color = options.fill ? `fill="${options.fill}"` : `class="cs-text" fill="${TEXT_COLOR}"`;
+      return `<text x="${cx}" y="${baseline}" text-anchor="middle" font-size="${size}" font-weight="500" ${color}>${escapeHtml(text)}</text>`;
+    }
+    return '';
   };
+  return Object.assign(place, { block: (box: Box) => void blockers.push(box) });
 };
 
 const MAX_DOT_ROWS = 60;
@@ -326,7 +341,11 @@ const renderCartesian = (chart: PublishedChart, baseLayout: ChartLayout): string
   if (chart.showLabels) {
     const place = createLabelPlacer(layout, { left: -margin.left + 2, right: innerWidth + margin.right - 2, top: -margin.top + 2 });
     const labelSize = Math.max(9, layout.fontSize - 3);
-    chart.series.forEach((_, i) => {
+    barGeometry.forEach(bar => place.block({ l: bar.left, r: bar.left + bar.width, t: Math.min(bar.y0, bar.y1), b: Math.max(bar.y0, bar.y1) }));
+    // One pass over every series: bar labels first (they own their bar), then line/area labels,
+    // which sit above their point, else below it, else are skipped if they would hit a label or a bar.
+    const order = [...chart.series.keys()].sort((a, b) => Number(types[b] === 'bar') - Number(types[a] === 'bar'));
+    order.forEach(i => {
       const scale = scaleOf(i);
       const side = sideOf(i);
       for (let r = 0; r < rowCount; r++) {
@@ -338,12 +357,13 @@ const renderCartesian = (chart: PublishedChart, baseLayout: ChartLayout): string
           // Inside the segment, white, only when it is tall/wide enough to hold the text.
           const height = Math.abs(bar.y1 - bar.y0);
           if (height < labelSize + 2 || text.length * labelSize * CHAR_WIDTH_RATIO > bar.width) continue;
-          parts.push(place(bar.left + bar.width / 2, (bar.y0 + bar.y1) / 2 + labelSize * 0.35, text, '#ffffff'));
+          parts.push(place(bar.left + bar.width / 2, (bar.y0 + bar.y1) / 2 + labelSize * 0.35, text, { fill: '#ffffff' }));
         } else if (bar) {
           const cx = bar.left + bar.width / 2;
           parts.push(raw < 0 ? place(cx, Math.max(bar.y0, bar.y1) + labelSize + 2, text) : place(cx, Math.min(bar.y0, bar.y1) - 4, text));
         } else {
-          parts.push(place(center(r), scale(tops[i][r]) - 10, text));
+          const y = scale(tops[i][r]);
+          parts.push(place(center(r), [y - 10, y + labelSize + 8], text, { avoidBlockers: true }));
         }
       }
     });
@@ -467,7 +487,9 @@ const pieLegend = (labels: string[], colors: string[], layout: ChartLayout): { s
 const renderPie = (chart: PublishedChart, layout: ChartLayout): string => {
   const palette = categoryPalette(chart);
   const showLegend = chart.rows.length > 1;
-  const legendBlock = showLegend ? pieLegend(chart.rows.map(r => r.label), palette, layout) : { svg: '', height: 0 };
+  // The legend dot of the highlighted slice shows the highlight colour, like the slice itself.
+  const sliceFill = (i: number) => (chart.highlightIndex === i ? CHART_HIGHLIGHT_COLOR : palette[i % palette.length]);
+  const legendBlock = showLegend ? pieLegend(chart.rows.map(r => r.label), chart.rows.map((_, i) => sliceFill(i)), layout) : { svg: '', height: 0 };
   const plotHeight = layout.height - legendBlock.height;
   const radius = Math.max(24, Math.min(layout.width / 2 - 24, plotHeight / 2 - 12));
   const slices = pie<{ label: string; value: number }>().value(d => d.value).sort(null)(
@@ -480,7 +502,7 @@ const renderPie = (chart: PublishedChart, layout: ChartLayout): string => {
     const marked = chart.highlightIndex === i;
     const style = marked
       ? `fill="${CHART_HIGHLIGHT_COLOR}" stroke="#ffffff"`
-      : `fill="${palette[i % palette.length]}" class="cs-sep" stroke="#ffffff"`;
+      : `fill="${sliceFill(i)}" class="cs-sep" stroke="#ffffff"`;
     parts.push(`<path d="${arcPath(slice)}" ${style} stroke-width="${CHART_PIE_STROKE_WIDTH}"/>`);
     if (chart.showLabels && slice.endAngle - slice.startAngle > 0.25) {
       const [cx, cy] = labelArc.centroid(slice);

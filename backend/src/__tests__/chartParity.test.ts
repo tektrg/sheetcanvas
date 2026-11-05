@@ -135,6 +135,46 @@ describe('value labels', () => {
     for (const a of boxes) for (const b of boxes) if (a !== b && a.y === b.y) expect(a.l >= b.r || a.r <= b.l).toBe(true);
   });
 
+  /** Rounded-bar paths -> their boxes (x range + top/bottom), in plot coordinates. */
+  const barBoxes = (svg: string) =>
+    [...svg.matchAll(/<path d="M([-\d.]+),([-\d.]+)V([-\d.]+)A7,7 0 0 1 [-\d.]+,([-\d.]+)H([-\d.]+)A/g)]
+      .map(m => ({ l: +m[1], r: +m[5] + 7, t: +m[4], b: +m[2] }));
+  const labelBox = (l: { x: number; y: number; text: string }) => ({ l: l.x - (l.text.length * 10 * 0.6) / 2, r: l.x + (l.text.length * 10 * 0.6) / 2, t: l.y - 10, b: l.y + 2 });
+  const hits = (a: ReturnType<typeof labelBox>, b: { l: number; r: number; t: number; b: number }) => a.l < b.r && a.r > b.l && a.t < b.b && a.b > b.t;
+
+  it('places line labels in the same pass as bar labels: none overlap a bar label or sit on a bar', () => {
+    const svg = renderChartSvg(dual({ showLabels: true, axisFormats: { left: { type: 'currency', decimals: 0 }, right: { type: 'percent', decimals: 1 } } }), WIDE_LAYOUT);
+    const labels = valueLabels(svg);
+    expect(labels.filter(l => l.text.startsWith('$'))).toHaveLength(5); // bar labels always win
+    const bars = barBoxes(svg);
+    expect(bars).toHaveLength(5);
+    const boxes = labels.map(labelBox);
+    boxes.forEach((a, i) => {
+      boxes.forEach((b, j) => { if (i !== j) expect(hits(a, b), `${labels[i].text} vs ${labels[j].text}`).toBe(false); });
+      if (labels[i].text.endsWith('%')) bars.forEach(bar => expect(hits(a, bar), labels[i].text).toBe(false));
+    });
+    // skipped rather than overlapped: not every line label survives next to bars this tall
+    expect(labels.filter(l => l.text.endsWith('%')).length).toBeLessThan(5);
+  });
+
+  it('keeps line labels that have free space, above their point', () => {
+    // Short bars, line high on its own axis: every line label fits above its dot.
+    const chart = dual({
+      showLabels: true,
+      axisFormats: { right: { type: 'percent', decimals: 1 } },
+      rows: months.map((label, i) => ({ label, values: [1000, 0.02 + i * 0.005] })),
+      series: [
+        { key: 'a', label: 'Revenue', color: '#4f46e5' },
+        { key: 'b', label: 'Rate', color: '#06b6d4', type: 'line', axis: 'right' },
+      ],
+    });
+    // A large left-axis line shrinks the bars (left scale tops out at 50k), leaving room above each rate dot.
+    chart.series.push({ key: 'c', label: 'Big', color: '#111111', type: 'line' });
+    chart.rows = chart.rows.map(r => ({ ...r, values: [...r.values, 50_000] }));
+    const svg = renderChartSvg(chart, WIDE_LAYOUT);
+    expect(valueLabels(svg).filter(l => l.text.endsWith('%'))).toHaveLength(5);
+  });
+
   it('draws white labels inside stacked segments that are tall enough', () => {
     const svg = renderChartSvg(make({ stacked: true, showLabels: true, series: [{ key: 'a', label: 'A', color: '#4f46e5' }, { key: 'b', label: 'B', color: '#06b6d4' }], rows: months.map((label) => ({ label, values: [50, 30] })) }), WIDE_LAYOUT);
     expect(svg).toContain('font-weight="500" fill="#ffffff"');
@@ -148,6 +188,22 @@ describe('highlightIndex and category colours', () => {
     const pie = renderChartSvg(make({ type: 'pie', highlightIndex: 1 }), WIDE_LAYOUT);
     expect(pie).toMatch(/fill="#f2c94c" stroke="#ffffff" stroke-width="2"/);
     expect(renderChartSvg(make(), WIDE_LAYOUT)).not.toContain('#f2c94c');
+  });
+
+  it('shows the highlight colour in the pie legend dot too', () => {
+    const categoryColors = ['#111111', '#222222', '#333333', '#444444', '#555555'];
+    const legendDots = (svg: string) => [...svg.matchAll(/<circle cx="[-\d.]+" cy="[-\d.]+" r="4" fill="(#[0-9a-f]+)"\/>/g)].map(m => m[1]);
+    expect(legendDots(renderChartSvg(make({ type: 'pie', categoryColors, highlightIndex: 1 }), WIDE_LAYOUT)))
+      .toEqual(['#111111', '#f2c94c', '#333333', '#444444', '#555555']);
+    expect(legendDots(renderChartSvg(make({ type: 'pie', categoryColors }), WIDE_LAYOUT))).toEqual(categoryColors);
+  });
+
+  it('does not recolour the legend of cartesian charts (series colours stay)', () => {
+    const svg = renderChartSvg(dual({ highlightIndex: 1 }), WIDE_LAYOUT);
+    const legend = svg.match(/<g font-family[^>]*>(.*?)<\/g>/)![1];
+    expect(legend).toContain('fill="#4f46e5"');
+    expect(legend).toContain('fill="#06b6d4"');
+    expect(legend).not.toContain('#f2c94c');
   });
 
   it('uses the snapshot palette for pie and treemap, with a legend for the pie', () => {
