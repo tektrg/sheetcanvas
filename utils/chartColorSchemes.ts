@@ -146,6 +146,26 @@ export const buildSeriesPalette = (primaryColor: string, palette: string[]) => {
   return [primaryColor, ...palette.filter(color => color.toLowerCase() !== normalizedPrimary.toLowerCase())];
 };
 
+/**
+ * Colours the canvas fills a chart's segments with (ChartNode `seriesPalette`): a mono scheme is a smooth
+ * dark-to-light ramp for fill-by-index charts (bar, area, pie, treemap, sized to `segmentCount`);
+ * otherwise the primary colour followed by the scheme palette. Lines/scatter keep the alternating order.
+ */
+export const resolveSeriesPalette = (
+  config: Pick<ChartConfig, 'type' | 'color' | 'colorOverride' | 'colorScheme'>,
+  settings: ChartColorSettings,
+  darkMode: boolean,
+  segmentCount: number,
+): string[] => {
+  const palette = getEffectiveChartPalette(config, settings, darkMode);
+  const primary = getChartPrimaryColor(config, palette);
+  const rampEligible = config.type !== 'line' && config.type !== 'scatter';
+  if (getEffectiveChartScheme(config, settings) === 'mono' && rampEligible) {
+    return buildMonoRamp(primary, darkMode, segmentCount);
+  }
+  return buildSeriesPalette(primary, palette);
+};
+
 export const readStoredChartColorSettings = (): ChartColorSettings => {
   if (typeof window === 'undefined') return DEFAULT_CHART_COLOR_SETTINGS;
 

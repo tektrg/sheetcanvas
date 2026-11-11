@@ -3,6 +3,7 @@
 import { CellFormat } from '../types';
 import { format as d3Format } from 'd3-format';
 import { formatAxisNumber, toChartNumber } from '../shared/numberFormat';
+import { formatNumericValue, type ValueFormat } from '../shared/valueFormat';
 
 // Maps the simple string prop authors write (format="currency") to the app's
 // richer CellFormat. Anything unknown falls back to the cell's own stored format.
@@ -44,36 +45,14 @@ export const formatValue = (value: string | number | null, format?: CellFormat):
   // If no specific format is set, just return the number as string
   if (!format) return String(value);
 
-  // D3 Format Support
-  if ((format as any).d3Format) {
-      try {
-          return d3Format((format as any).d3Format)(value);
-      } catch (e) {
-          console.warn("Invalid d3 format", e);
-          return String(value);
-      }
+  // d3 specifiers and number/currency/percent share one implementation with the published-page
+  // renderer (shared/valueFormat.ts), so a chart reads the same live and published.
+  if ((format as any).d3Format || format.type === 'percent' || format.type === 'currency' || format.type === 'number') {
+      return formatNumericValue(value, format as ValueFormat);
   }
 
   try {
       switch (format.type) {
-        case 'percent':
-            return new Intl.NumberFormat('en-US', { 
-                style: 'percent', 
-                minimumFractionDigits: format.decimals ?? 0,
-                maximumFractionDigits: format.decimals ?? 20 
-            }).format(value);
-        case 'currency':
-            return new Intl.NumberFormat('en-US', { 
-                style: 'currency', 
-                currency: 'USD',
-                minimumFractionDigits: format.decimals ?? 2,
-                maximumFractionDigits: format.decimals ?? 2
-            }).format(value);
-        case 'number':
-             return new Intl.NumberFormat('en-US', { 
-                minimumFractionDigits: format.decimals ?? 0,
-                maximumFractionDigits: format.decimals ?? 20
-            }).format(value);
         case 'date': {
             const date = new Date(value);
             if (isNaN(date.getTime())) return String(value);

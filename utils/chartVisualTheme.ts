@@ -1,4 +1,16 @@
 import type { CSSProperties } from 'react';
+import {
+  CHART_BAR_RADIUS,
+  CHART_DOT_RADIUS,
+  CHART_DOT_STROKE_WIDTH,
+  CHART_LINE_STROKE_WIDTH,
+  CHART_PIE_STROKE_WIDTH,
+  getAreaGradientStops,
+  mixChartColor,
+} from '../shared/chartStyle';
+
+// Pure parts of the look live in shared/chartStyle.ts so the published-page renderer matches.
+export { getAreaGradientStops, mixChartColor };
 
 export interface ChartVisualTheme {
   textColor: string;
@@ -21,44 +33,10 @@ export interface ChartVisualTheme {
   pieStrokeWidth: number;
 }
 
-const normalizeHex = (color: string) => {
-  const value = color.replace('#', '').trim();
-  return /^[0-9a-f]{6}$/i.test(value) ? value.toLowerCase() : null;
-};
-
-const hexToRgb = (color: string) => {
-  const value = normalizeHex(color);
-  if (!value) return null;
-  return {
-    r: parseInt(value.slice(0, 2), 16),
-    g: parseInt(value.slice(2, 4), 16),
-    b: parseInt(value.slice(4, 6), 16),
-  };
-};
-
-const channelToHex = (channel: number) => Math.max(0, Math.min(255, Math.round(channel)))
-  .toString(16)
-  .padStart(2, '0');
-
-export const mixChartColor = (baseColor: string, targetColor: string, amount: number) => {
-  const base = hexToRgb(baseColor);
-  const target = hexToRgb(targetColor);
-  if (!base || !target) return baseColor;
-
-  return `#${channelToHex(base.r + (target.r - base.r) * amount)}${channelToHex(base.g + (target.g - base.g) * amount)}${channelToHex(base.b + (target.b - base.b) * amount)}`;
-};
-
 export const buildGradientId = (chartId: string, prefix: string, key: string | number) => {
   const safeKey = String(key).replace(/[^a-zA-Z0-9_-]/g, '');
   return `${prefix}-${chartId}-${safeKey || 'series'}`;
 };
-
-export const getAreaGradientStops = (color: string, darkMode: boolean) => ({
-  startColor: mixChartColor(color, darkMode ? '#ffffff' : '#ffffff', darkMode ? 0.08 : 0.16),
-  endColor: color,
-  startOpacity: darkMode ? 0.46 : 0.36,
-  endOpacity: darkMode ? 0.06 : 0.08,
-});
 
 export const getBarGradientStops = (color: string, darkMode: boolean) => ({
   startColor: mixChartColor(color, '#ffffff', darkMode ? 0.2 : 0.28),
@@ -108,12 +86,12 @@ export const getChartVisualTheme = (darkMode: boolean, selected: boolean): Chart
         : '0 20px 48px rgba(15,23,42,0.16), 0 0 0 1px rgba(20,184,166,0.45), inset 0 1px 0 rgba(255,255,255,0.9)',
     },
     frameStyle,
-    barRadius: [7, 7, 0, 0],
+    barRadius: [CHART_BAR_RADIUS, CHART_BAR_RADIUS, 0, 0],
     stackedBarRadius: [0, 0, 0, 0],
-    lineStrokeWidth: 2.5,
-    dotStyle: { r: 4, fill: darkMode ? '#171717' : '#ffffff', strokeWidth: 2 },
+    lineStrokeWidth: CHART_LINE_STROKE_WIDTH,
+    dotStyle: { r: CHART_DOT_RADIUS, fill: darkMode ? '#171717' : '#ffffff', strokeWidth: CHART_DOT_STROKE_WIDTH },
     activeDotStyle: { r: 6, strokeWidth: 0 },
     pieStroke: darkMode ? '#262626' : '#ffffff',
-    pieStrokeWidth: 2,
+    pieStrokeWidth: CHART_PIE_STROKE_WIDTH,
   };
 };

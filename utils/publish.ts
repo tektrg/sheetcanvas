@@ -1,17 +1,20 @@
-import type { ChartColorSettings, ChartData, NoteData, NotePublishSettings, SheetData } from '../types';
+import type { CellFormat, ChartColorSettings, ChartData, NoteData, NotePublishSettings, SheetData } from '../types';
 import {
   ANSWER_BOX_LIMITS,
   MAX_PUBLISHED_CHARTS,
   type PublishCreatedResponse,
   type PublishedChart,
+  type PublishedFormat,
   type PublishedSeries,
   type PublishSnapshot,
   type PublishUpdatedResponse,
 } from '../shared/publishSnapshot';
 import { extractChartData, getSheetHeaders } from './chartHelpers';
 import { buildChartSeriesDisplayNames, normalizeChartSeriesLabel } from './chartDisplay';
-import { buildSeriesPalette, getChartPrimaryColor, getEffectiveChartPalette, normalizeHexColor } from './chartColorSchemes';
+import { normalizeHexColor, resolveSeriesPalette } from './chartColorSchemes';
 import { FORMAT_ALIASES, formatValue } from './formatting';
+import { isSafeD3Format, MAX_FORMAT_DECIMALS, VALUE_FORMAT_TYPES } from '../shared/valueFormat';
+import { getCellId } from './formulas';
 import { extractEmbeddedChartIds, notePlainText, pageDisplayTitle } from './pages';
 import { ApiError, getBackendBaseUrl } from './backendApi';
 
@@ -49,6 +52,47 @@ const chartSeriesEntries = (chart: ChartData, sheet: SheetData, rows: Array<Reco
   return config.dataColumns.map((colId, index) => ({ key: colId, dataKey: `value_${index}`, label: headerLabel(colId) }));
 };
 
+/**
+ * CellFormat → the small wire format. Only numeric formats survive (number/currency/percent, or any
+ * d3 specifier); unformatted, text and date columns return undefined = generic compact numbers.
+ */
+export const toPublishedFormat = (format: CellFormat | undefined): PublishedFormat | undefined => {
+  if (!format) return undefined;
+  const d3Format = isSafeD3Format((format as { d3Format?: unknown }).d3Format) ? (format as { d3Format: string }).d3Format : undefined;
+  const numericType = (VALUE_FORMAT_TYPES as readonly string[]).includes(format.type) ? (format.type as PublishedFormat['type']) : undefined;
+  const type = numericType ?? (d3Format ? 'number' : undefined);
+  if (!type) return undefined;
+  const rawDecimals = (format as { decimals?: unknown }).decimals;
+  const decimals = typeof rawDecimals === 'number' && Number.isFinite(rawDecimals)
+    ? Math.min(MAX_FORMAT_DECIMALS, Math.max(0, Math.round(rawDecimals)))
+    : undefined;
+  // A bare "number" format reads the same as no format: keep the snapshot (and its hash) unchanged.
+  if (type === 'number' && decimals === undefined && !d3Format) return undefined;
+  return { type, ...(decimals !== undefined ? { decimals } : {}), ...(d3Format ? { d3Format } : {}) };
+};
+
+/** Value-axis formats the way ChartNode derives them (source column's first-row cell format). */
+const chartAxisFormats = (chart: ChartData, sheet: SheetData): PublishedChart['axisFormats'] => {
+  const headers = getSheetHeaders(sheet);
+  const columnFormat = (colId: string | undefined) => {
+    const index = headers.find(h => h.id === colId)?.index;
+    return index === undefined ? undefined : toPublishedFormat(sheet.cells[getCellId(index, 1)]?.format);
+  };
+  const config = chart.config;
+  if (config.mode === 'group' || config.type === 'pie' || config.type === 'treemap') {
+    const left = columnFormat(config.mode === 'group' ? config.valueCol : config.dataColumns[0]);
+    return left ? { left } : undefined;
+  }
+  const onRight = (colId: string) => !!config.rightAxisColumns?.includes(colId);
+  const left = columnFormat(config.dataColumns.find(col => !onRight(col)));
+  const right = columnFormat(config.dataColumns.find(onRight));
+  return left || right ? { ...(left ? { left } : {}), ...(right ? { right } : {}) } : undefined;
+};
+
+const CARTESIAN_TYPES = ['line', 'bar', 'area'];
+const MAX_CATEGORY_COLORS = 32;
+const TREEMAP_MAX_LEAVES = 16;
+
 /** One canvas chart → frozen rows + labelled, colored series. */
 export const resolveChartForPublish = (
   chart: ChartData,
@@ -59,14 +103,20 @@ export const resolveChartForPublish = (
   const rows = extractChartData(sheet, chart.config) as Array<Record<string, unknown>>;
   const entries = chartSeriesEntries(chart, sheet, rows);
   const displayNames = { ...buildChartSeriesDisplayNames(entries), ...(chart.config.seriesDisplayNames ?? {}) };
-  const palette = getEffectiveChartPalette(chart.config, colorSettings, false);
-  const colors = buildSeriesPalette(getChartPrimaryColor(chart.config, palette), palette);
+  const isCategory = chart.config.type === 'pie' || chart.config.type === 'treemap';
+  const segmentCount = chart.config.type === 'pie' ? rows.length : chart.config.type === 'treemap' ? Math.min(TREEMAP_MAX_LEAVES, rows.length) : entries.length;
+  const colors = resolveSeriesPalette(chart.config, colorSettings, false, Math.max(1, segmentCount));
+  // Right-axis columns only exist in metrics mode on line/bar/area charts (the server draws one scale otherwise).
+  const rightAxis = chart.config.mode !== 'group' && CARTESIAN_TYPES.includes(chart.config.type) ? chart.config.rightAxisColumns ?? [] : [];
   const series: PublishedSeries[] = entries.map((entry, index) => ({
     key: entry.key,
     label: displayNames[entry.key] || normalizeChartSeriesLabel(entry.label),
     color: toHexColor(colors[index % colors.length]),
     ...(chart.config.seriesTypes?.[entry.key] ? { type: chart.config.seriesTypes[entry.key] } : {}),
+    ...(rightAxis.includes(entry.key) ? { axis: 'right' as const } : {}),
   }));
+  const axisFormats = chartAxisFormats(chart, sheet);
+  const highlightIndex = chart.config.highlightIndex;
   return {
     id: chart.id,
     title: chart.title || 'Chart',
@@ -76,6 +126,10 @@ export const resolveChartForPublish = (
     // Connector sheets: when the data was last fetched. Others are "as of" the publish (server side).
     ...(sheet.connectorConfig?.lastRefreshedAt ? { dataAsOf: sheet.connectorConfig.lastRefreshedAt } : {}),
     series,
+    ...(axisFormats ? { axisFormats } : {}),
+    ...(chart.config.showLabels ? { showLabels: true } : {}),
+    ...(Number.isInteger(highlightIndex) && highlightIndex >= 0 && highlightIndex < rows.length ? { highlightIndex } : {}),
+    ...(isCategory ? { categoryColors: colors.slice(0, MAX_CATEGORY_COLORS).map(toHexColor) } : {}),
     rows: rows.map(row => ({
       label: String(row.name ?? ''),
       values: entries.map(entry => {
