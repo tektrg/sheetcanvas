@@ -253,7 +253,8 @@ export class CanvasBridge extends DurableObject {
     if (!isPublic && await this.ctx.storage.get(PUBLIC_SESSION_MODE_KEY)) {
       return { ok: false, error: 'SheetCanvas session expired. Open SheetCanvas in a new conversation to start again.' };
     }
-    let browserSocket = this.ctx.getWebSockets()[0];
+    // Newest live tab wins; replaced sockets can linger until their close completes.
+    let browserSocket = this.ctx.getWebSockets().filter((socket) => !socket.deserializeAttachment()?.replaced).at(-1);
     if (isPublic) {
       const deadlineMs = Date.now() + PUBLIC_CONNECT_TIMEOUT_MS;
       while (Date.now() < deadlineMs) {
