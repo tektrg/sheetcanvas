@@ -17,6 +17,7 @@ import {
   SHEETCANVAS_PUBLIC_APP_TOOL,
   buildSheetCanvasAppResource,
   buildPublicSheetCanvasAppResource,
+  claudeUiDomain,
 } from './pluginUi';
 
 /**
@@ -90,6 +91,12 @@ interface McpConnection {
   analyticsToken: string;
   mode: 'private' | 'public';
   publicSession?: string;
+  /** Set when the connector URL carries `?client=claude`; Claude's ui.domain is derived from it. */
+  claudeServerUrl?: string;
+}
+
+function claudeServerUrlFor(requestUrl: string): string | undefined {
+  return new URL(requestUrl).searchParams.get('client') === 'claude' ? requestUrl : undefined;
 }
 
 interface JsonRpcRequest {
@@ -376,11 +383,14 @@ async function handleMcpRequest(env: Env, connection: McpConnection, request: Js
       if (uri !== expectedUri) {
         return rpcError(request.id, -32002, `Resource not found: ${String(uri)}`);
       }
+      const uiDomain = connection.claudeServerUrl
+        ? await claudeUiDomain(connection.claudeServerUrl)
+        : undefined;
       return rpcResult(request.id, {
         contents: [
           connection.mode === 'public'
-            ? buildPublicSheetCanvasAppResource()
-            : buildSheetCanvasAppResource(connection.analyticsToken),
+            ? buildPublicSheetCanvasAppResource(uiDomain)
+            : buildSheetCanvasAppResource(connection.analyticsToken, uiDomain),
         ],
       });
     }
@@ -518,6 +528,7 @@ mcpApp.post('/mcp', async (c) => {
       analyticsToken: session,
       mode: 'public',
       publicSession: session,
+      claudeServerUrl: claudeServerUrlFor(c.req.url),
     },
     request,
   );
@@ -553,7 +564,7 @@ mcpApp.post('/mcp/:token', async (c) => {
 
   const response = await handleMcpRequest(
     c.env,
-    { bridgeKey: token, analyticsToken: token, mode: 'private' },
+    { bridgeKey: token, analyticsToken: token, mode: 'private', claudeServerUrl: claudeServerUrlFor(c.req.url) },
     body as JsonRpcRequest,
   );
   if (response === null) return c.body(null, 202);

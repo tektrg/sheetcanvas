@@ -7,6 +7,7 @@ import {
   SHEETCANVAS_PUBLIC_APP_TOOL,
   buildSheetCanvasAppResource,
   buildPublicSheetCanvasAppResource,
+  claudeUiDomain,
 } from '../mcp/pluginUi';
 
 const TOKEN = 'a'.repeat(48);
@@ -256,5 +257,20 @@ describe('SheetCanvas ChatGPT app surface', () => {
     expect(widget.widgetStates).toEqual([]);
     expect(widget.hostMessages).toHaveLength(2);
     expect(widget.navigations).toEqual([]);
+  });
+
+  it('derives Claude ui.domain from the connector URL (docs reference value)', async () => {
+    await expect(claudeUiDomain('https://example.com/mcp')).resolves.toBe(
+      'c3d80a4ed901ee05b21755a88273b4a4.claudemcpcontent.com',
+    );
+  });
+
+  it('uses the supplied ui.domain for Claude and keeps ChatGPT metadata intact', () => {
+    const domain = 'c3d80a4ed901ee05b21755a88273b4a4.claudemcpcontent.com';
+    for (const resource of [buildSheetCanvasAppResource(TOKEN, domain), buildPublicSheetCanvasAppResource(domain)]) {
+      expect(resource._meta.ui.domain).toBe(domain);
+      expect(resource._meta.ui.csp.frameDomains).toEqual(['https://sheetcanvas.com']);
+      expect(resource._meta['openai/widgetDomain']).toBe('https://sheetcanvas.com');
+    }
   });
 });

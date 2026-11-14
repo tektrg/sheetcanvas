@@ -72,7 +72,20 @@ function buildCanvasUrl(token: string): string {
   return url.toString();
 }
 
-export function buildSheetCanvasAppResource(token: string) {
+const SHEETCANVAS_UI_DOMAIN = 'https://sheetcanvas.com';
+
+/**
+ * Claude serves an MCP App from its own sandbox origin and requires `ui.domain`
+ * to be the first 32 hex chars of SHA-256(server URL) + `.claudemcpcontent.com`.
+ * ChatGPT expects the plain site origin, so the caller picks per connection.
+ */
+export async function claudeUiDomain(serverUrl: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(serverUrl));
+  const hex = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 32)}.claudemcpcontent.com`;
+}
+
+export function buildSheetCanvasAppResource(token: string, uiDomain: string = SHEETCANVAS_UI_DOMAIN) {
   const canvasUrl = buildCanvasUrl(token);
   const text = `<!doctype html>
 <html lang="en">
@@ -96,7 +109,7 @@ export function buildSheetCanvasAppResource(token: string) {
     _meta: {
       ui: {
         prefersBorder: false,
-        domain: 'https://sheetcanvas.com',
+        domain: uiDomain,
         csp: {
           frameDomains: ['https://sheetcanvas.com'],
         },
@@ -114,7 +127,7 @@ export function buildSheetCanvasAppResource(token: string) {
   } as const;
 }
 
-export function buildPublicSheetCanvasAppResource() {
+export function buildPublicSheetCanvasAppResource(uiDomain: string = SHEETCANVAS_UI_DOMAIN) {
   const text = `<!doctype html>
 <html lang="en">
   <head>
@@ -248,7 +261,7 @@ export function buildPublicSheetCanvasAppResource() {
     _meta: {
       ui: {
         prefersBorder: false,
-        domain: 'https://sheetcanvas.com',
+        domain: uiDomain,
         csp: {
           frameDomains: ['https://sheetcanvas.com'],
         },
