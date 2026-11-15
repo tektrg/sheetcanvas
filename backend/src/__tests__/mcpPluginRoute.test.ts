@@ -259,7 +259,7 @@ describe('ChatGPT MCP extension routes', () => {
     expect(initialized.response.headers.get('cache-control')).toBe('no-store');
     expect(isActive()).toBe(true);
 
-    const withoutSession = await publicRpc(env, 'tools/list');
+    const withoutSession = await publicRpc(env, 'tools/call', { name: 'listSheets', arguments: {} });
     expect(withoutSession.response.status).toBe(400);
 
     const tools = await publicRpc(env, 'tools/list', undefined, session);
@@ -314,8 +314,15 @@ describe('ChatGPT MCP extension routes', () => {
     expect(deleted.status).toBe(204);
     expect(isActive()).toBe(true); // Transport deletion must not end the logical canvas.
 
-    const afterDelete = await publicRpc(env, 'tools/list', undefined, session);
+    const afterDelete = await publicRpc(env, 'tools/call', { name: 'listSheets', arguments: {} }, session);
     expect(afterDelete.response.status).toBe(404);
     expect(afterDelete.body.error.message).toContain('expired');
+
+    // Claude fetches the widget page on a stale session; read-only methods must still work.
+    const staleRead = await publicRpc(env, 'resources/read', { uri: SHEETCANVAS_PUBLIC_APP_RESOURCE_URI }, session);
+    expect(staleRead.response.status).toBe(200);
+    expect(staleRead.body.result.contents[0].uri).toBe(SHEETCANVAS_PUBLIC_APP_RESOURCE_URI);
+    const noSessionList = await publicRpc(env, 'tools/list', undefined, '');
+    expect(noSessionList.response.status).toBe(200);
   });
 });

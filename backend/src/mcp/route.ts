@@ -492,6 +492,13 @@ mcpApp.get('/api/mcp/public-bridge/:session', async (c) => {
   return bridge.fetch(c.req.raw);
 });
 
+const STATELESS_PUBLIC_METHODS = new Set(['resources/read', 'resources/list', 'resources/templates/list', 'tools/list', 'ping']);
+
+async function publicSessionIsLive(env: Env, session: string): Promise<boolean> {
+  return PUBLIC_SESSION_PATTERN.test(session) &&
+    bridgeStubForToken(env, `public:${session}`).isPublicSessionActive(Date.now());
+}
+
 mcpApp.post('/mcp', async (c) => {
   const body = await c.req.json().catch(() => undefined);
   if (body === undefined) {
@@ -516,6 +523,18 @@ mcpApp.post('/mcp', async (c) => {
       bridge = bridgeStubForToken(c.env, `public:${session}`);
       await bridge.initializePublicSession(Date.now() + PUBLIC_CANVAS_TTL_MS);
     }
+  } else if (STATELESS_PUBLIC_METHODS.has(request.method) && !(await publicSessionIsLive(c.env, session))) {
+    // Claude fetches the widget page on a separate, sometimes stale, session and
+    // does not re-initialize on 404. These methods touch no canvas, so serve them
+    // without a session instead of failing the window as "couldn't load".
+    c.header('Cache-Control', 'no-store');
+    const response = await handleMcpRequest(
+      c.env,
+      { bridgeKey: 'public:stateless', analyticsToken: 'stateless', mode: 'public', claudeServerUrl: claudeServerUrlFor(c.req.url) },
+      request,
+    );
+    if (response === null) return c.body(null, 202);
+    return c.json(response);
   } else {
     if (!PUBLIC_SESSION_PATTERN.test(session)) {
       return c.json(rpcError(request.id ?? null, -32600, 'Missing or invalid Mcp-Session-Id'), 400);
