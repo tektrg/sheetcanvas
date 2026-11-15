@@ -17,6 +17,8 @@ import {
   SHEETCANVAS_PUBLIC_APP_TOOL,
   buildSheetCanvasAppResource,
   buildPublicSheetCanvasAppResource,
+  buildCanvasUrl,
+  buildPublicCanvasUrl,
   claudeUiDomain,
 } from './pluginUi';
 
@@ -270,10 +272,16 @@ async function handleToolsCall(env: Env, connection: McpConnection, request: Jso
     }
     const ready = connection.mode === 'private' ||
       (await bridgeStubForToken(env, `public:${publicCanvas!.session}`).getStatus()).browserConnected;
+    // Fallback for hosts that cannot render the MCP App window (Claude Code, CLIs):
+    // the same canvas opened in a normal browser tab connects the bridge too.
+    const openInBrowserUrl = connection.mode === 'public'
+      ? buildPublicCanvasUrl(publicCanvas!.session)
+      : buildCanvasUrl(connection.analyticsToken);
+    const fallback = ` If no SheetCanvas window is visible in this app, ask the user to open this link in a browser and keep the tab open: ${openInBrowserUrl}`;
     return rpcResult(id, {
-      content: [{ type: 'text', text: ready ? 'SheetCanvas is ready in the interactive workspace.' :
-        'SheetCanvas is opening in the interactive workspace. Canvas tools wait briefly for it to connect; keep the workspace visible.' }],
-      structuredContent: { ready, ...(publicCanvas ? { canvasHandle: publicCanvas.canvasHandle,
+      content: [{ type: 'text', text: (ready ? 'SheetCanvas is ready in the interactive workspace.' :
+        'SheetCanvas is opening in the interactive workspace. Canvas tools wait briefly for it to connect; keep the workspace visible.') + fallback }],
+      structuredContent: { ready, openInBrowserUrl, ...(publicCanvas ? { canvasHandle: publicCanvas.canvasHandle,
         expiresInSeconds: Math.max(0, Math.floor((publicCanvas.expiresAtMs - Date.now()) / 1000)) } : {}) },
       ...(connection.mode === 'public'
         ? { _meta: { bridgeSession: publicCanvas!.session, canvasHandle: publicCanvas!.canvasHandle } }

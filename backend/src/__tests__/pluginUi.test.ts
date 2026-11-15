@@ -7,6 +7,8 @@ import {
   SHEETCANVAS_PUBLIC_APP_TOOL,
   buildSheetCanvasAppResource,
   buildPublicSheetCanvasAppResource,
+  buildCanvasUrl,
+  buildPublicCanvasUrl,
   claudeUiDomain,
 } from '../mcp/pluginUi';
 
@@ -272,5 +274,13 @@ describe('SheetCanvas ChatGPT app surface', () => {
       expect(resource._meta.ui.csp.frameDomains).toEqual(['https://sheetcanvas.com']);
       expect(resource._meta['openai/widgetDomain']).toBe('https://sheetcanvas.com');
     }
+  });
+
+  it('builds browser fallback links that the canvas bootstrap accepts', () => {
+    const session = `p_${'a'.repeat(64)}`;
+    expect(buildPublicCanvasUrl(session)).toBe(`https://sheetcanvas.com/?chatgpt_plugin=1#mcp_session=${session}`);
+    expect(buildCanvasUrl(TOKEN)).toBe(`https://sheetcanvas.com/?chatgpt_plugin=1#mcp_token=${TOKEN}`);
+    expect(SHEETCANVAS_APP_TOOL.outputSchema.properties).toHaveProperty('openInBrowserUrl');
+    expect(SHEETCANVAS_PUBLIC_APP_TOOL.outputSchema.properties).toHaveProperty('openInBrowserUrl');
   });
 });

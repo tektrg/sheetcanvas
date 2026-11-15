@@ -241,7 +241,11 @@ describe('ChatGPT MCP extension routes', () => {
       arguments: {},
     });
 
-    expect(body.result.structuredContent).toEqual({ ready: true });
+    expect(body.result.structuredContent).toEqual({
+      ready: true,
+      openInBrowserUrl: `https://sheetcanvas.com/?chatgpt_plugin=1#mcp_token=${TOKEN}`,
+    });
+    expect(body.result.content[0].text).toContain(`#mcp_token=${TOKEN}`);
     expect(body.result.isError).not.toBe(true);
   });
 

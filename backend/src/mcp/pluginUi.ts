@@ -16,6 +16,7 @@ export const SHEETCANVAS_APP_TOOL = {
     type: 'object',
     properties: {
       ready: { type: 'boolean' },
+      openInBrowserUrl: { type: 'string', description: 'Open in a normal browser tab when this app cannot show the SheetCanvas window.' },
     },
     required: ['ready'],
     additionalProperties: false,
@@ -49,6 +50,7 @@ export const SHEETCANVAS_PUBLIC_APP_TOOL = {
     type: 'object',
     properties: {
       ready: { type: 'boolean' },
+      openInBrowserUrl: { type: 'string', description: 'Open in a normal browser tab when this app cannot show the SheetCanvas window.' },
       canvasHandle: { type: 'string', pattern: '^c_[a-f0-9]{64}$' },
       expiresInSeconds: { type: 'number' },
     },
@@ -65,7 +67,7 @@ export const SHEETCANVAS_PUBLIC_APP_TOOL = {
   },
 } as const;
 
-function buildCanvasUrl(token: string): string {
+export function buildCanvasUrl(token: string): string {
   const url = new URL('https://sheetcanvas.com/');
   url.searchParams.set('chatgpt_plugin', '1');
   url.hash = new URLSearchParams({ mcp_token: token }).toString();
@@ -83,6 +85,14 @@ export async function claudeUiDomain(serverUrl: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(serverUrl));
   const hex = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
   return `${hex.slice(0, 32)}.claudemcpcontent.com`;
+}
+
+/** Browser link to the anonymous canvas, for hosts that cannot render the MCP App window. */
+export function buildPublicCanvasUrl(bridgeSession: string): string {
+  const url = new URL('https://sheetcanvas.com/');
+  url.searchParams.set('chatgpt_plugin', '1');
+  url.hash = new URLSearchParams({ mcp_session: bridgeSession }).toString();
+  return url.toString();
 }
 
 export function buildSheetCanvasAppResource(token: string, uiDomain: string = SHEETCANVAS_UI_DOMAIN) {
