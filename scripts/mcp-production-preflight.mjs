@@ -379,7 +379,7 @@ async function checkLiveMcpRoutes() {
         }
       }
 
-      const resourceUri = 'ui://sheetcanvas/workspace-public-v4.html';
+      const resourceUri = 'ui://sheetcanvas/workspace-public-v5.html';
       const resource = await rpc(4, 'resources/read', { uri: resourceUri });
       const resourceBody = resource.body?.result?.contents?.[0];
       if (

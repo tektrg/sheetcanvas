@@ -1,6 +1,6 @@
 export const SHEETCANVAS_APP_RESOURCE_URI = 'ui://sheetcanvas/workspace-v1.html';
 // The host caches HTML by URI; bump this when the public bootstrap changes.
-export const SHEETCANVAS_PUBLIC_APP_RESOURCE_URI = 'ui://sheetcanvas/workspace-public-v4.html';
+export const SHEETCANVAS_PUBLIC_APP_RESOURCE_URI = 'ui://sheetcanvas/workspace-public-v5.html';
 export const SHEETCANVAS_APP_TOOL_NAME = 'openSheetCanvas';
 
 export const SHEETCANVAS_APP_TOOL = {
@@ -149,12 +149,17 @@ export function buildPublicSheetCanvasAppResource(uiDomain: string = SHEETCANVAS
     </style>
   </head>
   <body>
+    <div id="sheetcanvas-status" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;font:14px system-ui,sans-serif;color:#555;">Opening SheetCanvas…</div>
     <iframe id="sheetcanvas" title="SheetCanvas workspace" allow="clipboard-read; clipboard-write"></iframe>
     <script>
       (function () {
         var sessionPattern = /^p_[a-f0-9]{64}$/;
         var handlePattern = /^c_[a-f0-9]{64}$/;
         var iframe = document.getElementById('sheetcanvas');
+        var statusBox = document.getElementById('sheetcanvas-status');
+        setTimeout(function () {
+          if (!currentSession) statusBox.textContent = 'SheetCanvas did not receive its session. Ask Claude for the browser link to open it in a tab instead.';
+        }, 5000);
         var currentSession = '';
         var initializationPending = true;
         var bridgeInitialized = false;
@@ -174,6 +179,16 @@ export function buildPublicSheetCanvasAppResource(uiDomain: string = SHEETCANVAS
           for (var index = 0; index < candidates.length; index += 1) {
             var session = candidates[index] && candidates[index].bridgeSession;
             if (typeof session === 'string' && sessionPattern.test(session)) return candidates[index];
+          }
+          // Claude may not forward result _meta to the app; fall back to the
+          // server-built browser link (same capability, already model-visible).
+          var structured = metadata.structuredContent || (callResult && callResult.structuredContent);
+          var link = structured && structured.openInBrowserUrl;
+          if (typeof link === 'string' && link.indexOf('https://sheetcanvas.com/') === 0) {
+            var linked = new URLSearchParams(link.split('#')[1] || '').get('mcp_session');
+            if (linked && sessionPattern.test(linked)) {
+              return { bridgeSession: linked, canvasHandle: structured.canvasHandle };
+            }
           }
           return '';
         }
@@ -223,6 +238,7 @@ export function buildPublicSheetCanvasAppResource(uiDomain: string = SHEETCANVAS
           url.searchParams.set('chatgpt_plugin', '1');
           url.hash = new URLSearchParams({ mcp_session: bridgeSession }).toString();
           iframe.src = url.toString();
+          statusBox.hidden = true;
         }
 
         // The host may deliver later tool results through MCP Apps rather than
@@ -243,7 +259,7 @@ export function buildPublicSheetCanvasAppResource(uiDomain: string = SHEETCANVAS
             return;
           }
           if (message.id === undefined && message.method === 'ui/notifications/tool-result') {
-            render(message.params && message.params._meta);
+            render(message.params);
           }
         }, { passive: true });
         window.parent.postMessage({
