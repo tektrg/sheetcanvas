@@ -18,7 +18,6 @@ import {
   buildSheetCanvasAppResource,
   buildPublicSheetCanvasAppResource,
   buildCanvasUrl,
-  buildPublicCanvasUrl,
   claudeUiDomain,
 } from './pluginUi';
 
@@ -131,6 +130,7 @@ interface CanvasBridgeStub {
   initializePublicSession(expiresAtMs: number): Promise<void>;
   isPublicSessionActive(nowMs: number): Promise<boolean>;
   terminatePublicSession(): Promise<void>;
+  handoffPublicCanvas(next: { bridgeSession: string; canvasHandle: string }): Promise<boolean>;
   registerPublicCanvasHandle(session: string, expiresAtMs: number): Promise<void>;
   resolvePublicCanvasHandle(nowMs: number): Promise<PublicCanvasPointer | null>;
 }
@@ -243,18 +243,17 @@ async function handleToolsCall(env: Env, connection: McpConnection, request: Jso
     if (!suppliedArgs || typeof suppliedArgs !== 'object' || Array.isArray(suppliedArgs)) {
       return rpcError(id, -32602, 'Expected an arguments object');
     }
-    if (toolName === SHEETCANVAS_APP_TOOL_NAME && Object.keys(suppliedArgs).some((key) => key !== 'canvasHandle')) {
-      return rpcError(id, -32602, 'openSheetCanvas accepts only an optional canvasHandle');
+    const launcher = toolName === SHEETCANVAS_APP_TOOL_NAME;
+    const freshWorkspace = launcher ? (suppliedArgs as Record<string, unknown>).freshWorkspace : undefined;
+    if (launcher && (Object.keys(suppliedArgs).some((key) => key !== 'canvasHandle' && key !== 'freshWorkspace') ||
+      (freshWorkspace !== undefined && typeof freshWorkspace !== 'boolean'))) {
+      return rpcError(id, -32602, 'openSheetCanvas accepts canvasHandle and boolean freshWorkspace');
     }
     const handle = (suppliedArgs as Record<string, unknown>).canvasHandle;
-    if (toolName === SHEETCANVAS_APP_TOOL_NAME && handle === undefined) {
-      const session = mintPublicCapability('p');
-      const canvasHandle = mintPublicCapability('c');
-      const expiresAtMs = Date.now() + PUBLIC_CANVAS_TTL_MS;
-      await bridgeStubForToken(env, `public:${session}`).initializePublicSession(expiresAtMs);
-      await bridgeStubForToken(env, `public-canvas:${canvasHandle}`).registerPublicCanvasHandle(session, expiresAtMs);
-      publicCanvas = { session, canvasHandle, expiresAtMs };
-    } else {
+    if (freshWorkspace && handle === undefined) {
+      return rpcError(id, -32602, 'Pass the active canvasHandle to switch to a fresh workspace.');
+    }
+    if (!launcher || handle !== undefined) {
       if (typeof handle !== 'string' || !PUBLIC_CANVAS_HANDLE_PATTERN.test(handle)) {
         return rpcError(id, -32602, 'A valid canvasHandle returned by openSheetCanvas is required. No canvas changes were made.');
       }
@@ -264,24 +263,37 @@ async function handleToolsCall(env: Env, connection: McpConnection, request: Jso
       }
       publicCanvas = { ...pointer, canvasHandle: handle };
     }
+    if (launcher && (!publicCanvas || freshWorkspace)) {
+      const source = publicCanvas;
+      const session = mintPublicCapability('p');
+      const canvasHandle = mintPublicCapability('c');
+      const expiresAtMs = Date.now() + PUBLIC_CANVAS_TTL_MS;
+      await bridgeStubForToken(env, `public:${session}`).initializePublicSession(expiresAtMs);
+      await bridgeStubForToken(env, `public-canvas:${canvasHandle}`).registerPublicCanvasHandle(session, expiresAtMs);
+      publicCanvas = { session, canvasHandle, expiresAtMs };
+      if (source && !(await bridgeStubForToken(env, `public:${source.session}`).handoffPublicCanvas({ bridgeSession: session, canvasHandle }))) {
+        await bridgeStubForToken(env, `public:${session}`).terminatePublicSession();
+        return rpcError(id, -32000, 'The active workspace is disconnected. Open it before switching to a fresh workspace.');
+      }
+    }
   }
   if (toolName === SHEETCANVAS_APP_TOOL_NAME) {
     const args = suppliedArgs;
-    if (!args || Array.isArray(args) || typeof args !== 'object' || Object.keys(args).some((key) => key !== 'canvasHandle' || connection.mode !== 'public')) {
+    if (!args || Array.isArray(args) || typeof args !== 'object' || (connection.mode === 'private' && Object.keys(args).length !== 0)) {
       return rpcError(id, -32602, `${SHEETCANVAS_APP_TOOL_NAME} does not accept arguments`);
     }
     const ready = connection.mode === 'private' ||
       (await bridgeStubForToken(env, `public:${publicCanvas!.session}`).getStatus()).browserConnected;
     // Fallback for hosts that cannot render the MCP App window (Claude Code, CLIs):
     // the same canvas opened in a normal browser tab connects the bridge too.
-    const openInBrowserUrl = connection.mode === 'public'
-      ? buildPublicCanvasUrl(publicCanvas!.session)
-      : buildCanvasUrl(connection.analyticsToken);
-    const fallback = ` If no SheetCanvas window is visible in this app, ask the user to open this link in a browser and keep the tab open: ${openInBrowserUrl}`;
+    const openInBrowserUrl = connection.mode === 'private' ? buildCanvasUrl(connection.analyticsToken) : undefined;
+    const fallback = openInBrowserUrl
+      ? ` If no SheetCanvas window is visible in this app, ask the user to open this link in a browser and keep the tab open: ${openInBrowserUrl}`
+      : '';
     return rpcResult(id, {
       content: [{ type: 'text', text: (ready ? 'SheetCanvas is ready in the interactive workspace.' :
         'SheetCanvas is opening in the interactive workspace. Canvas tools wait briefly for it to connect; keep the workspace visible.') + fallback }],
-      structuredContent: { ready, openInBrowserUrl, ...(publicCanvas ? { canvasHandle: publicCanvas.canvasHandle,
+      structuredContent: { ready, ...(openInBrowserUrl ? { openInBrowserUrl } : {}), ...(publicCanvas ? { canvasHandle: publicCanvas.canvasHandle,
         expiresInSeconds: Math.max(0, Math.floor((publicCanvas.expiresAtMs - Date.now()) / 1000)) } : {}) },
       ...(connection.mode === 'public'
         ? { _meta: { bridgeSession: publicCanvas!.session, canvasHandle: publicCanvas!.canvasHandle } }

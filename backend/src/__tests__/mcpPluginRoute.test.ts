@@ -52,6 +52,7 @@ function createPublicEnv(browserConnected = false) {
             initializePublicSession: async () => { state.active = true; },
             isPublicSessionActive: async () => state.active,
             terminatePublicSession: async () => { state.active = false; },
+            handoffPublicCanvas: async () => state.connected,
             registerPublicCanvasHandle: async (session: string, expiresAtMs: number) => { pointers.set(name, { session, expiresAtMs }); },
             resolvePublicCanvasHandle: async (nowMs: number) => {
               const pointer = pointers.get(name);
@@ -102,6 +103,9 @@ describe('ChatGPT MCP extension routes', () => {
     const opened = await publicRpc(env, 'tools/call', { name: SHEETCANVAS_APP_TOOL_NAME, arguments: {} }, sessionA);
     const { canvasHandle } = opened.body.result.structuredContent;
     const logical = opened.body.result._meta.bridgeSession;
+    expect(opened.body.result.structuredContent).not.toHaveProperty('openInBrowserUrl');
+    expect(JSON.stringify(opened.body.result.structuredContent)).not.toContain(logical);
+    expect(JSON.stringify(opened.body.result.content)).not.toContain(logical);
     expect(canvasHandle).toMatch(/^c_[a-f0-9]{64}$/);
     expect(logical).not.toBe(sessionA);
     sessionState(logical).connected = true;
@@ -119,6 +123,25 @@ describe('ChatGPT MCP extension routes', () => {
     expect(reopened.body.result._meta.bridgeSession).toBe(logical);
     expect(reopened.body.result.structuredContent.ready).toBe(true);
   });
+  it('requires an active renderer to switch workspaces and preserves the source canvas', async () => {
+    const { env, sessionState } = createPublicEnv();
+    const transport = (await publicRpc(env, 'initialize')).response.headers.get('Mcp-Session-Id')!;
+    const launch = (args: Record<string, unknown>) =>
+      publicRpc(env, 'tools/call', { name: SHEETCANVAS_APP_TOOL_NAME, arguments: args }, transport);
+    const opened = (await launch({})).body.result;
+    const { canvasHandle } = opened.structuredContent;
+    const source = sessionState(opened._meta.bridgeSession);
+    expect((await launch({ freshWorkspace: true })).body.error.code).toBe(-32602);
+    expect((await launch({ canvasHandle, freshWorkspace: true })).body.error.code).toBe(-32000);
+    source.connected = true;
+    const switched = (await launch({ canvasHandle, freshWorkspace: true })).body.result;
+    expect(switched.structuredContent.canvasHandle).not.toBe(canvasHandle);
+    expect(switched._meta.bridgeSession).not.toBe(opened._meta.bridgeSession);
+    expect(switched.structuredContent.ready).toBe(false);
+    expect(source.active).toBe(true);
+    expect((await launch({ canvasHandle })).body.result.structuredContent.ready).toBe(true);
+  });
+
   it('fails closed for missing, invalid, unknown and expired handles without extending expiry or mutating canvases', async () => {
     vi.useFakeTimers();
     try {

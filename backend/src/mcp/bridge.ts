@@ -86,7 +86,7 @@ export class CanvasBridge extends DurableObject {
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
     if (typeof message !== 'string') return;
-    let reply: BrowserToolReply & { type?: string };
+    let reply: BrowserToolReply & { type?: string; supportsWorkspaceHandoff?: boolean };
     try {
       reply = JSON.parse(message);
     } catch {
@@ -99,7 +99,10 @@ export class CanvasBridge extends DurableObject {
     if (!isPublic && await this.ctx.storage.get(PUBLIC_SESSION_MODE_KEY)) return;
     if (isPublic && reply.type === 'canvas_ready') {
       this.publicReadySockets.add(ws);
-      ws.serializeAttachment({ publicReady: true });
+      ws.serializeAttachment({
+        publicReady: true,
+        ...(reply.supportsWorkspaceHandoff === true ? { supportsWorkspaceHandoff: true } : {}),
+      });
       return;
     }
     if (isPublic && reply.type === 'session_snapshot') {
@@ -137,6 +140,31 @@ export class CanvasBridge extends DurableObject {
   async callTool(name: string, input: unknown): Promise<BridgeCallResult> {
     const queued = this.callQueue.then(() => this.dispatchToBrowser(name, input));
     // Keep the queue alive even when a call fails.
+    this.callQueue = queued.catch(() => undefined);
+    return queued;
+  }
+
+  /** Notify the current embedded renderer without exposing either session to the model. */
+  async handoffPublicCanvas(target: { bridgeSession: string; canvasHandle: string }): Promise<boolean> {
+    const queued = this.callQueue.then(async () => {
+      if (!/^p_[a-f0-9]{64}$/.test(target.bridgeSession) || !/^c_[a-f0-9]{64}$/.test(target.canvasHandle)) return false;
+      if (!(await this.isPublicSessionActive(Date.now()))) return false;
+      const socket = this.ctx.getWebSockets().find((candidate) =>
+        this.isPublicSocketReady(candidate) &&
+        candidate.deserializeAttachment()?.supportsWorkspaceHandoff === true &&
+        candidate.deserializeAttachment()?.handoffSent !== true);
+      if (!socket) return false;
+      // Save any manual edits which have not reached the debounced snapshot yet.
+      const saved = await this.requestBrowser(socket, { type: 'prepare_workspace_handoff' }, 5_000);
+      if (!saved.ok || !this.ctx.getWebSockets().includes(socket) || !this.isPublicSocketReady(socket)) return false;
+      try {
+        socket.send(JSON.stringify({ type: 'workspace_handoff', ...target }));
+        socket.serializeAttachment({ ...socket.deserializeAttachment(), handoffSent: true });
+        return true;
+      } catch {
+        return false;
+      }
+    });
     this.callQueue = queued.catch(() => undefined);
     return queued;
   }
@@ -277,17 +305,21 @@ export class CanvasBridge extends DurableObject {
       };
     }
 
+    return this.requestBrowser(browserSocket, { name, input }, TOOL_CALL_TIMEOUT_MS);
+  }
+
+  private async requestBrowser(browserSocket: WebSocket, message: { name: string; input: unknown } | { type: 'prepare_workspace_handoff' }, timeoutMs: number): Promise<BridgeCallResult> {
     const callId = crypto.randomUUID();
     const replyPromise = new Promise<BrowserToolReply>((resolve) => {
       const timer = setTimeout(() => {
         this.pendingReplies.delete(callId);
-        resolve({ id: callId, ok: false, error: `Tool call timed out after ${TOOL_CALL_TIMEOUT_MS}ms` });
-      }, TOOL_CALL_TIMEOUT_MS);
+        resolve({ id: callId, ok: false, error: `Canvas request timed out after ${timeoutMs}ms` });
+      }, timeoutMs);
       this.pendingReplies.set(callId, { resolve, timer, socket: browserSocket });
     });
 
     try {
-      browserSocket.send(JSON.stringify({ id: callId, name, input }));
+      browserSocket.send(JSON.stringify({ id: callId, ...message }));
     } catch (err) {
       const pending = this.pendingReplies.get(callId);
       if (pending) {

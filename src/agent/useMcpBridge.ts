@@ -33,6 +33,10 @@ const HEARTBEAT_PONG_TIMEOUT_MS = 10_000;
 // External MCP agents have no turn boundary — debounce the viewport flush so
 // the camera moves once after a burst of tool calls, not after each one.
 const MCP_FOCUS_FLUSH_DEBOUNCE_MS = 500;
+// The server waits up to five seconds for the source snapshot. Leave time for
+// the wrapper navigation, then release input if the switch did not complete.
+const HANDOFF_INPUT_TIMEOUT_MS = 8_000;
+const HANDOFF_INPUT_EVENTS = ['keydown', 'keyup', 'beforeinput', 'paste', 'cut', 'drop', 'pointerdown', 'pointermove', 'pointerup', 'click', 'wheel'];
 
 export type McpConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'replaced';
 
@@ -42,6 +46,7 @@ interface StoredMcpConfig {
   bridgeWsUrl: string;
   enabled: boolean;
   ephemeral?: boolean;
+  parentOrigin?: string;
 }
 
 interface MintTokenResponse {
@@ -159,6 +164,29 @@ export function useMcpBridge({ getSelection }: UseMcpBridgeOptions) {
     let focusFlushTimer: ReturnType<typeof setTimeout> | null = null;
     let snapshotTimer: ReturnType<typeof setTimeout> | null = null;
     let publicReady = false;
+    const handoffOrigin = config.ephemeral && window.parent !== window ? config.parentOrigin : undefined;
+    let handoffInputTimer: ReturnType<typeof setTimeout> | null = null;
+    let previouslyInert = false;
+    const blockHandoffInput = (event: Event) => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    const releaseHandoffInput = () => {
+      if (handoffInputTimer === null) return;
+      clearTimeout(handoffInputTimer);
+      handoffInputTimer = null;
+      document.body.inert = previouslyInert;
+      for (const type of HANDOFF_INPUT_EVENTS) window.removeEventListener(type, blockHandoffInput, true);
+    };
+    const freezeHandoffInput = () => {
+      if (handoffInputTimer !== null) return;
+      // Commit the focused editor before taking the source snapshot.
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      previouslyInert = document.body.inert;
+      document.body.inert = true;
+      for (const type of HANDOFF_INPUT_EVENTS) window.addEventListener(type, blockHandoffInput, { capture: true, passive: false });
+      handoffInputTimer = setTimeout(releaseHandoffInput, HANDOFF_INPUT_TIMEOUT_MS);
+    };
     const unsubscribeSnapshot = config.ephemeral ? useStore.subscribe((state, previous) => {
       if (!publicReady || (state.sheets === previous.sheets && state.charts === previous.charts && state.notes === previous.notes && state.transform === previous.transform)) return;
       if (snapshotTimer) clearTimeout(snapshotTimer);
@@ -209,18 +237,20 @@ export function useMcpBridge({ getSelection }: UseMcpBridgeOptions) {
       };
 
       ws.onmessage = async (event) => {
+        if (disposed || socket !== ws) return;
         const data = String(event.data);
         if (data === 'pong') {
           if (pongDeadline) clearTimeout(pongDeadline);
           pongDeadline = null;
           return;
         }
-        let call: { type?: string; snapshot?: unknown; id?: string; name?: string; input?: unknown };
+        let call: { type?: string; snapshot?: unknown; id?: string; name?: string; input?: unknown; bridgeSession?: string; canvasHandle?: string };
         try {
           call = JSON.parse(data);
         } catch {
           return;
         }
+        if (!call || typeof call !== 'object' || Array.isArray(call)) return;
         if (config.ephemeral && call.type === 'session_error') {
           setRecoveryError('The latest canvas changes could not be saved for recovery. Keep this view open and export important sheets before closing or reloading.');
           return;
@@ -230,7 +260,7 @@ export function useMcpBridge({ getSelection }: UseMcpBridgeOptions) {
             restorePublicCanvasSnapshot(call.snapshot);
             publicReady = true;
             setPublicCanvasReady(true);
-            ws.send(JSON.stringify({ type: 'canvas_ready' }));
+            ws.send(JSON.stringify({ type: 'canvas_ready', ...(handoffOrigin ? { supportsWorkspaceHandoff: true } : {}) }));
             setConnectionStatus('connected');
           } catch (error) {
             console.error('Temporary canvas recovery failed:', error);
@@ -239,6 +269,27 @@ export function useMcpBridge({ getSelection }: UseMcpBridgeOptions) {
           return;
         }
         if (config.ephemeral && !publicReady) return;
+        if (handoffOrigin && call.type === 'prepare_workspace_handoff' && typeof call.id === 'string') {
+          try {
+            freezeHandoffInput();
+            ws.send(JSON.stringify({ id: call.id, ok: true, snapshot: capturePublicCanvasSnapshot() }));
+          } catch {
+            releaseHandoffInput();
+            ws.send(JSON.stringify({ id: call.id, ok: false, error: 'Could not save the current workspace before switching.' }));
+          }
+          return;
+        }
+        if (handoffOrigin && handoffInputTimer !== null && call.type === 'workspace_handoff' &&
+            typeof call.bridgeSession === 'string' && /^p_[a-f0-9]{64}$/.test(call.bridgeSession) &&
+            typeof call.canvasHandle === 'string' && /^c_[a-f0-9]{64}$/.test(call.canvasHandle)) {
+          window.parent.postMessage({
+            type: 'sheetcanvas:workspace-handoff',
+            previousSession: config.token,
+            bridgeSession: call.bridgeSession,
+            canvasHandle: call.canvasHandle,
+          }, handoffOrigin);
+          return;
+        }
         if (typeof call.id !== 'string' || typeof call.name !== 'string') return;
 
         let reply: { id: string; ok: boolean; result?: unknown; error?: string; snapshot?: PublicCanvasSnapshot };
@@ -278,6 +329,7 @@ export function useMcpBridge({ getSelection }: UseMcpBridgeOptions) {
       };
 
       ws.onclose = (event) => {
+        releaseHandoffInput();
         publicReady = false;
         if (config.ephemeral) setPublicCanvasReady(false);
         stopHeartbeat();
@@ -301,6 +353,7 @@ export function useMcpBridge({ getSelection }: UseMcpBridgeOptions) {
 
     return () => {
       disposed = true;
+      releaseHandoffInput();
       publicReady = false;
       if (config.ephemeral) setPublicCanvasReady(false);
       unsubscribeSnapshot();

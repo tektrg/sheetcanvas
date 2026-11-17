@@ -9,7 +9,7 @@ import { promisify } from 'node:util';
 const execFileAsync = promisify(execFile);
 const ORIGIN = 'https://sheetcanvas.com';
 const MCP_URL = `${ORIGIN}/mcp`;
-const PLUGIN_VERSION = '1.0.2';
+const PLUGIN_VERSION = '1.0.3';
 const PACKAGE_DIR = path.join(homedir(), 'plugins', 'sheetcanvas-public');
 const ZIP_PATH = path.join(homedir(), 'plugins', 'sheetcanvas-public-plugin.zip');
 const DEMO_PATH = new URL('../public/plugin-review/demo.webm', import.meta.url);
@@ -91,7 +91,7 @@ const review = {
 
 const publication = {
   release_notes:
-    'Review remediation: separates the anonymous canvas lifetime from MCP transport connections. The launcher returns a temporary two-hour canvasHandle for subsequent canvas tools; the browser bridge credential stays widget-only. Reports actual readiness and preserves isolated canvas recovery within its expiry. Real ChatGPT review-case verification is required before resubmission.',
+    'The public launcher keeps the browser bridge credential inside the widget. When asked to start fresh in an active chat, SheetCanvas opens a new isolated canvas through the connected widget and preserves the previous canvas until its original expiry.',
 };
 
 function portableManifest() {
