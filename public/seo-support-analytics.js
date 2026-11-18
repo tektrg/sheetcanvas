@@ -1,6 +1,11 @@
 (function initSheetCanvasSupportAnalytics() {
   var measurementId = 'G-FDXZ468S02';
   var appOrigin = 'https://sheetcanvas.com';
+  // GA4 event names follow the portfolio telemetry standard (memory/Projects/telemetry-flywheel): funnel steps are
+  // uf_<Funnel>_<NN>_<Step>. Renamed 2026-11-18: support_open_app_click -> uf_Acquire_02_OpenAppClick.
+  var LANDING_VIEW_EVENT = 'uf_Acquire_01_LandingView';
+  var OPEN_APP_EVENT = 'uf_Acquire_02_OpenAppClick';
+  var standardParams = { app: 'sheetcanvas', platform: 'web' };
 
   window.dataLayer = window.dataLayer || [];
   window.gtag = window.gtag || function gtag() {
@@ -38,6 +43,11 @@
     support_page_title: supportPageTitle,
     send_page_view: true
   }));
+
+  // Funnel step 01: a support page (every one carries an "Open SheetCanvas" CTA, enforced by seo-support-analytics-audit).
+  window.gtag('event', LANDING_VIEW_EVENT, withDebugMode(Object.assign({}, standardParams, {
+    support_page_path: supportPagePath
+  })));
 
   function isRootAppLink(anchor) {
     var href = anchor.getAttribute('href') || '';
@@ -78,7 +88,7 @@
 
     rememberSupportEntry();
 
-    window.gtag('event', 'support_open_app_click', withDebugMode({
+    window.gtag('event', OPEN_APP_EVENT, withDebugMode(Object.assign({}, standardParams, {
       event_category: 'SEO support page',
       event_label: supportPagePath,
       link_text: (anchor.textContent || '').trim(),
@@ -86,6 +96,6 @@
       support_page_path: supportPagePath,
       support_page_title: supportPageTitle,
       transport_type: 'beacon'
-    }));
+    })));
   }, true);
 }());

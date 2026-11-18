@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { join, sep } from 'node:path';
 
 export const SUPPORT_ANALYTICS_PATH = '/seo-support-analytics.js';
-export const SUPPORT_ANALYTICS_EVENT_NAME = 'support_open_app_click';
+export const SUPPORT_ANALYTICS_EVENT_NAME = 'uf_Acquire_02_OpenAppClick';
 
 export function hasSupportAnalyticsScript(html) {
   return new RegExp(`<script\\b(?=[^>]*\\bsrc=["']${SUPPORT_ANALYTICS_PATH}["'])(?=[^>]*\\bdefer\\b)[^>]*>\\s*</script>`, 'i')
@@ -56,7 +56,7 @@ export function auditSupportAnalyticsCtaInPage(html, pageLabel, reportError) {
     });
 
   if (!hasTrackableAppCta) {
-    reportError(pageLabel, 'support page must include at least one root app CTA trackable by support_open_app_click.');
+    reportError(pageLabel, 'support page must include at least one root app CTA trackable by uf_Acquire_02_OpenAppClick.');
   }
 }
 
@@ -75,6 +75,9 @@ export function auditSupportAnalyticsAsset(rootPath, readText, reportError) {
   const requiredSnippets = [
     'G-FDXZ468S02',
     SUPPORT_ANALYTICS_EVENT_NAME,
+    'uf_Acquire_01_LandingView',
+    "app: 'sheetcanvas'",
+    "platform: 'web'",
     'transport_type',
     'beacon',
     'SEO support page',

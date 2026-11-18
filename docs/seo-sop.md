@@ -211,13 +211,13 @@ Completed baseline:
 - Crawlable support routes include learn, docs, blog/tutorials, use cases, connector pages, alternatives, privacy, and terms.
 - Support pages advertise the RSS feed, link back to the root app, include page-specific metadata, canonical URLs, `WebPage` plus `BreadcrumbList` JSON-LD, and visible reviewed dates when product claims are capability-sensitive.
 - Blog tutorial posts include `BlogPosting` JSON-LD and feed items generated from page metadata.
-- Shared support-page analytics tracks pageviews and `Open SheetCanvas` CTA clicks with `support_open_app_click`.
+- Shared support-page analytics tracks pageviews and `Open SheetCanvas` CTA clicks with `uf_Acquire_02_OpenAppClick` (renamed from `support_open_app_click` on 2026-11-18; each support pageview also sends `uf_Acquire_01_LandingView`).
 - `npm run seo:audit` is the local quality gate. It regenerates sitemap/RSS, builds, then validates metadata, schema, links, reviewed dates, redirects, robots/sitemaps, RSS, `llms.txt`, support analytics, and deploy-script contracts.
 - `npm run deploy:pages` is the production publish command and must keep running the SEO audit before `wrangler pages deploy dist --project-name sheetcanvas --branch main`.
 
 ## Next Iteration Checklist
 
-- Verify GA4 receives support-page pageviews and `support_open_app_click` events with `support_page_path` and `support_page_title`.
+- Verify GA4 receives support-page pageviews and `uf_Acquire_01_LandingView` / `uf_Acquire_02_OpenAppClick` events with `support_page_path` and `support_page_title`.
 - Run `npm run seo:gsc` when Search Console credentials and network access work; prioritize edits from page/query evidence before adding more routes.
 - Deploy SEO-only changes only when unrelated app/backend work is split or intentionally included.
 - Keep `scripts/seo-audit.mjs` below the 1000-line project rule by moving new guardrails into focused modules.

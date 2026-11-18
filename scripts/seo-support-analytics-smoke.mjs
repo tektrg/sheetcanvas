@@ -6,7 +6,8 @@ import vm from 'node:vm';
 
 const ANALYTICS_SCRIPT_PATH = join(process.cwd(), 'public', 'seo-support-analytics.js');
 const MEASUREMENT_ID = 'G-FDXZ468S02';
-const SUPPORT_CLICK_EVENT = 'support_open_app_click';
+const SUPPORT_CLICK_EVENT = 'uf_Acquire_02_OpenAppClick';
+const LANDING_VIEW_EVENT = 'uf_Acquire_01_LandingView';
 
 function fail(message) {
   console.error(`Support analytics smoke failed: ${message}`);
@@ -132,6 +133,17 @@ function runAnalyticsScenario({ expectDebugMode, href, pathname, search, title }
     fail('GA4 config did not include the expected support page parameters.');
   }
 
+  const landingViewCalls = getAnalyticsEventCalls(window, LANDING_VIEW_EVENT);
+  const landingViewParameters = landingViewCalls[0] && Array.from(landingViewCalls[0])[2];
+  if (
+    landingViewCalls.length !== 1
+    || landingViewParameters.app !== 'sheetcanvas'
+    || landingViewParameters.platform !== 'web'
+    || landingViewParameters.support_page_path !== pathname
+  ) {
+    fail('did not send exactly one uf_Acquire_01_LandingView with app, platform and support_page_path.');
+  }
+
   const clickHandler = document.listeners.get('click');
   if (typeof clickHandler !== 'function') {
     fail('did not register the support CTA click listener.');
@@ -142,7 +154,7 @@ function runAnalyticsScenario({ expectDebugMode, href, pathname, search, title }
 
   const textCtaClickCall = getAnalyticsEventCalls(window, SUPPORT_CLICK_EVENT)[0];
   if (!textCtaClickCall) {
-    fail('did not send a support_open_app_click event for the root app CTA.');
+    fail('did not send a uf_Acquire_02_OpenAppClick event for the root app CTA.');
   }
 
   const supportEntry = JSON.parse(window.sessionStorage.getItem('sheetcanvas:support-entry') || '{}');
@@ -161,6 +173,8 @@ function runAnalyticsScenario({ expectDebugMode, href, pathname, search, title }
     || clickParameters.support_page_path !== pathname
     || clickParameters.support_page_title !== title
     || clickParameters.transport_type !== 'beacon'
+    || clickParameters.app !== 'sheetcanvas'
+    || clickParameters.platform !== 'web'
   ) {
     fail('CTA event did not include the expected support page parameters.');
   }
@@ -242,7 +256,7 @@ function runIgnoredClickScenario() {
   dispatchClick(clickHandler, untrackedRootLink);
 
   if (getAnalyticsEventCalls(window, SUPPORT_CLICK_EVENT).length > 0) {
-    fail('sent support_open_app_click for a non-root link or non-CTA root link.');
+    fail('sent uf_Acquire_02_OpenAppClick for a non-root link or non-CTA root link.');
   }
   if (window.sessionStorage.getItem('sheetcanvas:support-entry')) {
     fail('persisted support page context for an ignored click.');
