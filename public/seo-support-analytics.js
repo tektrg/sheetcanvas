@@ -46,7 +46,8 @@
 
   // Funnel step 01: a support page (every one carries an "Open SheetCanvas" CTA, enforced by seo-support-analytics-audit).
   window.gtag('event', LANDING_VIEW_EVENT, withDebugMode(Object.assign({}, standardParams, {
-    support_page_path: supportPagePath
+    support_page_path: supportPagePath,
+    support_page_title: supportPageTitle
   })));
 
   function isRootAppLink(anchor) {

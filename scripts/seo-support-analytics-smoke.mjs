@@ -140,6 +140,7 @@ function runAnalyticsScenario({ expectDebugMode, href, pathname, search, title }
     || landingViewParameters.app !== 'sheetcanvas'
     || landingViewParameters.platform !== 'web'
     || landingViewParameters.support_page_path !== pathname
+    || landingViewParameters.support_page_title !== title
   ) {
     fail('did not send exactly one uf_Acquire_01_LandingView with app, platform and support_page_path.');
   }
