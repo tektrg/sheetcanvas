@@ -7,6 +7,17 @@ export interface PluginMcpConfig {
   bridgeWsUrl: string;
   enabled: true;
   ephemeral?: true;
+  parentOrigin?: string;
+}
+
+function readHttpsOrigin(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.origin === value ? value : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export function readPluginMcpConfig(href: string, historyState?: unknown): PluginMcpConfig | null {
@@ -23,7 +34,7 @@ export function readPluginMcpConfig(href: string, historyState?: unknown): Plugi
   const recoveredPrivate = url.searchParams.get('chatgpt_private') === '1' && privateCached?.origin === url.origin && typeof privateCached.token === 'string'
     ? privateCached.token : '';
   const token = fragmentParams.get('mcp_token') ?? recoveredPrivate;
-  const cached = (historyState as { sheetcanvasPublicSession?: { origin?: unknown; token?: unknown } } | null)?.sheetcanvasPublicSession;
+  const cached = (historyState as { sheetcanvasPublicSession?: { origin?: unknown; token?: unknown; parentOrigin?: unknown } } | null)?.sheetcanvasPublicSession;
   const recoveredSession = url.searchParams.get('chatgpt_public') === '1' && cached?.origin === url.origin && typeof cached.token === 'string'
     ? cached.token : '';
   const publicSession = fragmentParams.get('mcp_session') ?? recoveredSession;
@@ -31,12 +42,16 @@ export function readPluginMcpConfig(href: string, historyState?: unknown): Plugi
 
   const websocketOrigin = url.origin.replace(/^http/, 'ws');
   if (MCP_PUBLIC_SESSION_PATTERN.test(publicSession)) {
+    const parentOrigin = readHttpsOrigin(
+      fragmentParams.has('mcp_session') ? fragmentParams.get('mcp_parent_origin') : cached?.parentOrigin,
+    );
     return {
       token: publicSession,
       mcpUrl: `${url.origin}/mcp`,
       bridgeWsUrl: `${websocketOrigin}/api/mcp/public-bridge/${publicSession}`,
       enabled: true,
       ephemeral: true,
+      ...(parentOrigin ? { parentOrigin } : {}),
     };
   }
   if (fragmentParams.has('mcp_session') || url.searchParams.get('chatgpt_public') === '1') return null;
@@ -54,6 +69,7 @@ export function stripPluginCredentialsFromUrl(href: string): string {
   const fragmentParams = new URLSearchParams(url.hash.slice(1));
   fragmentParams.delete('mcp_token');
   fragmentParams.delete('mcp_session');
+  fragmentParams.delete('mcp_parent_origin');
   url.hash = fragmentParams.toString();
   return url.toString();
 }
@@ -75,7 +91,11 @@ export function pluginHistoryState(href: string, historyState: unknown): unknown
   if (!config) return historyState;
   return {
     ...(typeof historyState === 'object' && historyState !== null ? historyState : {}),
-    [config.ephemeral ? 'sheetcanvasPublicSession' : 'sheetcanvasPrivateSession']: { origin: new URL(href).origin, token: config.token },
+    [config.ephemeral ? 'sheetcanvasPublicSession' : 'sheetcanvasPrivateSession']: {
+      origin: new URL(href).origin,
+      token: config.token,
+      ...(config.parentOrigin ? { parentOrigin: config.parentOrigin } : {}),
+    },
   };
 }
 

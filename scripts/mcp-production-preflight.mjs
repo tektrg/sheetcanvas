@@ -26,10 +26,10 @@ const WRANGLER_TIMEOUT_MS = 45000;
 
 const requiredRoutePatterns = [
   'sheetcanvas.com/api/*',
-  'pattern = "sheetcanvas.com/mcp"',
+  /pattern = "sheetcanvas\.com\/mcp\*?"/,
   'sheetcanvas.com/mcp/*',
   'www.sheetcanvas.com/api/*',
-  'pattern = "www.sheetcanvas.com/mcp"',
+  /pattern = "www\.sheetcanvas\.com\/mcp\*?"/,
   'www.sheetcanvas.com/mcp/*',
 ];
 
@@ -103,7 +103,7 @@ function checkWorkerConfig() {
   }
 
   for (const routePattern of requiredRoutePatterns) {
-    if (config.includes(routePattern)) {
+    if (typeof routePattern === 'string' ? config.includes(routePattern) : routePattern.test(config)) {
       recordPass(`Worker route configured: ${routePattern}`);
     } else {
       recordFailure(`Missing Worker route in backend/wrangler.toml: ${routePattern}`);
@@ -346,6 +346,7 @@ async function checkLiveMcpRoutes() {
         opened.body?.result?._meta?.canvasHandle !== canvasHandle ||
         !(opened.body?.result?.structuredContent?.expiresInSeconds > 0) ||
         JSON.stringify(opened.body?.result?.structuredContent ?? {}).includes(bridgeSession) ||
+        JSON.stringify(opened.body?.result?.content ?? []).includes(bridgeSession) ||
         'bridgeSession' in (opened.body?.result?.structuredContent ?? {})
       ) {
         recordFailure('/mcp launcher falsely reported readiness or failed widget-only session isolation.');
@@ -379,7 +380,7 @@ async function checkLiveMcpRoutes() {
         }
       }
 
-      const resourceUri = 'ui://sheetcanvas/workspace-public-v5.html';
+      const resourceUri = 'ui://sheetcanvas/workspace-public-v6.html';
       const resource = await rpc(4, 'resources/read', { uri: resourceUri });
       const resourceBody = resource.body?.result?.contents?.[0];
       if (

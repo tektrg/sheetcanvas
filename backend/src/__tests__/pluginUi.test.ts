@@ -8,7 +8,6 @@ import {
   buildSheetCanvasAppResource,
   buildPublicSheetCanvasAppResource,
   buildCanvasUrl,
-  buildPublicCanvasUrl,
   claudeUiDomain,
 } from '../mcp/pluginUi';
 
@@ -26,7 +25,7 @@ function htmlElements(html: string) {
   return elements;
 }
 
-function runPublicWidget(metadata: unknown) {
+function runPublicWidget(metadata: unknown, origin = 'null') {
   const elements = htmlElements(buildPublicSheetCanvasAppResource().text);
   const scripts = elements.filter((element) => element.tagName === 'script');
   // An HTML iframe is not void: a self-closing iframe swallows the script as text.
@@ -34,6 +33,7 @@ function runPublicWidget(metadata: unknown) {
   expect(scripts[0].parentNode).not.toMatchObject({ tagName: 'iframe' });
   const navigations: string[] = [];
   const iframe = {
+    contentWindow: {},
     get src() { return navigations.at(-1) ?? ''; },
     set src(value: string) { navigations.push(value); },
   };
@@ -43,6 +43,7 @@ function runPublicWidget(metadata: unknown) {
   const parent = { postMessage: (message: unknown) => hostMessages.push(message) };
   const window = {
     parent,
+    origin,
     openai: { toolResponseMetadata: metadata, widgetState: { privateContent: { view: 'canvas' } }, setWidgetState: (state: unknown) => widgetStates.push(state) },
     addEventListener: (name: string, listener: (event: unknown) => void) => listeners.set(name, listener),
   };
@@ -63,6 +64,8 @@ function runPublicWidget(metadata: unknown) {
     message: (data: unknown, trustedParent = true) => listeners.get('message')?.({
       source: trustedParent ? parent : {}, data,
     }),
+    iframeMessage: (data: unknown, origin = 'https://sheetcanvas.com', trustedIframe = true) =>
+      listeners.get('message')?.({ source: trustedIframe ? iframe.contentWindow : {}, origin, data }),
     update: (nextMetadata: unknown) => listeners.get('openai:set_globals')?.({
       detail: { globals: { toolResponseMetadata: nextMetadata } },
     }),
@@ -72,7 +75,7 @@ function runPublicWidget(metadata: unknown) {
 describe('SheetCanvas ChatGPT app surface', () => {
   it('versions the corrected public bootstrap separately from the private resource', () => {
     // Resource URIs are host cache keys: the standard bridge must not reuse v2.
-    expect(SHEETCANVAS_PUBLIC_APP_RESOURCE_URI).toBe('ui://sheetcanvas/workspace-public-v5.html');
+    expect(SHEETCANVAS_PUBLIC_APP_RESOURCE_URI).toBe('ui://sheetcanvas/workspace-public-v6.html');
     expect(SHEETCANVAS_PUBLIC_APP_TOOL._meta.ui.resourceUri).toBe(SHEETCANVAS_PUBLIC_APP_RESOURCE_URI);
     expect(buildPublicSheetCanvasAppResource().uri).toBe(SHEETCANVAS_PUBLIC_APP_RESOURCE_URI);
     expect(SHEETCANVAS_APP_RESOURCE_URI).toBe('ui://sheetcanvas/workspace-v1.html');
@@ -215,6 +218,29 @@ describe('SheetCanvas ChatGPT app surface', () => {
     expect(widget.navigations).toHaveLength(2);
   });
 
+  it('switches from the active canvas iframe and rejects forged or stale handoffs', () => {
+    const widget = runPublicWidget({ bridgeSession: PUBLIC_SESSION, canvasHandle: CANVAS_HANDLE }, 'https://sandbox.example');
+    const next = {
+      type: 'sheetcanvas:workspace-handoff',
+      previousSession: PUBLIC_SESSION,
+      bridgeSession: `p_${'e'.repeat(64)}`,
+      canvasHandle: `c_${'f'.repeat(64)}`,
+    };
+    const initial = new URL(widget.iframe.src);
+    expect(new URLSearchParams(initial.hash.slice(1)).get('mcp_parent_origin')).toBe('https://sandbox.example');
+    widget.iframeMessage(next, 'https://unrelated.example');
+    widget.iframeMessage(next, 'https://sheetcanvas.com', false);
+    widget.iframeMessage({ ...next, previousSession: next.bridgeSession });
+    expect(widget.navigations).toHaveLength(1);
+    widget.iframeMessage(next);
+    expect(widget.navigations).toHaveLength(2);
+    expect(widget.iframe.src).toContain(next.bridgeSession);
+    expect(widget.widgetStates.at(-1)).toMatchObject({ modelContent: { canvasHandle: next.canvasHandle } });
+    expect(JSON.stringify(widget.widgetStates)).not.toContain(next.bridgeSession);
+    widget.iframeMessage({ ...next, bridgeSession: PUBLIC_SESSION });
+    expect(widget.navigations).toHaveLength(2);
+  });
+
   it('boots without compatibility globals using a standard tool result', () => {
     const widget = runPublicWidget(undefined);
     widget.message({ jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: {
@@ -276,11 +302,9 @@ describe('SheetCanvas ChatGPT app surface', () => {
     }
   });
 
-  it('builds browser fallback links that the canvas bootstrap accepts', () => {
-    const session = `p_${'a'.repeat(64)}`;
-    expect(buildPublicCanvasUrl(session)).toBe(`https://sheetcanvas.com/?chatgpt_plugin=1#mcp_session=${session}`);
+  it('preserves the private browser fallback without declaring one for public tool results', () => {
     expect(buildCanvasUrl(TOKEN)).toBe(`https://sheetcanvas.com/?chatgpt_plugin=1#mcp_token=${TOKEN}`);
     expect(SHEETCANVAS_APP_TOOL.outputSchema.properties).toHaveProperty('openInBrowserUrl');
-    expect(SHEETCANVAS_PUBLIC_APP_TOOL.outputSchema.properties).toHaveProperty('openInBrowserUrl');
+    expect(SHEETCANVAS_PUBLIC_APP_TOOL.outputSchema.properties).not.toHaveProperty('openInBrowserUrl');
   });
 });

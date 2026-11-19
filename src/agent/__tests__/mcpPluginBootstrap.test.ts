@@ -11,6 +11,20 @@ const TOKEN = 'b'.repeat(48);
 const PUBLIC_SESSION = `p_${'c'.repeat(64)}`;
 
 describe('ChatGPT plugin MCP bootstrap', () => {
+  it('keeps a validated parent origin scoped to the public entry and removes it from the URL', () => {
+    const origin = 'https://sandbox.example';
+    const base = `https://sheetcanvas.com/?chatgpt_plugin=1#mcp_session=${PUBLIC_SESSION}`;
+    const launch = `${base}&mcp_parent_origin=${encodeURIComponent(origin)}`;
+    const cleaned = sanitizePluginLaunchUrl(launch);
+    expect(cleaned).not.toContain('mcp_parent_origin');
+    const state = pluginHistoryState(launch, null);
+    expect(readPluginMcpConfig(cleaned, state)?.parentOrigin).toBe(origin);
+    expect(readPluginMcpConfig(base, state)?.parentOrigin).toBeUndefined();
+    for (const invalid of ['null', 'http://sandbox.example', 'https://sandbox.example/path']) {
+      expect(readPluginMcpConfig(`${base}&mcp_parent_origin=${encodeURIComponent(invalid)}`)?.parentOrigin).toBeUndefined();
+    }
+  });
+
   it('preserves the public capability for iframe reload without accepting a private fallback', () => {
     const launch = `https://sheetcanvas.com/?chatgpt_plugin=1#mcp_session=${PUBLIC_SESSION}`;
     const cleaned = sanitizePluginLaunchUrl(launch);

@@ -24,6 +24,50 @@ function setup() {
 afterEach(() => vi.useRealTimers());
 
 describe('public canvas readiness', () => {
+  it('preserves the old canvas snapshot before handoff and refuses a second concurrent switch', async () => {
+    vi.useFakeTimers();
+    const { bridge, sockets, ctx } = setup();
+    await bridge.initializePublicSession(Date.now() + 100_000);
+    const socket = readySocket();
+    sockets.push(socket);
+    const target = { bridgeSession: `p_${'c'.repeat(64)}`, canvasHandle: `c_${'d'.repeat(64)}` };
+    expect(await bridge.handoffPublicCanvas(target)).toBe(false);
+    await bridge.webSocketMessage(socket as any, JSON.stringify({ type: 'canvas_ready', supportsWorkspaceHandoff: true }));
+
+    const handoff = bridge.handoffPublicCanvas(target);
+    const repeated = bridge.handoffPublicCanvas(target);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(socket.send).toHaveBeenCalledTimes(1);
+    const prep = JSON.parse(socket.send.mock.calls[0][0]);
+    expect(prep).toEqual({ id: expect.any(String), type: 'prepare_workspace_handoff' });
+    const snapshot = { ...emptySnapshot(), notes: [{ content: 'Preserve this manual edit.' }] };
+    await bridge.webSocketMessage(socket as any, JSON.stringify({ id: prep.id, ok: true, snapshot }));
+    expect(await handoff).toBe(true);
+    expect(await repeated).toBe(false);
+    expect(JSON.parse(socket.send.mock.calls[1][0])).toEqual({ type: 'workspace_handoff', ...target });
+    expect(await (new CanvasBridge(ctx as any, {}) as any).readPublicSnapshot()).toEqual(snapshot);
+    expect(socket.close).not.toHaveBeenCalled();
+  });
+
+  it('leaves the source renderer in place when its snapshot cannot be saved', async () => {
+    vi.useFakeTimers();
+    const { bridge, sockets } = setup();
+    await bridge.initializePublicSession(Date.now() + 100_000);
+    const socket = readySocket();
+    sockets.push(socket);
+    await bridge.webSocketMessage(socket as any, JSON.stringify({ type: 'canvas_ready', supportsWorkspaceHandoff: true }));
+    const handoff = bridge.handoffPublicCanvas({
+      bridgeSession: `p_${'c'.repeat(64)}`,
+      canvasHandle: `c_${'d'.repeat(64)}`,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    const { id } = JSON.parse(socket.send.mock.calls[0][0]);
+    await bridge.webSocketMessage(socket as any, JSON.stringify({ id, ok: false }));
+    expect(await handoff).toBe(false);
+    expect(socket.send).toHaveBeenCalledTimes(1);
+    expect(await bridge.getStatus()).toEqual({ browserConnected: true });
+  });
+
   it('stores handle pointers across recreation and deletes them on expiry without renewal', async () => {
     vi.useFakeTimers();
     const { bridge, ctx, values } = setup();
